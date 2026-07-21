@@ -1,0 +1,40 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "db-seed-refresh",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:seed"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-seed-refresh",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:seed"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "web-build-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/web"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

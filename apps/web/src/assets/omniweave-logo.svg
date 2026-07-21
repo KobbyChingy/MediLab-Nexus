@@ -1,0 +1,94 @@
+<svg width="1080" height="300" viewBox="0 0 1080 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="chipBlue" x1="26" y1="18" x2="178" y2="198" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24499C"/>
+      <stop offset="1" stop-color="#102B72"/>
+    </linearGradient>
+    <linearGradient id="weaveOrange" x1="76" y1="68" x2="142" y2="134" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7D1F"/>
+      <stop offset="1" stop-color="#F15A00"/>
+    </linearGradient>
+    <linearGradient id="weaveGreen" x1="76" y1="136" x2="142" y2="202" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1FC16B"/>
+      <stop offset="1" stop-color="#12864B"/>
+    </linearGradient>
+    <filter id="chipShadow" x="0" y="0" width="214" height="214" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="12"/>
+      <feGaussianBlur stdDeviation="10"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0627451 0 0 0 0 0.168627 0 0 0 0 0.447059 0 0 0 0.22 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+  <rect width="1080" height="300" rx="26" fill="url(#bgFade)" fill-opacity="0"/>
+  <defs>
+    <linearGradient id="bgFade" x1="0" y1="0" x2="1080" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEF6FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <g filter="url(#chipShadow)">
+    <rect x="24" y="36" width="148" height="148" rx="24" fill="url(#chipBlue)"/>
+  </g>
+  <g stroke-linecap="round">
+    <path d="M50 52V24" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M76 52V24" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M102 52V24" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M128 52V24" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M50 196V168" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M76 196V168" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M102 196V168" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M128 196V168" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M12 70H40" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M12 96H40" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M12 122H40" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M156 70H184" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M156 96H184" stroke="#F4F7FB" stroke-width="5.5"/>
+    <path d="M156 122H184" stroke="#F4F7FB" stroke-width="5.5"/>
+  </g>
+  <g fill="#24499C">
+    <circle cx="12" cy="70" r="6"/>
+    <circle cx="12" cy="96" r="6"/>
+    <circle cx="12" cy="122" r="6"/>
+    <circle cx="184" cy="70" r="6"/>
+    <circle cx="184" cy="96" r="6"/>
+    <circle cx="184" cy="122" r="6"/>
+  </g>
+  <path d="M44 68L63 68L72 77L72 131L63 140L44 140" stroke="#F3F7FB" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M152 68L133 68L124 77L124 131L133 140L152 140" stroke="#F3F7FB" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="72" cy="77" r="8.5" fill="#F8FBFF"/>
+  <circle cx="72" cy="131" r="8.5" fill="#F8FBFF"/>
+  <circle cx="124" cy="77" r="8.5" fill="#F8FBFF"/>
+  <circle cx="124" cy="131" r="8.5" fill="#F8FBFF"/>
+  <rect x="60" y="58" width="76" height="38" rx="8" fill="url(#weaveOrange)"/>
+  <rect x="60" y="96" width="76" height="38" rx="8" fill="url(#weaveOrange)"/>
+  <rect x="60" y="134" width="76" height="24" rx="8" fill="url(#weaveGreen)"/>
+  <g stroke="#102B72" stroke-width="5" stroke-linecap="round">
+    <path d="M74 64V129"/>
+    <path d="M90 64V129"/>
+    <path d="M106 64V129"/>
+    <path d="M122 64V129"/>
+    <path d="M66 72H130"/>
+    <path d="M66 84H130"/>
+    <path d="M66 106H130"/>
+    <path d="M66 118H130"/>
+    <path d="M74 142V152"/>
+    <path d="M90 142V152"/>
+    <path d="M106 142V152"/>
+    <path d="M122 142V152"/>
+    <path d="M66 147H130"/>
+  </g>
+  <g fill="#173171">
+    <path d="M236 156V95.2H253L280.4 130.2V95.2H298.2V156H282.3L253.9 119.5V156H236Z"/>
+    <path d="M309.4 156V104.7H327.1V156H309.4ZM318.2 99.5C312.4 99.5 308.7 96.1 308.7 91.1C308.7 86 312.4 82.6 318.2 82.6C324 82.6 327.8 85.9 327.8 91C327.8 96.1 324 99.5 318.2 99.5Z"/>
+    <path d="M335.7 156V104.7H352.9V111.1C357.3 106.4 363 103.4 370.6 103.4C383 103.4 390.9 111.8 390.9 125.8V156H373.1V130.9C373.1 123.8 369.7 120.4 364.2 120.4C358.6 120.4 353.5 124 353.5 131.3V156H335.7Z"/>
+    <path d="M399.1 130.2C399.1 113.8 411.2 103.4 426.4 103.4C433.8 103.4 439.4 106 443.1 110.6V84H460.9V156H443.7V149.7C440 154.2 434.2 157.3 426.3 157.3C411.2 157.3 399.1 146.7 399.1 130.2ZM443.5 130.2C443.5 122.3 438.2 117 431 117C423.9 117 418.6 122.3 418.6 130.2C418.6 138.2 423.9 143.5 431 143.5C438.2 143.5 443.5 138.2 443.5 130.2Z"/>
+    <path d="M469.2 130.4C469.2 114.2 480.8 103.4 497.2 103.4C513.5 103.4 524.8 114 524.8 130.6C524.8 132.1 524.7 133.6 524.4 135.2H487C488.8 141.1 493 143.9 499.1 143.9C504.1 143.9 508.3 142 511.9 138.6L521.9 148.6C516.8 154.2 509.1 157.3 498.4 157.3C480.8 157.3 469.2 146.6 469.2 130.4ZM507.8 125.5C506.8 119.7 503.2 116 497.2 116C491.4 116 487.8 119.6 486.6 125.5H507.8Z"/>
+    <path d="M531.8 156V104.7H549.1V111.1C553.4 106.4 559.2 103.4 566.7 103.4C579.2 103.4 587 111.8 587 125.8V156H569.2V130.9C569.2 123.8 565.8 120.4 560.3 120.4C554.8 120.4 549.6 124 549.6 131.3V156H531.8Z"/>
+  </g>
+  <text x="238" y="189" fill="#24499C" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="800">Weaving Digital Solutions for Africa</text>
+  <text x="650" y="116" fill="#0E224E" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="800">Developed by OmniWeave Softwares</text>
+  <text x="650" y="156" fill="#2A4B7C" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="500">Weaving digital solutions for Africa.</text>
+</svg>

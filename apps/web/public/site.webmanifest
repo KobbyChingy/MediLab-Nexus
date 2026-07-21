@@ -1,0 +1,17 @@
+{
+  "name": "MediLab Nexus by OmniWeave Softwares",
+  "short_name": "MediLab Omni",
+  "description": "Offline-first medical laboratory and imaging workspace developed by OmniWeave Softwares.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f6bff",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

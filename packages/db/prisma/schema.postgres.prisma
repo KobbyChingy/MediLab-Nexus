@@ -1,0 +1,562 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CatalogKind {
+  TEST
+  IMAGING
+}
+
+enum Department {
+  LAB
+  IMAGING
+}
+
+enum OrderStatus {
+  DRAFT
+  REGISTERED
+  COLLECTED
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  VERIFIED
+  RELEASED
+  REJECTED
+  CANCELLED
+}
+
+enum Priority {
+  ROUTINE
+  URGENT
+  STAT
+}
+
+enum SampleStatus {
+  PENDING
+  COLLECTED
+  RECEIVED
+  PROCESSING
+  STORED
+  REJECTED
+  DISPOSED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  ARRIVED
+  SCANNING
+  REPORTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReportStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  RELEASED
+  AMENDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PARTIAL
+  PAID
+  VOID
+}
+
+enum SyncStatus {
+  LOCAL_ONLY
+  PENDING_SYNC
+  SYNCED
+  CONFLICT
+  FAILED
+}
+
+enum InventoryTxnType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+  EXPIRY
+  RETURN
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY_MTN
+  MOBILE_MONEY_VODAFONE
+  CARD
+  NHIS
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  WHATSAPP
+  INTERNAL
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum UserRole {
+  RECEPTION
+  PHLEBOTOMIST
+  SONOGRAPHER
+  DOCTOR
+  LAB_TECH
+  RADIOLOGIST
+  MANAGER
+  FINANCE
+  QA
+  ADMIN
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  DUE
+  COMPLETED
+  OVERDUE
+}
+
+enum InstrumentCategory {
+  ANALYZER
+  ULTRASOUND
+  PRINTER
+  SERVER
+}
+
+model Facility {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  phone         String   @default("")
+  email         String   @default("")
+  location      String   @default("")
+  logoDataUrl   String   @default("")
+  footerMessage String   @default("")
+  traceSequence Int      @default(1200)
+  cloudMode     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  patients      Patient[]
+  referralDoctors ReferralDoctor[]
+  expenses      ExpenseRecord[]
+  users         AppUser[]
+}
+
+model ExpenseRecord {
+  id          String   @id @default(cuid())
+  facilityId  String
+  category    String
+  description String
+  amountCents Int
+  incurredAt  DateTime
+  recordedBy  String
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  facility    Facility @relation(fields: [facilityId], references: [id])
+
+  @@index([facilityId, incurredAt])
+  @@index([category, incurredAt])
+}
+
+model ReferralDoctor {
+  id                String    @id @default(cuid())
+  facilityId        String
+  fullName          String
+  phone             String?
+  email             String?
+  commissionPercent Int
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  facility          Facility  @relation(fields: [facilityId], references: [id])
+  patients          Patient[]
+
+  @@unique([facilityId, fullName])
+  @@index([facilityId, fullName])
+}
+
+model AppUser {
+  id          String    @id @default(cuid())
+  facilityId  String
+  username    String    @unique
+  displayName String
+  role        UserRole
+  pinSalt     String
+  pinHash     String
+  pinChangedAt DateTime @default(now())
+  failedLoginCount Int  @default(0)
+  lockedUntil DateTime?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  facility    Facility  @relation(fields: [facilityId], references: [id])
+  sessions    AppSession[]
+
+  @@index([role, isActive])
+}
+
+model AppSession {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       AppUser  @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
+}
+
+model Patient {
+  id               String            @id @default(cuid())
+  facilityId       String
+  referralDoctorId String?
+  referralName     String?
+  referralCommissionPercent Int?
+  traceCode        String            @unique
+  traceSequence    Int
+  initials         String
+  firstName        String
+  middleName       String?
+  lastName         String
+  dateOfBirth      DateTime?
+  gender           String?
+  phone            String
+  nhisId           String?           @unique
+  allergies        String?
+  medicalHistory   String?
+  consentAccepted  Boolean           @default(false)
+  photoPath        String?
+  syncStatus       SyncStatus        @default(LOCAL_ONLY)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  facility         Facility          @relation(fields: [facilityId], references: [id])
+  referralDoctor   ReferralDoctor?   @relation(fields: [referralDoctorId], references: [id])
+  orders           DiagnosticOrder[]
+  samples          Sample[]
+  reports          Report[]
+  invoices         Invoice[]
+
+  @@index([lastName, firstName])
+  @@index([phone])
+  @@index([traceSequence])
+  @@index([referralDoctorId])
+}
+
+model CatalogItem {
+  id           String       @id @default(cuid())
+  code         String       @unique
+  name         String
+  kind         CatalogKind
+  department   Department
+  specimenType String?
+  modality     String?
+  priceCents   Int
+  tatMinutes   Int
+  isActive     Boolean      @default(true)
+  rulesJson    String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  orderItems   OrderItem[]
+}
+
+model DiagnosticOrder {
+  id                  String       @id @default(cuid())
+  patientId           String
+  accessionNumber     String       @unique
+  status              OrderStatus  @default(REGISTERED)
+  priority            Priority     @default(ROUTINE)
+  orderedBy           String
+  referringClinic     String?
+  insuranceProvider   String?
+  insuranceAuthorized Boolean      @default(false)
+  notes               String?
+  scheduledFor        DateTime?
+  totalAmountCents    Int          @default(0)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  patient             Patient      @relation(fields: [patientId], references: [id])
+  items               OrderItem[]
+  samples             Sample[]
+  reports             Report[]
+  invoice             Invoice?
+
+  @@index([patientId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  catalogItemId   String
+  status          OrderStatus    @default(REGISTERED)
+  instructions    String?
+  criticalFinding Boolean        @default(false)
+  resultText      String?
+  resultJson      String?
+  performedAt     DateTime?
+  validatedAt     DateTime?
+  reviewerName    String?
+  createdAt       DateTime       @default(now())
+  order           DiagnosticOrder @relation(fields: [orderId], references: [id])
+  catalogItem     CatalogItem    @relation(fields: [catalogItemId], references: [id])
+  imagingStudy    ImagingStudy?
+}
+
+model Sample {
+  id                 String        @id @default(cuid())
+  patientId          String
+  orderId            String
+  traceLabel         String
+  specimenType       String
+  status             SampleStatus  @default(PENDING)
+  collectedBy        String?
+  collectedAt        DateTime?
+  rejectionReason    String?
+  chainOfCustodyJson String        @default("[]")
+  createdAt          DateTime      @default(now())
+  patient            Patient       @relation(fields: [patientId], references: [id])
+  order              DiagnosticOrder @relation(fields: [orderId], references: [id])
+
+  @@index([traceLabel])
+  @@index([status])
+}
+
+model ImagingStudy {
+  id                  String             @id @default(cuid())
+  orderItemId         String             @unique
+  modality            String
+  appointmentStatus   AppointmentStatus  @default(SCHEDULED)
+  scheduledAt         DateTime?
+  sonographerName     String?
+  radiologistName     String?
+  dicomPath           String?
+  annotationsJson     String             @default("[]")
+  priorStudyReference String?
+  criticalFlag        Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  orderItem           OrderItem          @relation(fields: [orderItemId], references: [id])
+
+  @@index([appointmentStatus])
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  patientId      String
+  orderId        String
+  title          String
+  status         ReportStatus @default(DRAFT)
+  medicalHistory String?
+  summary        String
+  findings       String
+  impression     String
+  signedBy       String?
+  signedAt       DateTime?
+  pdfPath        String?
+  imagePathsJson String       @default("[]")
+  criticalFlag   Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  patient        Patient      @relation(fields: [patientId], references: [id])
+  order          DiagnosticOrder @relation(fields: [orderId], references: [id])
+
+  @@index([status])
+}
+
+model Invoice {
+  id                    String        @id @default(cuid())
+  patientId             String
+  orderId               String        @unique
+  status                InvoiceStatus @default(OPEN)
+  subtotalCents         Int
+  discountCents         Int           @default(0)
+  insuranceCoveredCents Int           @default(0)
+  amountDueCents        Int
+  amountPaidCents       Int           @default(0)
+  payerName             String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  patient               Patient       @relation(fields: [patientId], references: [id])
+  order                 DiagnosticOrder @relation(fields: [orderId], references: [id])
+  lines                 InvoiceLine[]
+  payments              PaymentRecord[]
+}
+
+model InvoiceLine {
+  id             String   @id @default(cuid())
+  invoiceId      String
+  description    String
+  quantity       Int      @default(1)
+  unitPriceCents Int
+  totalPriceCents Int
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+model InventoryItem {
+  id              String                 @id @default(cuid())
+  sku             String                 @unique
+  category        String                 @default("Reagent")
+  name            String
+  unit            String
+  quantityOnHand  Float
+  reorderLevel    Float
+  expiryDate      DateTime?
+  preferredVendor String?
+  storageLocation String?
+  lastRestockedAt DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  transactions    InventoryTransaction[]
+}
+
+model InventoryTransaction {
+  id        String           @id @default(cuid())
+  itemId     String
+  type       InventoryTxnType
+  quantity   Float
+  reason     String?
+  createdAt  DateTime        @default(now())
+  item       InventoryItem   @relation(fields: [itemId], references: [id])
+}
+
+model QualityControlEvent {
+  id            String   @id @default(cuid())
+  module        String
+  instrumentName String
+  analyte       String
+  controlLevel  String
+  lotNumber     String?
+  observedValue Float
+  meanValue     Float
+  standardDeviation Float
+  expectedRange String
+  status        String
+  performedBy   String
+  runDate       DateTime @default(now())
+  traceCode     String?
+  westgardViolationsJson String @default("[]")
+  occurredAt    DateTime @default(now())
+  notes         String?
+
+  @@index([module, status])
+  @@index([instrumentName, analyte, occurredAt])
+}
+
+model SyncEvent {
+  id            String     @id @default(cuid())
+  entityType    String
+  entityId      String
+  operation     String
+  payload       String
+  status        SyncStatus @default(PENDING_SYNC)
+  attempts      Int        @default(0)
+  lastAttemptAt DateTime?
+  conflictNote  String?
+  createdAt     DateTime   @default(now())
+
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+}
+
+model PaymentRecord {
+  id          String        @id @default(cuid())
+  invoiceId    String
+  method      PaymentMethod
+  amountCents Int
+  reference   String?
+  receivedBy  String
+  traceCode   String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id])
+
+  @@index([method, createdAt])
+}
+
+model Instrument {
+  id             String              @id @default(cuid())
+  name           String              @unique
+  category       InstrumentCategory
+  serialNumber   String?
+  location       String?
+  integrationType String?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  maintenance    MaintenanceEvent[]
+}
+
+model MaintenanceEvent {
+  id             String            @id @default(cuid())
+  instrumentId   String
+  title          String
+  status         MaintenanceStatus @default(SCHEDULED)
+  scheduledAt    DateTime
+  nextDueAt      DateTime
+  completedAt    DateTime?
+  assignedTo     String?
+  notes          String?
+  createdAt      DateTime          @default(now())
+  instrument     Instrument        @relation(fields: [instrumentId], references: [id])
+
+  @@index([status, nextDueAt])
+}
+
+model NotificationQueue {
+  id           String             @id @default(cuid())
+  patientId     String?
+  traceCode    String?
+  channel      NotificationChannel
+  recipient    String
+  message      String
+  status       NotificationStatus @default(QUEUED)
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  createdBy    String
+  createdAt    DateTime           @default(now())
+
+  @@index([status, channel, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorName   String
+  actorRole   UserRole
+  action      String
+  entityType  String
+  entityId    String
+  traceCode   String?
+  summary     String
+  payloadJson String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([traceCode, createdAt])
+  @@index([actorRole, createdAt])
+}
+
+model BackupSnapshot {
+  id           String   @id @default(cuid())
+  label        String
+  filePath     String
+  checksum     String
+  encrypted    Boolean  @default(true)
+  createdBy    String
+  createdAt    DateTime @default(now())
+  restoredAt   DateTime?
+}

@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: medilab-nexus-demo
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run db:generate:hosted && npm run build -w @medilab/shared && npm run build -w @medilab/db && npm run build -w @medilab/web && npm run build -w @medilab/api
+    preDeployCommand: npm run db:generate:hosted && npm run db:push:hosted && npm run db:seed
+    startCommand: node apps/api/dist/server.js
+    healthCheckPath: /ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: VITE_API_BASE
+        value: /api
+      - key: MEDILAB_WEB_DIST
+        value: apps/web/dist
+      - key: MEDILAB_TRUST_PROXY
+        value: "true"
+      - key: MEDILAB_SESSION_COOKIE_SECURE
+        value: "true"
+      - key: MEDILAB_SESSION_COOKIE_SAMESITE
+        value: Lax
+      - key: MEDILAB_ALLOWED_ORIGINS
+        value: ""
+      - key: MEDILAB_DISPATCH_WORKER_ENABLED
+        value: "false"
+      - key: MEDILAB_FACILITY_CODE
+        value: MLN-ACC
+      - key: MEDILAB_FACILITY_NAME
+        value: MediLab Nexus Diagnostic Centre
+      - key: MEDILAB_ENCRYPTION_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

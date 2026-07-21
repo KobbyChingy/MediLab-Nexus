@@ -1,0 +1,103 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medilab_nexus
+      POSTGRES_USER: medilab
+      POSTGRES_PASSWORD: medilab_change_me
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medilab -d medilab_nexus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://medilab:medilab_change_me@db:5432/medilab_nexus?schema=public
+      MEDILAB_FACILITY_CODE: MLN-ACC
+      MEDILAB_FACILITY_NAME: MediLab Nexus Diagnostic Centre
+      MEDILAB_ENCRYPTION_KEY: change-this-before-production
+      MEDILAB_INTEGRATION_ENDPOINT: ""
+      MEDILAB_NOTIFICATION_WEBHOOK_URL: ""
+      MEDILAB_ALLOWED_ORIGINS: http://localhost:8080
+      MEDILAB_TRUST_PROXY: "true"
+      MEDILAB_SESSION_COOKIE_NAME: medilab_session
+      MEDILAB_SESSION_COOKIE_DOMAIN: ""
+      MEDILAB_SESSION_COOKIE_SECURE: "false"
+      MEDILAB_SESSION_COOKIE_SAMESITE: Lax
+      MEDILAB_DISPATCH_WORKER_ENABLED: "false"
+      MEDILAB_DISPATCH_INTERVAL_MS: "30000"
+      MEDILAB_DISPATCH_BATCH_SIZE: "25"
+      PORT: "4000"
+    command:
+      ["sh", "-c", "npm run db:push:hosted && node apps/api/dist/server.js"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://medilab:medilab_change_me@db:5432/medilab_nexus?schema=public
+      MEDILAB_FACILITY_CODE: MLN-ACC
+      MEDILAB_FACILITY_NAME: MediLab Nexus Diagnostic Centre
+      MEDILAB_ENCRYPTION_KEY: change-this-before-production
+      MEDILAB_INTEGRATION_ENDPOINT: ""
+      MEDILAB_NOTIFICATION_WEBHOOK_URL: ""
+      MEDILAB_ALLOWED_ORIGINS: http://localhost:8080
+      MEDILAB_TRUST_PROXY: "true"
+      MEDILAB_SESSION_COOKIE_NAME: medilab_session
+      MEDILAB_SESSION_COOKIE_DOMAIN: ""
+      MEDILAB_SESSION_COOKIE_SECURE: "false"
+      MEDILAB_SESSION_COOKIE_SAMESITE: Lax
+      MEDILAB_DISPATCH_WORKER_ENABLED: "true"
+      MEDILAB_DISPATCH_INTERVAL_MS: "30000"
+      MEDILAB_DISPATCH_BATCH_SIZE: "25"
+      PORT: "4000"
+    command: ["node", "apps/api/dist/worker.js"]
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+      args:
+        VITE_API_BASE: /api
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
