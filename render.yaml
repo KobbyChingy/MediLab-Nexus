@@ -3,7 +3,7 @@ services:
     name: medilab-nexus-demo
     runtime: node
     plan: free
-    region: oregon
+    region: virginia
     buildCommand: npm ci && npm run db:generate:hosted && npm run build -w @medilab/shared && npm run build -w @medilab/db && npm run build -w @medilab/web && npm run build -w @medilab/api
     preDeployCommand: npm run db:generate:hosted && npm run db:push:hosted && npm run db:seed
     startCommand: node apps/api/dist/server.js
