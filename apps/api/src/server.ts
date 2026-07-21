@@ -48,6 +48,7 @@ import {
 } from "@medilab/shared";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { existsSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { recordAudit } from "./services/audit.js";
 import {
   createLocalUser,
@@ -111,7 +112,12 @@ const cookieSecure = ["1", "true", "yes"].includes(
 );
 const cookieSameSite =
   process.env.MEDILAB_SESSION_COOKIE_SAMESITE?.trim() || "Lax";
-const bundledWebDist = process.env.MEDILAB_WEB_DIST?.trim() || "";
+const bundledWebDistEnv = process.env.MEDILAB_WEB_DIST?.trim() || "";
+const bundledWebDist = bundledWebDistEnv
+  ? isAbsolute(bundledWebDistEnv)
+    ? bundledWebDistEnv
+    : resolve(process.cwd(), bundledWebDistEnv)
+  : "";
 const serveBundledWeb = bundledWebDist.length > 0 && existsSync(bundledWebDist);
 
 const app = Fastify({ logger: true, trustProxy });
