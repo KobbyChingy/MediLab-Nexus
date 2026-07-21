@@ -3293,7 +3293,7 @@ app.get("/api/admin/integrations/status", getIntegrationStatus);
 app.post("/api/admin/integrations/run", runIntegrationDispatch);
 
 if (serveBundledWeb) {
-  app.get("/*", async (request, reply) => {
+  app.setNotFoundHandler(async (request, reply) => {
     const pathname = request.url.split("?")[0] ?? "/";
     if (
       pathname.startsWith("/api") ||
