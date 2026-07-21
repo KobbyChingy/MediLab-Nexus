@@ -4,13 +4,11 @@ services:
     runtime: node
     plan: free
     region: virginia
-    buildCommand: npm ci && npm run db:generate:hosted && npm run build -w @medilab/shared && npm run build -w @medilab/db && npm run build -w @medilab/web && npm run build -w @medilab/api
-    startCommand: npm run db:generate:hosted && npm run db:push:hosted && npm run db:seed && node apps/api/dist/server.js
+    buildCommand: npm ci --include=dev && npm run db:generate:hosted && npm run build -w @medilab/shared && npm run build -w @medilab/db && npm run build -w @medilab/web && npm run build -w @medilab/api
+    startCommand: NODE_ENV=production npm run db:generate:hosted && NODE_ENV=production npm run db:push:hosted && NODE_ENV=production npm run db:seed && NODE_ENV=production node apps/api/dist/server.js
     healthCheckPath: /ready
     autoDeployTrigger: commit
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: NODE_VERSION
         value: 22
       - key: VITE_API_BASE
