@@ -49,11 +49,7 @@ import {
   fallbackBootstrap,
   fallbackFinanceAnalytics,
 } from "./data/fallback";
-import {
-  PortalBriefingRail,
-  PortalDashboardDeck,
-  PortalLoginSelector,
-} from "./components/portal-surfaces";
+import { PortalLoginSelector } from "./components/portal-surfaces";
 import {
   InternalBellPanel,
   SystemAlertsSection,
@@ -344,42 +340,43 @@ const ultrasoundTemplatePresets: Record<
   },
   ULTRASOUND_PELVIC: {
     summaryLabel: "Clinical indication",
-    summaryStarter: "Clinical indication: pelvic pain / menstrual or adnexal assessment",
+    summaryStarter:
+      "Clinical indication: pelvic pain / menstrual or adnexal assessment",
     findingsStarter:
       "FINDINGS:\nUterus:\nEndometrium:\nRight adnexa:\nLeft adnexa:\nCul-de-sac:\n",
     impressionStarter: "IMPRESSION:\n1. ",
     techniquePlaceholder:
       "Transabdominal pelvic sonography with transvaginal correlation when indicated.",
     measurementsPlaceholder:
-      "Uterine size, endometrial thickness, right ovary volume, left ovary volume...",
+      "Uterine dimensions, endometrial thickness, ovarian volumes, dominant follicles...",
     recommendationPlaceholder:
-      "Gynecology review, cycle correlation, or interval follow-up as indicated.",
+      "Gynecology review, correlate with beta-hCG or repeat scan as clinically indicated.",
   },
   ULTRASOUND_OBSTETRIC: {
-    summaryLabel: "Obstetric indication",
-    summaryStarter: "Obstetric indication: dating / viability / anomaly follow-up",
+    summaryLabel: "Clinical indication",
+    summaryStarter: "Clinical indication: routine fetal assessment / obstetric review",
     findingsStarter:
-      "FINDINGS:\nGestation:\nPlacenta:\nLiquor volume:\nFetal heart activity:\nPresentation:\nCervix:\n",
-    impressionStarter: "IMPRESSION:\n1. Single live intrauterine gestation ",
+      "FINDINGS:\nFetal lie / presentation:\nPlacenta:\nLiquor volume:\nBiometry:\nFetal heart activity:\nCervix:\n",
+    impressionStarter: "IMPRESSION:\n1. ",
     techniquePlaceholder:
-      "Obstetric scan with fetal biometry and placental assessment.",
+      "Transabdominal obstetric sonography with fetal biometry and placental review.",
     measurementsPlaceholder:
-      "GS, CRL, BPD, HC, AC, FL, EFW, AFI, FHR...",
+      "BPD, HC, AC, FL, estimated fetal weight, AFI, cervical length...",
     recommendationPlaceholder:
-      "Routine antenatal follow-up, anomaly scan timing, or urgent obstetric review if indicated.",
+      "Routine ANC follow-up, fetal surveillance, or obstetric review based on findings.",
   },
   ULTRASOUND_ECHOCARDIOGRAPHY: {
     summaryLabel: "Clinical indication",
-    summaryStarter: "Clinical indication: cardiac structure / function assessment",
+    summaryStarter: "Clinical indication: cardiac structure and function assessment",
     findingsStarter:
-      "FINDINGS:\nChambers:\nValves:\nPericardium:\nLeft ventricular function:\nRight ventricular function:\n",
+      "FINDINGS:\nCardiac chambers:\nValves:\nLV systolic function:\nPericardium:\nDoppler:\n",
     impressionStarter: "IMPRESSION:\n1. ",
     techniquePlaceholder:
-      "2D, M-mode, and Doppler echocardiographic assessment.",
+      "Transthoracic echocardiography with 2D, M-mode, and Doppler assessment.",
     measurementsPlaceholder:
-      "EF, LVEDD, LVESD, LA size, RVSP, valve gradients, TAPSE...",
+      "EF, chamber sizes, wall motion, valve gradients, TAPSE, pericardial findings...",
     recommendationPlaceholder:
-      "Cardiology review and correlation with ECG / clinical findings.",
+      "Cardiology review, interval echo follow-up, or urgent referral based on severity.",
   },
 };
 
@@ -1761,6 +1758,7 @@ export default function App() {
   const [ultrasoundReportAssist, setUltrasoundReportAssist] =
     useState<UltrasoundReportAssistState>(defaultUltrasoundReportAssistState);
   const [reportImagePathsText, setReportImagePathsText] = useState("");
+  const [reportPatientQuery, setReportPatientQuery] = useState("");
   const [qcForm, setQcForm] = useState({
     module: "Laboratory",
     instrumentName: "Sysmex XN-330",
@@ -1831,6 +1829,12 @@ export default function App() {
     recordedBy: userDisplayByRole.FINANCE,
     notes: "",
   });
+  const [expenseEntryType, setExpenseEntryType] = useState<"EXPENSE" | "REFUND">(
+    "EXPENSE",
+  );
+  const [refundPatientQuery, setRefundPatientQuery] = useState("");
+  const [refundPatientId, setRefundPatientId] = useState("");
+  const [patientRecordsQuery, setPatientRecordsQuery] = useState("");
   const [expenseFilters, setExpenseFilters] = useState<ExpenseFiltersState>({
     category: "ALL",
     startDate: "",
@@ -2535,6 +2539,69 @@ export default function App() {
       lastActivityAt: selectedPatientTimeline[0]?.occurredAt ?? selectedPatient.createdAt,
     };
   }, [selectedPatient, selectedPatientTimeline, workflow.invoices, workflow.orders, workflow.reports]);
+  const patientTestsById = useMemo(() => {
+    const testsByPatient = new Map<string, string[]>();
+
+    workflow.orders.forEach((order) => {
+      const existing = testsByPatient.get(order.patientId) ?? [];
+      const merged = [...existing];
+
+      order.items.forEach((item) => {
+        if (!merged.includes(item)) {
+          merged.push(item);
+        }
+      });
+
+      testsByPatient.set(order.patientId, merged);
+    });
+
+    return testsByPatient;
+  }, [workflow.orders]);
+  const filteredPatientRecords = useMemo(() => {
+    const query = patientRecordsQuery.trim().toLowerCase();
+    const rankedPatients = [...patients].sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    );
+
+    if (!query) {
+      return rankedPatients;
+    }
+
+    return rankedPatients.filter((patient) => {
+      const tests = patientTestsById.get(patient.id) ?? [];
+      return [
+        patient.traceCode,
+        patient.firstName,
+        patient.lastName,
+        patient.phone,
+        patient.referralDoctorName ?? "",
+        ...tests,
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [patientRecordsQuery, patientTestsById, patients]);
+  const refundPatientMatches = useMemo(() => {
+    const query = refundPatientQuery.trim().toLowerCase();
+    const sortedPatients = [...patients].sort((left, right) =>
+      `${left.firstName} ${left.lastName}`.localeCompare(
+        `${right.firstName} ${right.lastName}`,
+      ),
+    );
+
+    if (!query) {
+      return sortedPatients;
+    }
+
+    return sortedPatients.filter((patient) =>
+      [patient.traceCode, patient.firstName, patient.lastName, patient.phone].some(
+        (value) => value.toLowerCase().includes(query),
+      ),
+    );
+  }, [patients, refundPatientQuery]);
+  const selectedRefundPatient = useMemo(
+    () => patients.find((patient) => patient.id === refundPatientId) ?? null,
+    [patients, refundPatientId],
+  );
   const patientTracePreview = useMemo(() => {
     const manualTraceCode = patientForm.traceCode.trim().toUpperCase();
     return (
@@ -2663,6 +2730,8 @@ export default function App() {
       )
       .slice(0, 8);
   }, [globalQuery, patients]);
+  const showPatientIntakeTools =
+    currentRole !== "DOCTOR" && currentRole !== "SONOGRAPHER";
   const orderMatches = useMemo(() => {
     const query = globalQuery.trim().toLowerCase();
     if (!query) {
@@ -2717,6 +2786,53 @@ export default function App() {
       ),
     [workflow.orders, workflow.reports],
   );
+  const filteredReportPatients = useMemo(() => {
+    const normalizedQuery = reportPatientQuery.trim().toLowerCase();
+    const sortedPatients = [...patients].sort((left, right) => {
+      const leftLabel = `${left.firstName} ${left.lastName}`.trim();
+      const rightLabel = `${right.firstName} ${right.lastName}`.trim();
+
+      return (
+        leftLabel.localeCompare(rightLabel) ||
+        left.traceCode.localeCompare(right.traceCode)
+      );
+    });
+
+    if (!normalizedQuery) {
+      return sortedPatients;
+    }
+
+    return sortedPatients.filter((patient) => {
+      const fullName = `${patient.firstName} ${patient.lastName}`
+        .trim()
+        .toLowerCase();
+
+      return (
+        patient.traceCode.toLowerCase().includes(normalizedQuery) ||
+        fullName.includes(normalizedQuery)
+      );
+    });
+  }, [patients, reportPatientQuery]);
+  const reportOrdersForSelectedPatient = useMemo(
+    () =>
+      reportableOrders
+        .filter(
+          (order) => !reportForm.patientId || order.patientId === reportForm.patientId,
+        )
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
+        ),
+    [reportForm.patientId, reportableOrders],
+  );
+  const selectedReportOrder = useMemo(
+    () =>
+      reportOrdersForSelectedPatient.find((order) => order.id === reportForm.orderId) ??
+      reportableOrders.find((order) => order.id === reportForm.orderId) ??
+      null,
+    [reportForm.orderId, reportOrdersForSelectedPatient, reportableOrders],
+  );
   const selectedReportImagingStudy = useMemo(
     () =>
       workflow.imaging.find((study) => study.orderId === reportForm.orderId) ??
@@ -2737,6 +2853,99 @@ export default function App() {
         : [],
     [reportForm.templateKind],
   );
+  useEffect(() => {
+    if (!reportForm.patientId) {
+      if (!reportForm.orderId) {
+        return;
+      }
+
+      setReportForm((current) => ({
+        ...current,
+        orderId: "",
+      }));
+      return;
+    }
+
+    if (reportOrdersForSelectedPatient.length === 0) {
+      if (!reportForm.orderId) {
+        return;
+      }
+
+      setReportForm((current) =>
+        current.patientId === reportForm.patientId
+          ? {
+              ...current,
+              orderId: "",
+            }
+          : current,
+      );
+      return;
+    }
+
+    const orderStillMatchesPatient = reportOrdersForSelectedPatient.some(
+      (order) => order.id === reportForm.orderId,
+    );
+    if (!orderStillMatchesPatient) {
+      setReportForm((current) =>
+        current.patientId === reportForm.patientId
+          ? {
+              ...current,
+              orderId: reportOrdersForSelectedPatient[0]?.id ?? "",
+            }
+          : current,
+      );
+    }
+  }, [reportForm.orderId, reportForm.patientId, reportOrdersForSelectedPatient]);
+
+  useEffect(() => {
+    if (!selectedReportOrder) {
+      return;
+    }
+
+    const serviceName =
+      selectedReportImagingStudy?.serviceName ??
+      selectedReportOrder.items[0] ??
+      "Scan";
+    const templateKind =
+      selectedReportImagingStudy || orderIncludesSonography(selectedReportOrder.items)
+        ? resolveUltrasoundTemplate(serviceName)
+        : "LAB_STANDARD";
+    const preset =
+      templateKind === "LAB_STANDARD"
+        ? null
+        : ultrasoundTemplatePresets[templateKind];
+
+    setReportForm((current) => {
+      if (current.orderId !== selectedReportOrder.id) {
+        return current;
+      }
+
+      return {
+        ...current,
+        patientId: selectedReportOrder.patientId,
+        title: `${serviceName} Report`,
+        templateKind,
+        findings:
+          current.orderId === selectedReportOrder.id && current.findings
+            ? current.findings
+            : preset?.findingsStarter ?? "",
+        impression:
+          current.orderId === selectedReportOrder.id && current.impression
+            ? current.impression
+            : preset?.impressionStarter ?? "",
+      };
+    });
+
+    if (preset) {
+      setUltrasoundReportAssist((current) => ({
+        ...defaultUltrasoundReportAssistState,
+        sonographerName:
+          current.sonographerName || selectedReportImagingStudy?.sonographerName || "",
+        technique: current.technique || preset.techniquePlaceholder,
+      }));
+    }
+  }, [selectedReportImagingStudy, selectedReportOrder]);
+
   useEffect(() => {
     if (!isUltrasoundTemplate(reportForm.templateKind) || !selectedReportImagingStudy) {
       return;
@@ -2850,17 +3059,6 @@ export default function App() {
     bootstrap,
     adminOverview,
     workflow,
-  );
-  const portalSnapshotCards = useMemo(
-    () =>
-      getPortalSnapshotCards(
-        currentRole,
-        bootstrap,
-        adminOverview,
-        workflow,
-        syncStatus,
-      ),
-    [adminOverview, bootstrap, currentRole, syncStatus, workflow],
   );
   const loginPortalProfiles = primaryPortalRoles.flatMap((role) => {
     const profile = portalProfiles[role];
@@ -3456,6 +3654,9 @@ export default function App() {
     const preset = ultrasoundTemplatePresets[templateKind];
 
     setSelectedPatientId(selectedImagingStudy.patientId);
+    setReportPatientQuery(
+      `${selectedImagingStudy.patientTraceCode} · ${selectedImagingStudy.patientName}`,
+    );
     setReportForm((current) => ({
       ...current,
       patientId: selectedImagingStudy.patientId,
@@ -3760,14 +3961,40 @@ export default function App() {
   async function handleExpenseSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const payload: ExpenseInput = {
-      category: expenseForm.category,
-      description: expenseForm.description,
-      amountCents: Math.round(Number(expenseForm.amount || "0") * 100),
-      incurredAt: new Date(expenseForm.incurredAt).toISOString(),
-      recordedBy: expenseForm.recordedBy,
-      notes: expenseForm.notes,
-    };
+    const amountCents = Math.round(Number(expenseForm.amount || "0") * 100);
+    const refundTests = selectedRefundPatient
+      ? patientTestsById.get(selectedRefundPatient.id) ?? []
+      : [];
+
+    if (expenseEntryType === "REFUND" && !selectedRefundPatient) {
+      setStatusText("Choose the patient receiving the returned funds first");
+      return;
+    }
+
+    const payload: ExpenseInput =
+      expenseEntryType === "REFUND" && selectedRefundPatient
+        ? {
+            category: "Patient Refund",
+            description: `Refund for ${selectedRefundPatient.traceCode} · ${selectedRefundPatient.firstName} ${selectedRefundPatient.lastName}`,
+            amountCents,
+            incurredAt: new Date(expenseForm.incurredAt).toISOString(),
+            recordedBy: expenseForm.recordedBy,
+            notes: [
+              expenseForm.description.trim(),
+              refundTests.length > 0 ? `Tests: ${refundTests.join(", ")}` : "",
+              expenseForm.notes.trim(),
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          }
+        : {
+            category: expenseForm.category,
+            description: expenseForm.description,
+            amountCents,
+            incurredAt: new Date(expenseForm.incurredAt).toISOString(),
+            recordedBy: expenseForm.recordedBy,
+            notes: expenseForm.notes,
+          };
 
     if (!Number.isFinite(payload.amountCents) || payload.amountCents <= 0) {
       setStatusText("Enter a valid expense amount before saving");
@@ -3781,15 +4008,28 @@ export default function App() {
       });
       setExpenseForm((current) => ({
         ...current,
+        category: expenseEntryType === "REFUND" ? "Patient Refund" : current.category,
         description: "",
         amount: "",
         notes: "",
       }));
+      if (expenseEntryType === "REFUND") {
+        setRefundPatientId("");
+        setRefundPatientQuery("");
+      }
       await loadOperationalData();
       await loadExpenseWorkspace();
-      setStatusText("Expense recorded and expenses refreshed");
+      setStatusText(
+        expenseEntryType === "REFUND"
+          ? "Patient refund recorded and analytics refreshed"
+          : "Expense recorded and expenses refreshed",
+      );
     } catch {
-      setStatusText("Expense could not be recorded right now");
+      setStatusText(
+        expenseEntryType === "REFUND"
+          ? "Patient refund could not be recorded right now"
+          : "Expense could not be recorded right now",
+      );
     }
   }
 
@@ -4463,23 +4703,6 @@ export default function App() {
               Outstanding balances: {formatMoney(adminOverview.finance.outstandingCents)}
             </p>
           </article>
-
-          <article className="surface-card dashboard-performance-card">
-            <div className="section-head compact-head">
-              <div>
-                <h3>Performance overview</h3>
-                <p>Operational and financial snapshot for the active portal.</p>
-              </div>
-            </div>
-            <div className="dashboard-performance-metrics">
-              {portalSnapshotCards.map((card) => (
-                <div key={card.label} className="dashboard-performance-metric">
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                </div>
-              ))}
-            </div>
-          </article>
         </section>
 
         <section className="dashboard-lower-grid">
@@ -4534,35 +4757,6 @@ export default function App() {
           </article>
         </section>
       </section>
-
-      <PortalDashboardDeck
-        label={portalProfile?.label ?? "Workspace menu"}
-        spotlight={
-          portalProfile?.spotlight ??
-          "Move through the modules that matter for the current signed-in role."
-        }
-        highlights={
-          portalProfile?.highlights ??
-          dashboardPortalItems.slice(0, 4).map((item) => item.label)
-        }
-        items={dashboardPortalItems.map((item) => ({
-          key: item.key,
-          label: item.label,
-          short: item.short,
-          description: navDescriptions[item.key],
-        }))}
-        activeKey={activeNav}
-        onSelect={(key) => setActiveNav(key as NavKey)}
-        steps={
-          portalProfile?.steps ?? [
-            "Review the dashboard for the live queue and critical events.",
-            "Open the next operational module that needs intervention.",
-            "Return here to re-balance the day when priorities shift.",
-          ]
-        }
-        snapshotCards={portalSnapshotCards}
-      />
-
       {recentCritical.length > 0 ? (
         <section className="alert-banner">
           <strong>Critical values need attention.</strong>
@@ -4620,91 +4814,174 @@ export default function App() {
             ))}
           </div>
         </article>
-
-        <article className="surface-card">
-          <div className="section-head">
-            <div>
-              <h2>Quality trend</h2>
-              <p>Levey-Jennings review with quick visual drift detection.</p>
-            </div>
-          </div>
-          <LeveyJenningsChart points={adminOverview.qc.leveyJennings} />
-        </article>
-
-        <article className="surface-card">
-          <div className="section-head">
-            <div>
-              <h2>Recent Trace Codes</h2>
-              <p>Open a patient and move directly into ordering.</p>
-            </div>
-          </div>
-          <div className="list-stack">
-            {patients.slice(0, 5).map((patient) => (
-              <button
-                key={patient.id}
-                type="button"
-                className="list-row button-row"
-                onClick={() => openPatient(patient)}
-              >
-                <div>
-                  <strong>{patient.traceCode}</strong>
-                  <span>
-                    {patient.firstName} {patient.lastName}
-                  </span>
-                  {patient.referralDoctorName ? (
-                    <small>
-                      {patient.referralDoctorName} ·{" "}
-                      {patient.referralDoctorCommissionPercent}%
-                    </small>
-                  ) : null}
-                </div>
-                <small>{patient.phone}</small>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className="surface-card">
-          <div className="section-head">
-            <div>
-              <h2>Pending scans</h2>
-              <p>Live ultrasound worklist with current patient status.</p>
-            </div>
-          </div>
-          <div className="list-stack">
-            {sonographyStudies.slice(0, 6).map((study) => (
-              <div key={study.id} className="list-row">
-                <div>
-                  <strong>{study.patientTraceCode}</strong>
-                  <span>{study.serviceName}</span>
-                  <small>
-                    {study.appointmentStatus}
-                    {study.sonographerName
-                      ? ` · ${study.sonographerName}`
-                      : " · Sonographer pending"}
-                  </small>
-                </div>
-                <small
-                  className={`status-pill tone-${getOrderTone(
-                    study.appointmentStatus === "REPORTED" ||
-                      study.appointmentStatus === "COMPLETED"
-                      ? "READY_FOR_REVIEW"
-                      : study.appointmentStatus === "SCANNING"
-                        ? "IN_PROGRESS"
-                        : "REGISTERED",
-                  )}`}
-                >
-                  {study.appointmentStatus}
-                </small>
-              </div>
-            ))}
-          </div>
-        </article>
       </section>
     </>
   );
 
-  const patientSection = (
+  const patientRecordsPanel = (
+    <article className="surface-card">
+      <div className="section-head">
+        <div>
+          <h2>Patient records</h2>
+          <p>All patient records in the lab, including their ordered tests and scan history.</p>
+        </div>
+      </div>
+      <div className="form-grid">
+        <label className="full-width">
+          <span>Search patient records</span>
+          <input
+            value={patientRecordsQuery}
+            onChange={(event) => setPatientRecordsQuery(event.target.value)}
+            placeholder="Search by trace code, patient name, phone, or ordered test"
+          />
+        </label>
+      </div>
+      <div className="list-stack compact-scroll bordered-top">
+        {filteredPatientRecords.length === 0 ? (
+          <div className="list-row">
+            <span>No patient records match that search.</span>
+            <small>Try a trace code, patient name, or test name</small>
+          </div>
+        ) : null}
+        {filteredPatientRecords.map((patient) => {
+          const patientTests = patientTestsById.get(patient.id) ?? [];
+
+          return (
+            <button
+              key={patient.id}
+              type="button"
+              className="list-row button-row"
+              onClick={() => openPatient(patient)}
+            >
+              <div>
+                <strong>{patient.traceCode}</strong>
+                <span>
+                  {patient.firstName} {patient.lastName}
+                </span>
+                <small>
+                  {patientTests.length > 0
+                    ? patientTests.join(", ")
+                    : "No tests or scans ordered yet"}
+                </small>
+              </div>
+              <small>Open record</small>
+            </button>
+          );
+        })}
+      </div>
+      <div className="bordered-top patient-history-panel">
+        <div className="section-head">
+          <div>
+            <h3>Selected patient record</h3>
+            <p>Review the patient's tests, billing summary, and visit timeline.</p>
+          </div>
+        </div>
+        {selectedPatient && selectedPatientHistorySummary ? (
+          <div className="list-stack">
+            <div className="history-summary-grid">
+              <div className="summary-panel">
+                <span>Tests and scans</span>
+                <strong>{(patientTestsById.get(selectedPatient.id) ?? []).length}</strong>
+                <p className="muted-copy">
+                  {(patientTestsById.get(selectedPatient.id) ?? []).join(", ") ||
+                    "No tests or scans ordered yet."}
+                </p>
+              </div>
+              <div className="summary-panel">
+                <span>Orders</span>
+                <strong>{selectedPatientHistorySummary.orderCount}</strong>
+                <p className="muted-copy">Requests linked to this patient record.</p>
+              </div>
+              <div className="summary-panel">
+                <span>Reports</span>
+                <strong>{selectedPatientHistorySummary.reportCount}</strong>
+                <p className="muted-copy">Drafted or approved result documents.</p>
+              </div>
+              <div className="summary-panel">
+                <span>Outstanding</span>
+                <strong>{formatMoney(selectedPatientHistorySummary.outstandingBalanceCents)}</strong>
+                <p className="muted-copy">Current unpaid balance across patient invoices.</p>
+              </div>
+            </div>
+            <div className="timeline-list compact-scroll">
+              {selectedPatientTimeline.map((entry) => (
+                <article key={entry.id} className={`timeline-item tone-${entry.tone}`}>
+                  <div className="timeline-marker" aria-hidden="true" />
+                  <div className="timeline-content">
+                    <div className="timeline-head">
+                      <strong>{entry.label}</strong>
+                      <small>{formatDate(entry.occurredAt)}</small>
+                    </div>
+                    <span>{entry.detail}</span>
+                    <small>{entry.meta}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="section-note">
+            Search or open a patient first to review the patient record.
+          </p>
+        )}
+      </div>
+      {showPatientIntakeTools ? (
+        <div className="bordered-top">
+          <div className="section-head">
+            <div>
+              <h3>Selected patient referral</h3>
+              <p>Correct or clear the linked referral doctor after intake.</p>
+            </div>
+          </div>
+          {selectedPatient ? (
+            <div className="form-grid">
+              <div className="summary-panel full-width">
+                <span>Active patient</span>
+                <strong>
+                  {selectedPatient.traceCode} · {selectedPatient.firstName} {selectedPatient.lastName}
+                </strong>
+                <p className="muted-copy">
+                  {selectedPatient.referralDoctorName
+                    ? `Current referral: ${selectedPatient.referralDoctorName} · ${selectedPatient.referralDoctorCommissionPercent}%`
+                    : "No referral doctor linked yet."}
+                </p>
+              </div>
+              <label className="full-width">
+                <span>Referral doctor</span>
+                <select
+                  value={selectedPatientReferralDoctorId}
+                  onChange={(event) =>
+                    setSelectedPatientReferralDoctorId(event.target.value)
+                  }
+                >
+                  <option value="">No referral doctor</option>
+                  {availableReferralDoctors.map((doctor) => (
+                    <option key={`selected-${doctor.id}`} value={doctor.id}>
+                      {doctor.fullName} · {doctor.commissionPercent}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="full-width action-row">
+                <button
+                  type="button"
+                  onClick={handleSelectedPatientReferralUpdate}
+                >
+                  Update referral doctor
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="section-note">
+              Search or open a patient first to update the linked referral doctor.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </article>
+  );
+
+  const patientSection = showPatientIntakeTools ? (
     <section className="content-grid two-wide">
       <article className="surface-card form-card">
         <div className="section-head">
@@ -5067,140 +5344,11 @@ export default function App() {
           </div>
         </form>
       </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Patient search</h2>
-            <p>Search by Trace Code, name, or phone.</p>
-          </div>
-        </div>
-        <div className="list-stack">
-          {searchMatches.map((patient) => (
-            <button
-              key={patient.id}
-              type="button"
-              className="list-row button-row"
-              onClick={() => openPatient(patient)}
-            >
-              <div>
-                <strong>{patient.traceCode}</strong>
-                <span>
-                  {patient.firstName} {patient.lastName}
-                </span>
-                {patient.referralDoctorName ? (
-                  <small>
-                    {patient.referralDoctorName} ·{" "}
-                    {patient.referralDoctorCommissionPercent}%
-                  </small>
-                ) : null}
-              </div>
-              <small>Start order</small>
-            </button>
-          ))}
-        </div>
-        <div className="bordered-top">
-          <div className="section-head">
-            <div>
-              <h3>Selected patient referral</h3>
-              <p>Correct or clear the linked referral doctor after intake.</p>
-            </div>
-          </div>
-          {selectedPatient ? (
-            <div className="form-grid">
-              <div className="summary-panel full-width">
-                <span>Active patient</span>
-                <strong>
-                  {selectedPatient.traceCode} · {selectedPatient.firstName}{" "}
-                  {selectedPatient.lastName}
-                </strong>
-                <p className="muted-copy">
-                  {selectedPatient.referralDoctorName
-                    ? `Current referral: ${selectedPatient.referralDoctorName} · ${selectedPatient.referralDoctorCommissionPercent}%`
-                    : "No referral doctor linked yet."}
-                </p>
-              </div>
-              <label className="full-width">
-                <span>Referral doctor</span>
-                <select
-                  value={selectedPatientReferralDoctorId}
-                  onChange={(event) =>
-                    setSelectedPatientReferralDoctorId(event.target.value)
-                  }
-                >
-                  <option value="">No referral doctor</option>
-                  {availableReferralDoctors.map((doctor) => (
-                    <option key={`selected-${doctor.id}`} value={doctor.id}>
-                      {doctor.fullName} · {doctor.commissionPercent}%
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="full-width action-row">
-                <button
-                  type="button"
-                  onClick={handleSelectedPatientReferralUpdate}
-                >
-                  Update referral doctor
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="section-note">
-              Search or open a patient first to update the linked referral
-              doctor.
-            </p>
-          )}
-        </div>
-        <div className="bordered-top patient-history-panel">
-          <div className="section-head">
-            <div>
-              <h3>Visit history timeline</h3>
-              <p>Trace the selected patient's registration, orders, billing, and reports.</p>
-            </div>
-          </div>
-          {selectedPatient && selectedPatientHistorySummary ? (
-            <div className="list-stack">
-              <div className="history-summary-grid">
-                <div className="summary-panel">
-                  <span>Orders</span>
-                  <strong>{selectedPatientHistorySummary.orderCount}</strong>
-                  <p className="muted-copy">Requests linked to this patient record.</p>
-                </div>
-                <div className="summary-panel">
-                  <span>Reports</span>
-                  <strong>{selectedPatientHistorySummary.reportCount}</strong>
-                  <p className="muted-copy">Drafted or approved result documents.</p>
-                </div>
-                <div className="summary-panel">
-                  <span>Outstanding</span>
-                  <strong>{formatMoney(selectedPatientHistorySummary.outstandingBalanceCents)}</strong>
-                  <p className="muted-copy">Current unpaid balance across patient invoices.</p>
-                </div>
-              </div>
-              <div className="timeline-list compact-scroll">
-                {selectedPatientTimeline.map((entry) => (
-                  <article key={entry.id} className={`timeline-item tone-${entry.tone}`}>
-                    <div className="timeline-marker" aria-hidden="true" />
-                    <div className="timeline-content">
-                      <div className="timeline-head">
-                        <strong>{entry.label}</strong>
-                        <small>{formatDate(entry.occurredAt)}</small>
-                      </div>
-                      <span>{entry.detail}</span>
-                      <small>{entry.meta}</small>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="section-note">
-              Search or open a patient first to review the visit timeline.
-            </p>
-          )}
-        </div>
-      </article>
+      {patientRecordsPanel}
+    </section>
+  ) : (
+    <section className="content-grid">
+      {patientRecordsPanel}
     </section>
   );
 
@@ -5804,20 +5952,38 @@ export default function App() {
             </div>
           </div>
           <form className="form-grid" onSubmit={handleReportSubmit}>
+          <label className="full-width">
+            <span>Search patient or trace code</span>
+            <input
+              value={reportPatientQuery}
+              onChange={(event) => setReportPatientQuery(event.target.value)}
+              placeholder="Search by patient name or trace code"
+              disabled={!canWriteReports}
+            />
+          </label>
           <label>
             <span>Patient</span>
             <select
               value={reportForm.patientId}
-              onChange={(event) =>
+              onChange={(event) => {
+                const nextPatient = patients.find(
+                  (patient) => patient.id === event.target.value,
+                );
+
                 setReportForm((current) => ({
                   ...current,
                   patientId: event.target.value,
-                }))
-              }
+                }));
+                setReportPatientQuery(
+                  nextPatient
+                    ? `${nextPatient.traceCode} · ${nextPatient.firstName} ${nextPatient.lastName}`
+                    : "",
+                );
+              }}
               disabled={!canWriteReports}
             >
               <option value="">Select patient</option>
-              {patients.map((patient) => (
+              {filteredReportPatients.map((patient) => (
                 <option key={patient.id} value={patient.id}>
                   {patient.traceCode} · {patient.firstName} {patient.lastName}
                 </option>
@@ -5837,7 +6003,7 @@ export default function App() {
               disabled={!canWriteReports}
             >
               <option value="">Select order</option>
-              {reportableOrders.map((order) => (
+              {reportOrdersForSelectedPatient.map((order) => (
                 <option key={order.id} value={order.id}>
                   {order.patientTraceCode} · {order.accessionNumber} · {order.items.join(", ")}
                 </option>
@@ -7212,6 +7378,20 @@ export default function App() {
         </div>
         <form className="form-grid" onSubmit={handleExpenseSubmit}>
           <label>
+            <span>Entry type</span>
+            <select
+              value={expenseEntryType}
+              onChange={(event) =>
+                setExpenseEntryType(
+                  event.target.value as "EXPENSE" | "REFUND",
+                )
+              }
+            >
+              <option value="EXPENSE">Expense</option>
+              <option value="REFUND">Patient refund</option>
+            </select>
+          </label>
+          <label>
             <span>Category</span>
             <input
               value={expenseForm.category}
@@ -7222,11 +7402,52 @@ export default function App() {
                 }))
               }
               placeholder="Utilities"
+              disabled={expenseEntryType === "REFUND"}
               required
             />
           </label>
+          {expenseEntryType === "REFUND" ? (
+            <>
+              <label className="full-width">
+                <span>Search patient or trace code</span>
+                <input
+                  value={refundPatientQuery}
+                  onChange={(event) => setRefundPatientQuery(event.target.value)}
+                  placeholder="Search by patient name or trace code"
+                  required
+                />
+              </label>
+              <label className="full-width">
+                <span>Patient receiving funds</span>
+                <select
+                  value={refundPatientId}
+                  onChange={(event) => setRefundPatientId(event.target.value)}
+                  required
+                >
+                  <option value="">Select patient</option>
+                  {refundPatientMatches.map((patient) => (
+                    <option key={`refund-${patient.id}`} value={patient.id}>
+                      {patient.traceCode} · {patient.firstName} {patient.lastName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedRefundPatient ? (
+                <div className="summary-panel full-width">
+                  <span>Patient refund context</span>
+                  <strong>
+                    {selectedRefundPatient.traceCode} · {selectedRefundPatient.firstName} {selectedRefundPatient.lastName}
+                  </strong>
+                  <p className="muted-copy">
+                    {(patientTestsById.get(selectedRefundPatient.id) ?? []).join(", ") ||
+                      "No tests or scans ordered yet."}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : null}
           <label>
-            <span>Description</span>
+            <span>{expenseEntryType === "REFUND" ? "Refund reason" : "Description"}</span>
             <input
               value={expenseForm.description}
               onChange={(event) =>
@@ -7235,7 +7456,11 @@ export default function App() {
                   description: event.target.value,
                 }))
               }
-              placeholder="Generator fuel top-up"
+              placeholder={
+                expenseEntryType === "REFUND"
+                  ? "Reason for returning funds"
+                  : "Generator fuel top-up"
+              }
               required
             />
           </label>
@@ -8412,234 +8637,6 @@ export default function App() {
           </div>
           {sectionMap[activeNav]}
         </main>
-
-        <aside className="context-rail">
-          <PortalBriefingRail
-            label={portalProfile?.label ?? "Portal briefing"}
-            spotlight={portalProfile?.spotlight ?? roleCopy[currentRole].subtitle}
-            highlights={portalProfile?.highlights ?? []}
-            snapshotCards={portalSnapshotCards}
-          />
-
-          <article className="surface-card rail-card">
-            <div className="section-head">
-              <div>
-                <h3>Active patient</h3>
-                <p>Quick summary when a Trace Code is active.</p>
-              </div>
-            </div>
-            {selectedPatient ? (
-              <div className="patient-summary">
-                <div className="trace-badge">{selectedPatient.traceCode}</div>
-                <strong>
-                  {selectedPatient.firstName} {selectedPatient.lastName}
-                </strong>
-                <span>{selectedPatient.phone}</span>
-                {selectedPatient.referralDoctorName ? (
-                  <span>
-                    {selectedPatient.referralDoctorName} ·{" "}
-                    {selectedPatient.referralDoctorCommissionPercent}% referral
-                  </span>
-                ) : null}
-                <span>
-                  {selectedPatient.traceCode} ready for ordering and payment
-                </span>
-                <button
-                  type="button"
-                  className="primary-action small"
-                  onClick={() => setActiveNav("orders")}
-                >
-                  Start order
-                </button>
-                {selectedPatientHistorySummary ? (
-                  <div className="patient-activity-stack">
-                    <div className="mini-status-grid patient-activity-metrics">
-                      <div className="mini-status">
-                        <span>Orders</span>
-                        <strong>{selectedPatientHistorySummary.orderCount}</strong>
-                      </div>
-                      <div className="mini-status">
-                        <span>Reports</span>
-                        <strong>{selectedPatientHistorySummary.reportCount}</strong>
-                      </div>
-                    </div>
-                    <div className="mini-status">
-                      <span>Last activity</span>
-                      <strong>{formatDate(selectedPatientHistorySummary.lastActivityAt)}</strong>
-                    </div>
-                    <div className="timeline-list rail-timeline-list">
-                      {selectedPatientTimeline.slice(0, 3).map((entry) => (
-                        <article key={`rail-${entry.id}`} className={`timeline-item compact tone-${entry.tone}`}>
-                          <div className="timeline-marker" aria-hidden="true" />
-                          <div className="timeline-content">
-                            <div className="timeline-head">
-                              <strong>{entry.label}</strong>
-                              <small>{formatDate(entry.occurredAt)}</small>
-                            </div>
-                            <small>{entry.meta}</small>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <p className="muted-copy">
-                Search or select a patient to pin their summary here.
-              </p>
-            )}
-          </article>
-
-          <article className="surface-card rail-card">
-            <div className="section-head">
-              <div>
-                <h3>Critical findings</h3>
-                <p>High-priority notifications and QC breaches.</p>
-              </div>
-            </div>
-            <div className="list-stack tight">
-              {recentCritical.length === 0 ? (
-                <div className="list-row">
-                  <span>No critical alerts</span>
-                  <small>Stable</small>
-                </div>
-              ) : null}
-              {recentCritical.map((flag) => (
-                <div key={flag.title} className="list-row">
-                  <div>
-                    <strong>{flag.title}</strong>
-                    <span>{flag.note}</span>
-                  </div>
-                  <small className="tag tag-critical">{flag.severity}</small>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="surface-card rail-card">
-            <div className="section-head">
-              <div>
-                <h3>Connection status</h3>
-                <p>Live server and integration visibility for this session.</p>
-              </div>
-            </div>
-            <div className="list-stack tight">
-              <div className="list-row">
-                <div>
-                  <strong>Application server</strong>
-                  <span>{syncTone.label}</span>
-                </div>
-                <small>{syncTone.tone === "warning" ? "Check" : "Live"}</small>
-              </div>
-              <div className="list-row">
-                <div>
-                  <strong>Integration mode</strong>
-                  <span>{syncStatus.mode}</span>
-                </div>
-                <small>
-                  {syncStatus.integrationConfigured
-                    ? "Connected"
-                    : "Standalone"}
-                </small>
-              </div>
-              <div className="list-row">
-                <div>
-                  <strong>Pending outbound events</strong>
-                  <span>{syncStatus.pending} waiting</span>
-                </div>
-                <small>
-                  {syncStatus.failed > 0
-                    ? `${syncStatus.failed} failed`
-                    : "Healthy"}
-                </small>
-              </div>
-              <div className="list-row">
-                <div>
-                  <strong>Background worker</strong>
-                  <span>
-                    {syncStatus.worker.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-                <small>
-                  {syncStatus.worker.targetsConfigured
-                    ? `Every ${Math.round(syncStatus.worker.intervalMs / 1000)}s`
-                    : "No targets configured"}
-                </small>
-              </div>
-              <div className="list-row">
-                <div>
-                  <strong>Last dispatch attempt</strong>
-                  <span>
-                    {syncStatus.lastAttemptAt
-                      ? new Date(syncStatus.lastAttemptAt).toLocaleString()
-                      : "No dispatch run yet"}
-                  </span>
-                </div>
-                <small>{syncStatus.synced} delivered</small>
-              </div>
-            </div>
-          </article>
-
-          <article className="surface-card rail-card">
-            <div className="section-head">
-              <div>
-                <h3>Dispatch activity</h3>
-                <p>Latest worker cycle throughput and deferred work.</p>
-              </div>
-            </div>
-            {syncStatus.lastRun ? (
-              <div className="list-stack tight">
-                <div className="list-row">
-                  <div>
-                    <strong>Last run</strong>
-                    <span>
-                      {new Date(
-                        syncStatus.lastRun.triggeredAt,
-                      ).toLocaleString()}
-                    </span>
-                  </div>
-                  <small>{syncStatus.lastRun.triggeredBy}</small>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Outbound events</strong>
-                    <span>
-                      {syncStatus.lastRun.syncedEvents} synced ·{" "}
-                      {syncStatus.lastRun.failedEvents} failed
-                    </span>
-                  </div>
-                  <small>{syncStatus.lastRun.processedEvents} processed</small>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Notifications</strong>
-                    <span>
-                      {syncStatus.lastRun.sentNotifications} sent ·{" "}
-                      {syncStatus.lastRun.deferredNotifications} deferred
-                    </span>
-                  </div>
-                  <small>{syncStatus.lastRun.conflictedEvents} conflicts</small>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Deferred events</strong>
-                    <span>
-                      {syncStatus.lastRun.deferredEvents} retained for retry
-                    </span>
-                  </div>
-                  <small>
-                    {canManageIntegrations ? "Run from dashboard" : "Read only"}
-                  </small>
-                </div>
-              </div>
-            ) : (
-              <p className="muted-copy">
-                No completed dispatch cycle has been recorded yet.
-              </p>
-            )}
-          </article>
-        </aside>
       </div>
     </div>
   );
