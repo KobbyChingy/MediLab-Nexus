@@ -610,8 +610,20 @@ export const roleCapabilities: Record<
     "notify:queue",
   ],
   PHLEBOTOMIST: ["order:write"],
-  SONOGRAPHER: ["order:write", "report:view", "report:write", "notify:queue"],
-  DOCTOR: ["order:write", "report:view", "report:write", "notify:queue"],
+  SONOGRAPHER: [
+    "patient:write",
+    "order:write",
+    "report:view",
+    "report:write",
+    "notify:queue",
+  ],
+  DOCTOR: [
+    "patient:write",
+    "order:write",
+    "report:view",
+    "report:write",
+    "notify:queue",
+  ],
   LAB_TECH: ["order:write", "report:write", "qc:manage", "inventory:manage"],
   RADIOLOGIST: ["order:write", "report:view", "report:write", "notify:queue"],
   MANAGER: [
