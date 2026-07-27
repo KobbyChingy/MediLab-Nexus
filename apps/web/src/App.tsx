@@ -81,10 +81,19 @@ type PatientRecord = {
   id: string;
   traceCode: string;
   firstName: string;
+  middleName?: string;
   lastName: string;
+  dateOfBirth?: string;
+  gender?: string;
   phone: string;
+  nhisId?: string;
+  allergies?: string;
+  medicalHistory?: string;
+  consentAccepted?: boolean;
+  photoPath?: string;
   createdAt: string;
   referralDoctorId?: string | null;
+  referralName?: string;
   referralDoctorName?: string | null;
   referralDoctorCommissionPercent?: number | null;
 };
@@ -258,6 +267,29 @@ type PrimaryPortalRole =
   | "DOCTOR"
   | "RECEPTION"
   | "SONOGRAPHER";
+
+function buildPatientDraft(
+  patient?: PatientRecord | null,
+): PatientIntakeFormState {
+  return {
+    firstName: patient?.firstName ?? "",
+    lastName: patient?.lastName ?? "",
+    middleName: patient?.middleName ?? "",
+    traceCode: patient?.traceCode ?? "",
+    dateOfBirth: patient?.dateOfBirth ?? "",
+    gender: patient?.gender ?? "Female",
+    phone: patient?.phone ?? "",
+    nhisId: patient?.nhisId ?? "",
+    allergies: patient?.allergies ?? "",
+    medicalHistory: patient?.medicalHistory ?? "",
+    referralDoctorId: patient?.referralDoctorId ?? "",
+    referralName: patient?.referralName ?? "",
+    referralCommissionPercent:
+      patient?.referralDoctorCommissionPercent ?? undefined,
+    consentAccepted: patient?.consentAccepted ?? true,
+    photoPath: patient?.photoPath ?? "",
+  };
+}
 
 const defaultUltrasoundReportAssistState: UltrasoundReportAssistState = {
   sonographerName: "",
@@ -1840,6 +1872,9 @@ export default function App() {
     startDate: "",
     endDate: "",
   });
+  const [isEditingPatientRecord, setIsEditingPatientRecord] = useState(false);
+  const [patientRecordDraft, setPatientRecordDraft] =
+    useState<PatientIntakeFormState>(buildPatientDraft());
   const [bulkServiceText, setBulkServiceText] = useState("");
   const [bulkImportFileName, setBulkImportFileName] = useState("");
   const [bulkImportMode, setBulkImportMode] =
@@ -2395,6 +2430,8 @@ export default function App() {
       patients.find((patient) => patient.id === reportForm.patientId) ??
       null;
     setSelectedPatientReferralDoctorId(currentPatient?.referralDoctorId ?? "");
+    setPatientRecordDraft(buildPatientDraft(currentPatient));
+    setIsEditingPatientRecord(false);
   }, [patients, reportForm.patientId, selectedPatientId]);
 
   useEffect(() => {
@@ -2732,6 +2769,7 @@ export default function App() {
   }, [globalQuery, patients]);
   const showPatientIntakeTools =
     currentRole !== "DOCTOR" && currentRole !== "SONOGRAPHER";
+  const canEditPatientRecords = allowedActions.includes("patient:write");
   const orderMatches = useMemo(() => {
     const query = globalQuery.trim().toLowerCase();
     if (!query) {
@@ -3508,6 +3546,42 @@ export default function App() {
     }
   }
 
+  async function handlePatientRecordUpdate(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!selectedPatient) {
+      setStatusText("Choose a patient record before saving changes");
+      return;
+    }
+
+    try {
+      const updated = await requestJson<PatientRecord>(
+        `/patients/${selectedPatient.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(patientRecordDraft satisfies PatientInput),
+        },
+      );
+      setPatients((current) =>
+        current.map((patient) =>
+          patient.id === updated.id ? updated : patient,
+        ),
+      );
+      setPatientRecordDraft(buildPatientDraft(updated));
+      setIsEditingPatientRecord(false);
+      await loadOperationalData();
+      setStatusText(`Updated patient record ${updated.traceCode}`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Patient record could not be updated right now",
+      );
+    }
+  }
+
   async function handleOrderSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload: OrderInput = {
@@ -3750,6 +3824,15 @@ export default function App() {
     return true;
   }
 
+  function escapeHtml(value: string) {
+    return value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
   async function handlePreviewReport(reportId: string) {
     const preview = openPreviewWindow(
       "Popup blocked. Allow popups to preview the report.",
@@ -3820,6 +3903,99 @@ export default function App() {
     } catch {
       preview.close();
       setStatusText("Printable invoice is unavailable right now");
+    }
+  }
+
+  function handlePrintPatientRecord() {
+    if (!selectedPatient) {
+      setStatusText("Choose a patient record before printing");
+      return;
+    }
+
+    const preview = openPreviewWindow(
+      "Popup blocked. Allow popups to print the patient record.",
+      "Preparing patient record",
+    );
+    if (!preview) {
+      return;
+    }
+
+    const patientTests = patientTestsById.get(selectedPatient.id) ?? [];
+    const timelineMarkup = selectedPatientTimeline
+      .map(
+        (entry) => `
+          <article class="timeline-item">
+            <div>
+              <strong>${escapeHtml(entry.label)}</strong>
+              <span>${escapeHtml(entry.detail)}</span>
+              <small>${escapeHtml(entry.meta)}</small>
+            </div>
+            <small>${escapeHtml(formatDate(entry.occurredAt))}</small>
+          </article>`,
+      )
+      .join("");
+
+    const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(selectedPatient.traceCode)} Patient Record</title>
+    <style>
+      :root { color-scheme: light; font-family: Georgia, "Times New Roman", serif; }
+      body { margin: 0; padding: 32px; color: #1f2a24; background: #fff; }
+      .sheet { max-width: 900px; margin: 0 auto; }
+      .header, .section { border: 1px solid #d8dfdb; border-radius: 18px; padding: 20px 24px; margin-bottom: 18px; }
+      .header h1, .section h2 { margin: 0 0 8px; }
+      .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+      .meta-grid strong, .timeline-item strong { display: block; }
+      .timeline-item { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #ecefed; }
+      .timeline-item:first-child { border-top: 0; padding-top: 0; }
+      .print-button { margin-bottom: 18px; padding: 10px 18px; border-radius: 999px; border: 0; background: #16332c; color: #fff; cursor: pointer; }
+      .muted { color: #5c6b63; }
+      @media print { .print-button { display: none; } body { padding: 0; } .header, .section { border-color: #cdd6d1; break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <button class="print-button" type="button" onclick="window.print()">Print patient record</button>
+      <section class="header">
+        <h1>${escapeHtml(bootstrap.facility.name)}</h1>
+        <p class="muted">${escapeHtml(bootstrap.facility.location)} · ${escapeHtml(bootstrap.facility.phone)} · ${escapeHtml(bootstrap.facility.email)}</p>
+        <h2>Patient Record</h2>
+      </section>
+      <section class="section">
+        <h2>${escapeHtml(selectedPatient.firstName)} ${escapeHtml(selectedPatient.lastName)}</h2>
+        <div class="meta-grid">
+          <div><strong>Trace code</strong><span>${escapeHtml(selectedPatient.traceCode)}</span></div>
+          <div><strong>Phone</strong><span>${escapeHtml(selectedPatient.phone || "-")}</span></div>
+          <div><strong>Gender</strong><span>${escapeHtml(selectedPatient.gender || "-")}</span></div>
+          <div><strong>Date of birth</strong><span>${escapeHtml(selectedPatient.dateOfBirth || "-")}</span></div>
+          <div><strong>NHIS ID</strong><span>${escapeHtml(selectedPatient.nhisId || "-")}</span></div>
+          <div><strong>Referral</strong><span>${escapeHtml(selectedPatient.referralDoctorName || selectedPatient.referralName || "-")}</span></div>
+        </div>
+      </section>
+      <section class="section">
+        <h2>Tests and scans</h2>
+        <p>${escapeHtml(patientTests.join(", ") || "No tests or scans ordered yet.")}</p>
+      </section>
+      <section class="section">
+        <h2>Clinical notes</h2>
+        <p><strong>Allergies</strong><br />${escapeHtml(selectedPatient.allergies || "No allergies recorded.")}</p>
+        <p><strong>Medical history</strong><br />${escapeHtml(selectedPatient.medicalHistory || "No medical history recorded.")}</p>
+      </section>
+      <section class="section">
+        <h2>Visit timeline</h2>
+        ${timelineMarkup || '<p class="muted">No timeline activity recorded yet.</p>'}
+      </section>
+    </div>
+  </body>
+</html>`;
+
+    if (writePreviewWindow(preview, html)) {
+      setStatusText(`Opened printable patient record ${selectedPatient.traceCode}`);
+    } else {
+      setStatusText("Preview window was closed before the patient record loaded");
     }
   }
 
@@ -4864,7 +5040,7 @@ export default function App() {
                     : "No tests or scans ordered yet"}
                 </small>
               </div>
-              <small>Open record</small>
+              <small>View record</small>
             </button>
           );
         })}
@@ -4878,6 +5054,190 @@ export default function App() {
         </div>
         {selectedPatient && selectedPatientHistorySummary ? (
           <div className="list-stack">
+            <div className="summary-panel full-width">
+              <span>Patient details</span>
+              <strong>
+                {selectedPatient.firstName}{" "}
+                {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ""}
+                {selectedPatient.lastName}
+              </strong>
+              <p className="muted-copy">
+                {selectedPatient.traceCode} · {selectedPatient.gender || "Gender not recorded"}
+                {selectedPatient.dateOfBirth ? ` · DOB ${selectedPatient.dateOfBirth}` : ""}
+                {selectedPatient.nhisId ? ` · NHIS ${selectedPatient.nhisId}` : ""}
+              </p>
+              <p className="muted-copy">
+                {selectedPatient.allergies || selectedPatient.medicalHistory
+                  ? [selectedPatient.allergies, selectedPatient.medicalHistory]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "No allergies or medical history recorded yet."}
+              </p>
+              <div className="inline-actions">
+                {canEditPatientRecords ? (
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() =>
+                      setIsEditingPatientRecord((current) => !current)
+                    }
+                  >
+                    {isEditingPatientRecord ? "Close editor" : "Edit record"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-action small"
+                  onClick={handlePrintPatientRecord}
+                >
+                  Print record
+                </button>
+              </div>
+            </div>
+            {canEditPatientRecords && isEditingPatientRecord ? (
+              <form className="form-grid bordered-top" onSubmit={handlePatientRecordUpdate}>
+                <label>
+                  <span>First name</span>
+                  <input
+                    value={patientRecordDraft.firstName}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        firstName: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Middle name</span>
+                  <input
+                    value={patientRecordDraft.middleName ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        middleName: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Last name</span>
+                  <input
+                    value={patientRecordDraft.lastName}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        lastName: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Trace code</span>
+                  <input
+                    value={patientRecordDraft.traceCode}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        traceCode: event.target.value.toUpperCase(),
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Gender</span>
+                  <input
+                    value={patientRecordDraft.gender ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        gender: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Date of birth</span>
+                  <input
+                    type="date"
+                    value={patientRecordDraft.dateOfBirth ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        dateOfBirth: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input
+                    value={patientRecordDraft.phone}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        phone: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label>
+                  <span>NHIS ID</span>
+                  <input
+                    value={patientRecordDraft.nhisId ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        nhisId: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="full-width">
+                  <span>Allergies</span>
+                  <textarea
+                    rows={3}
+                    value={patientRecordDraft.allergies ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        allergies: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="full-width">
+                  <span>Medical history</span>
+                  <textarea
+                    rows={4}
+                    value={patientRecordDraft.medicalHistory ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        medicalHistory: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="full-width inline-actions">
+                  <button type="submit">Save patient record</button>
+                  <button
+                    type="button"
+                    className="ghost-action"
+                    onClick={() => {
+                      setPatientRecordDraft(buildPatientDraft(selectedPatient));
+                      setIsEditingPatientRecord(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
             <div className="history-summary-grid">
               <div className="summary-panel">
                 <span>Tests and scans</span>

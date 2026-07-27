@@ -37,6 +37,7 @@ export async function resolvePatientTraceCode(
   prisma: PrismaClient,
   names: NameParts,
   manualTraceCode?: string,
+  currentPatientId?: string,
 ) {
   const normalizedManualTraceCode = manualTraceCode
     ?.trim()
@@ -70,7 +71,7 @@ export async function resolvePatientTraceCode(
       select: { id: true },
     });
 
-    if (existing) {
+    if (existing && existing.id !== currentPatientId) {
       throw new Error(`Trace code ${normalizedManualTraceCode} already exists.`);
     }
 

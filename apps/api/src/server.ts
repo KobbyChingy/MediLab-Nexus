@@ -298,8 +298,16 @@ function serializePatient(patient: {
   id: string;
   traceCode: string;
   firstName: string;
+  middleName?: string | null;
   lastName: string;
+  dateOfBirth?: Date | null;
+  gender?: string | null;
   phone: string;
+  nhisId?: string | null;
+  allergies?: string | null;
+  medicalHistory?: string | null;
+  consentAccepted?: boolean | null;
+  photoPath?: string | null;
   createdAt: Date;
   referralDoctorId: string | null;
   referralName?: string | null;
@@ -313,10 +321,21 @@ function serializePatient(patient: {
     id: patient.id,
     traceCode: patient.traceCode,
     firstName: patient.firstName,
+    middleName: patient.middleName ?? "",
     lastName: patient.lastName,
+    dateOfBirth: patient.dateOfBirth
+      ? patient.dateOfBirth.toISOString().slice(0, 10)
+      : "",
+    gender: patient.gender ?? "",
     phone: patient.phone,
+    nhisId: patient.nhisId ?? "",
+    allergies: patient.allergies ?? "",
+    medicalHistory: patient.medicalHistory ?? "",
+    consentAccepted: patient.consentAccepted ?? false,
+    photoPath: patient.photoPath ?? "",
     createdAt: patient.createdAt.toISOString(),
     referralDoctorId: patient.referralDoctorId,
+    referralName: patient.referralName ?? "",
     referralDoctorName:
       patient.referralDoctor?.fullName ?? patient.referralName ?? null,
     referralDoctorCommissionPercent:
@@ -2219,6 +2238,112 @@ app.put("/api/patients/:id/referral", async (request, reply) => {
     summary: referralDoctor
       ? `Patient ${updated.traceCode} referral doctor changed to ${referralDoctor.fullName}`
       : `Patient ${updated.traceCode} referral doctor cleared`,
+    payload,
+  });
+
+  return reply.send(serializePatient(updated));
+});
+
+app.put("/api/patients/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "patient:write")) {
+    return deny(reply, "patient:write");
+  }
+
+  const id = (request.params as { id: string }).id;
+  const payload = patientInputSchema.parse(request.body);
+  const existingPatient = await prisma.patient.findFirst({
+    where: {
+      id,
+      facilityId: request.actor.facilityId,
+    },
+    include: {
+      referralDoctor: {
+        select: {
+          fullName: true,
+          commissionPercent: true,
+        },
+      },
+    },
+  });
+
+  if (!existingPatient) {
+    return reply.code(404).send({ message: "Patient not found." });
+  }
+
+  const normalizedManualTraceCode = payload.traceCode.trim().toUpperCase();
+  const trace =
+    normalizedManualTraceCode === existingPatient.traceCode
+      ? {
+          facilityId: existingPatient.facilityId,
+          traceSequence: existingPatient.traceSequence,
+          traceCode: existingPatient.traceCode,
+          initials: existingPatient.initials,
+        }
+      : await resolvePatientTraceCode(
+          prisma,
+          payload,
+          payload.traceCode,
+          existingPatient.id,
+        );
+
+  const referralDoctor = payload.referralDoctorId
+    ? await prisma.referralDoctor.findFirst({
+        where: {
+          id: payload.referralDoctorId,
+          facilityId: request.actor.facilityId,
+          isActive: true,
+        },
+      })
+    : null;
+
+  if (payload.referralDoctorId && !referralDoctor) {
+    return reply.code(400).send({
+      message: "The selected referral doctor is not available.",
+    });
+  }
+
+  const updated = await prisma.patient.update({
+    where: { id: existingPatient.id },
+    data: {
+      referralDoctorId: referralDoctor?.id ?? null,
+      referralName: payload.referralName.trim() || null,
+      referralCommissionPercent: payload.referralCommissionPercent ?? null,
+      traceCode: trace.traceCode,
+      traceSequence: trace.traceSequence,
+      initials: trace.initials,
+      firstName: payload.firstName,
+      middleName: payload.middleName,
+      lastName: payload.lastName,
+      dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
+      gender: payload.gender,
+      phone: payload.phone,
+      nhisId: payload.nhisId,
+      allergies: payload.allergies,
+      medicalHistory: payload.medicalHistory,
+      consentAccepted: payload.consentAccepted,
+      photoPath: payload.photoPath,
+      syncStatus: "LOCAL_ONLY",
+    },
+    include: {
+      referralDoctor: {
+        select: {
+          fullName: true,
+          commissionPercent: true,
+        },
+      },
+    },
+  });
+
+  await recordDispatchEvent("Patient", updated.id, updated);
+  await recordAudit(prisma, request.actor, {
+    action: "PATIENT_UPDATED",
+    entityType: "Patient",
+    entityId: updated.id,
+    traceCode: updated.traceCode,
+    summary: `Patient ${updated.traceCode} record updated`,
     payload,
   });
 
