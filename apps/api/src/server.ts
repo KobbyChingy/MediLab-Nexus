@@ -1196,14 +1196,18 @@ async function buildFinanceAnalytics(
       serviceMap.set(line.description, current);
 
       const study = ensureStudyPerformance(line.description);
-      const lineShare = subtotalCents > 0 ? line.totalPriceCents / subtotalCents : 0;
+      const lineShare =
+        subtotalCents > 0 ? line.totalPriceCents / subtotalCents : 0;
       const lineBilledCents = line.totalPriceCents;
       const lineDueCents = Math.round(amountDueCents * lineShare);
       const lineCollectedCents = Math.min(
         lineDueCents,
         Math.round(amountPaidCents * lineShare),
       );
-      const lineOutstandingCents = Math.max(0, lineDueCents - lineCollectedCents);
+      const lineOutstandingCents = Math.max(
+        0,
+        lineDueCents - lineCollectedCents,
+      );
 
       study.quantity += line.quantity;
       study.billedCents += lineBilledCents;
@@ -1242,9 +1246,11 @@ async function buildFinanceAnalytics(
         growthRatePercent:
           firstHalfBilledCents > 0
             ? Number(
-                (((secondHalfBilledCents - firstHalfBilledCents) /
-                  firstHalfBilledCents) *
-                  100).toFixed(2),
+                (
+                  ((secondHalfBilledCents - firstHalfBilledCents) /
+                    firstHalfBilledCents) *
+                  100
+                ).toFixed(2),
               )
             : secondHalfBilledCents > 0
               ? 100
@@ -1340,13 +1346,17 @@ async function buildFinanceAnalytics(
   };
 
   for (const payment of payments) {
-    const actorEntry = ensureUserPerformance(payment.receivedBy || "Unknown user");
+    const actorEntry = ensureUserPerformance(
+      payment.receivedBy || "Unknown user",
+    );
     actorEntry.generatedCents += payment.amountCents;
     actorEntry.paymentsCount += 1;
   }
 
   for (const expense of expenses) {
-    const actorEntry = ensureUserPerformance(expense.recordedBy || "Unknown user");
+    const actorEntry = ensureUserPerformance(
+      expense.recordedBy || "Unknown user",
+    );
     actorEntry.lossCents += expense.amountCents;
     actorEntry.expensesCount += 1;
   }
@@ -1737,12 +1747,15 @@ app.get("/api/finance/expenses", async (request, reply) => {
     return deny(reply, "finance:manage");
   }
 
-  return buildExpenseWorkspace(request.actor, request.query as {
-    range?: string;
-    category?: string;
-    startDate?: string;
-    endDate?: string;
-  });
+  return buildExpenseWorkspace(
+    request.actor,
+    request.query as {
+      range?: string;
+      category?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  );
 });
 
 app.post("/api/finance/expenses", async (request, reply) => {
@@ -2571,6 +2584,7 @@ app.get("/api/workflow", async (request, reply) => {
     imaging,
     reports,
     invoices,
+    payments,
     maintenance,
     notifications,
   ] = await Promise.all([
@@ -2602,6 +2616,18 @@ app.get("/api/workflow", async (request, reply) => {
       },
       orderBy: { createdAt: "desc" },
       take: 8,
+    }),
+    prisma.paymentRecord.findMany({
+      include: {
+        invoice: {
+          include: {
+            patient: true,
+            order: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
     }),
     prisma.maintenanceEvent.findMany({
       include: { instrument: true },
@@ -2688,6 +2714,19 @@ app.get("/api/workflow", async (request, reply) => {
       ),
       createdAt: invoice.createdAt.toISOString(),
       paymentsCount: invoice.payments.length,
+    })),
+    payments: payments.map((payment) => ({
+      id: payment.id,
+      invoiceId: payment.invoiceId,
+      patientId: payment.invoice.patientId,
+      traceCode: payment.traceCode ?? payment.invoice.patient.traceCode,
+      accessionNumber: payment.invoice.order.accessionNumber,
+      amountCents: payment.amountCents,
+      method: payment.method,
+      reference: payment.reference,
+      receivedBy: payment.receivedBy,
+      notes: payment.notes,
+      createdAt: payment.createdAt.toISOString(),
     })),
     maintenance,
     notifications,
@@ -3208,10 +3247,7 @@ app.post("/api/notifications/:id/acknowledge", async (request, reply) => {
   const id = (request.params as { id: string }).id;
   const alert = await prisma.notificationQueue.findUnique({ where: { id } });
 
-  if (
-    !alert ||
-    alert.recipient !== `internal:${request.actor.username}`
-  ) {
+  if (!alert || alert.recipient !== `internal:${request.actor.username}`) {
     return reply.code(404).send({ message: "Alert not found." });
   }
 

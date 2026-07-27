@@ -61,6 +61,7 @@ import {
 type NavKey =
   | "dashboard"
   | "patients"
+  | "patientRecords"
   | "orders"
   | "tracking"
   | "sonography"
@@ -229,7 +230,10 @@ type BulkImportHistoryEntry = {
   skippedCount: number;
 };
 
-type UltrasoundTemplateKind = Exclude<ReportInput["templateKind"], "LAB_STANDARD">;
+type UltrasoundTemplateKind = Exclude<
+  ReportInput["templateKind"],
+  "LAB_STANDARD"
+>;
 
 type PortalAction = {
   label: string;
@@ -359,7 +363,8 @@ const ultrasoundTemplatePresets: Record<
   },
   ULTRASOUND_ABDOMINAL: {
     summaryLabel: "Clinical indication",
-    summaryStarter: "Clinical indication: abdominal pain / hepatobiliary review",
+    summaryStarter:
+      "Clinical indication: abdominal pain / hepatobiliary review",
     findingsStarter:
       "FINDINGS:\nLiver:\nGallbladder:\nPancreas:\nSpleen:\nKidneys:\nAorta / IVC:\n",
     impressionStarter: "IMPRESSION:\n1. ",
@@ -386,7 +391,8 @@ const ultrasoundTemplatePresets: Record<
   },
   ULTRASOUND_OBSTETRIC: {
     summaryLabel: "Clinical indication",
-    summaryStarter: "Clinical indication: routine fetal assessment / obstetric review",
+    summaryStarter:
+      "Clinical indication: routine fetal assessment / obstetric review",
     findingsStarter:
       "FINDINGS:\nFetal lie / presentation:\nPlacenta:\nLiquor volume:\nBiometry:\nFetal heart activity:\nCervix:\n",
     impressionStarter: "IMPRESSION:\n1. ",
@@ -399,7 +405,8 @@ const ultrasoundTemplatePresets: Record<
   },
   ULTRASOUND_ECHOCARDIOGRAPHY: {
     summaryLabel: "Clinical indication",
-    summaryStarter: "Clinical indication: cardiac structure and function assessment",
+    summaryStarter:
+      "Clinical indication: cardiac structure and function assessment",
     findingsStarter:
       "FINDINGS:\nCardiac chambers:\nValves:\nLV systolic function:\nPericardium:\nDoppler:\n",
     impressionStarter: "IMPRESSION:\n1. ",
@@ -508,6 +515,7 @@ const ultrasoundPresetFieldMap: Partial<
 const navItems: Array<{ key: NavKey; label: string; short: string }> = [
   { key: "dashboard", label: "Dashboard", short: "DB" },
   { key: "patients", label: "Patients", short: "PT" },
+  { key: "patientRecords", label: "Patient Records", short: "PR" },
   { key: "orders", label: "Orders & Requests", short: "OR" },
   { key: "sonography", label: "Sonography Worklist", short: "SG" },
   { key: "scanReports", label: "Scan Reports", short: "SR" },
@@ -523,13 +531,15 @@ const navItems: Array<{ key: NavKey; label: string; short: string }> = [
 const navDescriptions: Record<NavKey, string> = {
   dashboard: "Live operational picture across your current workload.",
   patients: "Registration, lookup, and traceable patient context.",
+  patientRecords: "Patient history, payment records, and receipt reprints.",
   orders: "Create requests, capture intake, and control handoff.",
   tracking: "Specimen movement, collection visibility, and lab flow.",
   sonography: "Scheduled imaging, room status, and scan progression.",
   scanReports: "Preview finalized scan reports or write new interpretations.",
   inventory: "Supplies, stock movement, and controlled availability.",
   billing: "Invoices, payments, and outstanding balance follow-up.",
-  analytics: "Combined billing, expenses, inventory activity, and user performance.",
+  analytics:
+    "Combined billing, expenses, inventory activity, and user performance.",
   expenses: "Operating cost capture, categorization, and recent spend review.",
   services: "Service availability, pricing, and turnaround visibility.",
   referrals: "Referral doctor setup and commission visibility.",
@@ -547,6 +557,7 @@ const navSections: NavSectionDef[] = [
     items: [
       "dashboard",
       "patients",
+      "patientRecords",
       "orders",
       "sonography",
       "scanReports",
@@ -593,7 +604,8 @@ const roleCopy: Record<
   },
   DOCTOR: {
     title: "Doctor reading desk",
-    subtitle: "Handle sonography intake handoff, interpret findings, and complete scan reports.",
+    subtitle:
+      "Handle sonography intake handoff, interpret findings, and complete scan reports.",
   },
   LAB_TECH: {
     title: "Bench operations",
@@ -734,7 +746,9 @@ function hasNavAccess(key: NavKey, allowedActions: Capability[]) {
   );
 }
 
-const portalProfiles: Partial<Record<(typeof userRoles)[number], PortalProfile>> = {
+const portalProfiles: Partial<
+  Record<(typeof userRoles)[number], PortalProfile>
+> = {
   ADMIN: {
     label: "Admin portal",
     summary:
@@ -770,6 +784,7 @@ const portalProfiles: Partial<Record<(typeof userRoles)[number], PortalProfile>>
     navKeys: [
       "dashboard",
       "patients",
+      "patientRecords",
       "sonography",
       "scanReports",
       "analytics",
@@ -806,7 +821,13 @@ const portalProfiles: Partial<Record<(typeof userRoles)[number], PortalProfile>>
       "Review the scan queue, interpret findings, and complete scan reports with minimal distraction.",
     spotlight:
       "This portal is tuned for interpretation and reporting of sonography-driven studies.",
-    navKeys: ["dashboard", "patients", "sonography", "scanReports"],
+    navKeys: [
+      "dashboard",
+      "patients",
+      "patientRecords",
+      "sonography",
+      "scanReports",
+    ],
     highlights: [
       "Reading queue",
       "Clinical review",
@@ -832,7 +853,15 @@ const portalProfiles: Partial<Record<(typeof userRoles)[number], PortalProfile>>
       "Handle registration, front-desk expenses, service lookup, and printed scan report handoff.",
     spotlight:
       "This portal keeps the first touchpoint clean so intake, cash movement, and report pickup stay fast and traceable.",
-    navKeys: ["dashboard", "patients", "expenses", "services", "scanReports", "settings"],
+    navKeys: [
+      "dashboard",
+      "patients",
+      "patientRecords",
+      "expenses",
+      "services",
+      "scanReports",
+      "settings",
+    ],
     highlights: [
       "Patient registration",
       "Front desk spend",
@@ -858,7 +887,14 @@ const portalProfiles: Partial<Record<(typeof userRoles)[number], PortalProfile>>
       "Run the imaging worklist, update scan status, and prepare structured handoff for doctor review.",
     spotlight:
       "This portal keeps the scan room focused on timely acquisition, status updates, and draft-ready reporting.",
-    navKeys: ["dashboard", "patients", "orders", "sonography", "scanReports"],
+    navKeys: [
+      "dashboard",
+      "patients",
+      "patientRecords",
+      "orders",
+      "sonography",
+      "scanReports",
+    ],
     highlights: [
       "Scheduled scans",
       "Room flow",
@@ -886,6 +922,7 @@ const emptyWorkflow: WorkflowPayload = {
   imaging: [],
   reports: [],
   invoices: [],
+  payments: [],
   maintenance: [],
   notifications: [],
 };
@@ -1194,7 +1231,9 @@ function isUltrasoundTemplate(
   return templateKind !== "LAB_STANDARD";
 }
 
-function resolveUltrasoundTemplate(serviceLabel: string): UltrasoundTemplateKind {
+function resolveUltrasoundTemplate(
+  serviceLabel: string,
+): UltrasoundTemplateKind {
   const normalized = serviceLabel.toLowerCase();
   if (normalized.includes("obstetric") || normalized.includes("pregnan")) {
     return "ULTRASOUND_OBSTETRIC";
@@ -1590,8 +1629,7 @@ function StudyPerformanceChart({
   );
   const mapX = (index: number) =>
     (index / Math.max(points.length - 1, 1)) * (width - 48) + 24;
-  const mapY = (value: number) =>
-    height - 24 - (value / max) * (height - 48);
+  const mapY = (value: number) => height - 24 - (value / max) * (height - 48);
   const plot = (
     getter: (
       point: FinanceAnalyticsPayload["studyPerformance"][number]["trend"][number],
@@ -1861,9 +1899,9 @@ export default function App() {
     recordedBy: userDisplayByRole.FINANCE,
     notes: "",
   });
-  const [expenseEntryType, setExpenseEntryType] = useState<"EXPENSE" | "REFUND">(
-    "EXPENSE",
-  );
+  const [expenseEntryType, setExpenseEntryType] = useState<
+    "EXPENSE" | "REFUND"
+  >("EXPENSE");
   const [refundPatientQuery, setRefundPatientQuery] = useState("");
   const [refundPatientId, setRefundPatientId] = useState("");
   const [patientRecordsQuery, setPatientRecordsQuery] = useState("");
@@ -2052,9 +2090,7 @@ export default function App() {
     return (await response.json()) as T;
   }
 
-  function togglePasswordVisibility(
-    key: keyof typeof passwordVisibility,
-  ) {
+  function togglePasswordVisibility(key: keyof typeof passwordVisibility) {
     setPasswordVisibility((current) => ({
       ...current,
       [key]: !current[key],
@@ -2081,17 +2117,18 @@ export default function App() {
     }
 
     const now = context.currentTime;
-    const scheduleTone = (offset: number, frequency: number, duration: number) => {
+    const scheduleTone = (
+      offset: number,
+      frequency: number,
+      duration: number,
+    ) => {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.type = "sine";
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(0.0001, now + offset);
       gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.02);
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        now + offset + duration,
-      );
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + duration);
       oscillator.connect(gain);
       gain.connect(context.destination);
       oscillator.start(now + offset);
@@ -2323,15 +2360,16 @@ export default function App() {
 
         setIncomingAlerts((current) => {
           const knownIds = new Set(current.map((alert) => alert.id));
-          return [...freshAlerts.filter((alert) => !knownIds.has(alert.id)), ...current];
+          return [
+            ...freshAlerts.filter((alert) => !knownIds.has(alert.id)),
+            ...current,
+          ];
         });
         const newestAlert = freshAlerts[0];
         if (!newestAlert) {
           return;
         }
-        setStatusText(
-          `${newestAlert.createdBy} needs your attention.`,
-        );
+        setStatusText(`${newestAlert.createdBy} needs your attention.`);
         await playBellAlertSound();
         await Promise.all(
           freshAlerts.map((alert) => acknowledgeAlert(alert.id)),
@@ -2371,8 +2409,7 @@ export default function App() {
     setBellForm((current) => ({
       recipientUsername: current.recipientUsername,
       message:
-        current.message ||
-        `You are needed by ${authSession.user.displayName}.`,
+        current.message || `You are needed by ${authSession.user.displayName}.`,
     }));
   }, [authSession?.user.displayName]);
 
@@ -2551,7 +2588,8 @@ export default function App() {
 
     return events.sort(
       (left, right) =>
-        new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime(),
+        new Date(right.occurredAt).getTime() -
+        new Date(left.occurredAt).getTime(),
     );
   }, [selectedPatient, workflow.invoices, workflow.orders, workflow.reports]);
   const selectedPatientHistorySummary = useMemo(() => {
@@ -2573,9 +2611,16 @@ export default function App() {
       orderCount,
       reportCount,
       outstandingBalanceCents,
-      lastActivityAt: selectedPatientTimeline[0]?.occurredAt ?? selectedPatient.createdAt,
+      lastActivityAt:
+        selectedPatientTimeline[0]?.occurredAt ?? selectedPatient.createdAt,
     };
-  }, [selectedPatient, selectedPatientTimeline, workflow.invoices, workflow.orders, workflow.reports]);
+  }, [
+    selectedPatient,
+    selectedPatientTimeline,
+    workflow.invoices,
+    workflow.orders,
+    workflow.reports,
+  ]);
   const patientTestsById = useMemo(() => {
     const testsByPatient = new Map<string, string[]>();
 
@@ -2594,11 +2639,21 @@ export default function App() {
 
     return testsByPatient;
   }, [workflow.orders]);
+  const selectedPatientPayments = useMemo(() => {
+    if (!selectedPatient) {
+      return [] as WorkflowPayload["payments"];
+    }
+
+    return workflow.payments.filter(
+      (payment) => payment.patientId === selectedPatient.id,
+    );
+  }, [selectedPatient, workflow.payments]);
   const filteredPatientRecords = useMemo(() => {
     const query = patientRecordsQuery.trim().toLowerCase();
     const rankedPatients = [...patients].sort(
       (left, right) =>
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        new Date(right.createdAt).getTime() -
+        new Date(left.createdAt).getTime(),
     );
 
     if (!query) {
@@ -2630,9 +2685,12 @@ export default function App() {
     }
 
     return sortedPatients.filter((patient) =>
-      [patient.traceCode, patient.firstName, patient.lastName, patient.phone].some(
-        (value) => value.toLowerCase().includes(query),
-      ),
+      [
+        patient.traceCode,
+        patient.firstName,
+        patient.lastName,
+        patient.phone,
+      ].some((value) => value.toLowerCase().includes(query)),
     );
   }, [patients, refundPatientQuery]);
   const selectedRefundPatient = useMemo(
@@ -2696,8 +2754,9 @@ export default function App() {
     }
 
     return sonographyIntakeCatalog.filter((item) =>
-      [item.name, item.code, item.modality ?? "", item.department]
-        .some((value) => value.toLowerCase().includes(query)),
+      [item.name, item.code, item.modality ?? "", item.department].some(
+        (value) => value.toLowerCase().includes(query),
+      ),
     );
   }, [registrationServiceQuery, sonographyIntakeCatalog]);
   const filteredOrderServices = useMemo(() => {
@@ -2707,14 +2766,17 @@ export default function App() {
     }
 
     return sonographyIntakeCatalog.filter((item) =>
-      [item.name, item.code, item.modality ?? "", item.department]
-        .some((value) => value.toLowerCase().includes(query)),
+      [item.name, item.code, item.modality ?? "", item.department].some(
+        (value) => value.toLowerCase().includes(query),
+      ),
     );
   }, [orderServiceQuery, sonographyIntakeCatalog]);
   const selectedImagingStudy = useMemo(
     () =>
       sonographyStudies.find((study) => study.id === selectedImagingStudyId) ??
-      sonographyStudies.find((study) => study.patientId === selectedPatientId) ??
+      sonographyStudies.find(
+        (study) => study.patientId === selectedPatientId,
+      ) ??
       sonographyStudies[0] ??
       null,
     [selectedImagingStudyId, selectedPatientId, sonographyStudies],
@@ -2744,9 +2806,10 @@ export default function App() {
       patientId: selectedImagingStudy.patientId,
       traceCode: selectedImagingStudy.patientTraceCode,
       recipient:
-        current.patientId === selectedImagingStudy.patientId && current.recipient
+        current.patientId === selectedImagingStudy.patientId &&
+        current.recipient
           ? current.recipient
-          : selectedPatient?.phone ?? current.recipient,
+          : (selectedPatient?.phone ?? current.recipient),
     }));
   }, [selectedImagingStudy, selectedPatient?.phone]);
   const searchMatches = useMemo(() => {
@@ -2855,7 +2918,8 @@ export default function App() {
     () =>
       reportableOrders
         .filter(
-          (order) => !reportForm.patientId || order.patientId === reportForm.patientId,
+          (order) =>
+            !reportForm.patientId || order.patientId === reportForm.patientId,
         )
         .sort(
           (left, right) =>
@@ -2866,7 +2930,9 @@ export default function App() {
   );
   const selectedReportOrder = useMemo(
     () =>
-      reportOrdersForSelectedPatient.find((order) => order.id === reportForm.orderId) ??
+      reportOrdersForSelectedPatient.find(
+        (order) => order.id === reportForm.orderId,
+      ) ??
       reportableOrders.find((order) => order.id === reportForm.orderId) ??
       null,
     [reportForm.orderId, reportOrdersForSelectedPatient, reportableOrders],
@@ -2887,7 +2953,7 @@ export default function App() {
   const selectedUltrasoundPresetFields = useMemo(
     () =>
       isUltrasoundTemplate(reportForm.templateKind)
-        ? ultrasoundPresetFieldMap[reportForm.templateKind] ?? []
+        ? (ultrasoundPresetFieldMap[reportForm.templateKind] ?? [])
         : [],
     [reportForm.templateKind],
   );
@@ -2933,7 +2999,11 @@ export default function App() {
           : current,
       );
     }
-  }, [reportForm.orderId, reportForm.patientId, reportOrdersForSelectedPatient]);
+  }, [
+    reportForm.orderId,
+    reportForm.patientId,
+    reportOrdersForSelectedPatient,
+  ]);
 
   useEffect(() => {
     if (!selectedReportOrder) {
@@ -2945,7 +3015,8 @@ export default function App() {
       selectedReportOrder.items[0] ??
       "Scan";
     const templateKind =
-      selectedReportImagingStudy || orderIncludesSonography(selectedReportOrder.items)
+      selectedReportImagingStudy ||
+      orderIncludesSonography(selectedReportOrder.items)
         ? resolveUltrasoundTemplate(serviceName)
         : "LAB_STANDARD";
     const preset =
@@ -2966,11 +3037,11 @@ export default function App() {
         findings:
           current.orderId === selectedReportOrder.id && current.findings
             ? current.findings
-            : preset?.findingsStarter ?? "",
+            : (preset?.findingsStarter ?? ""),
         impression:
           current.orderId === selectedReportOrder.id && current.impression
             ? current.impression
-            : preset?.impressionStarter ?? "",
+            : (preset?.impressionStarter ?? ""),
       };
     });
 
@@ -2978,21 +3049,28 @@ export default function App() {
       setUltrasoundReportAssist((current) => ({
         ...defaultUltrasoundReportAssistState,
         sonographerName:
-          current.sonographerName || selectedReportImagingStudy?.sonographerName || "",
+          current.sonographerName ||
+          selectedReportImagingStudy?.sonographerName ||
+          "",
         technique: current.technique || preset.techniquePlaceholder,
       }));
     }
   }, [selectedReportImagingStudy, selectedReportOrder]);
 
   useEffect(() => {
-    if (!isUltrasoundTemplate(reportForm.templateKind) || !selectedReportImagingStudy) {
+    if (
+      !isUltrasoundTemplate(reportForm.templateKind) ||
+      !selectedReportImagingStudy
+    ) {
       return;
     }
 
     setUltrasoundReportAssist((current) => ({
       ...current,
       sonographerName:
-        current.sonographerName || selectedReportImagingStudy.sonographerName || "",
+        current.sonographerName ||
+        selectedReportImagingStudy.sonographerName ||
+        "",
     }));
   }, [reportForm.templateKind, selectedReportImagingStudy]);
   const labServices = useMemo(
@@ -3127,7 +3205,9 @@ export default function App() {
       ? navItems.filter((item) => portalProfile.navKeys.includes(item.key))
       : navItems;
 
-    return scopedNavItems.filter((item) => hasNavAccess(item.key, allowedActions));
+    return scopedNavItems.filter((item) =>
+      hasNavAccess(item.key, allowedActions),
+    );
   }, [allowedActions, portalProfile]);
   const visibleNavKeys = useMemo(
     () => new Set(visibleNavItems.map((item) => item.key)),
@@ -3159,7 +3239,9 @@ export default function App() {
       [
         "ALL",
         ...Array.from(
-          new Set(financeAnalytics.studyPerformance.map((study) => study.department)),
+          new Set(
+            financeAnalytics.studyPerformance.map((study) => study.department),
+          ),
         ),
       ] as Array<"ALL" | "LAB" | "IMAGING">,
     [financeAnalytics.studyPerformance],
@@ -3206,9 +3288,9 @@ export default function App() {
       setSelectedAnalyticsStudy(filteredStudyPerformance[0]?.description ?? "");
     }
   }, [filteredStudyPerformance, selectedAnalyticsStudy]);
-  const portalQuickActions = (portalProfile?.actions ?? defaultPortalActions).filter(
-    (action) => visibleNavKeys.has(action.target),
-  );
+  const portalQuickActions = (
+    portalProfile?.actions ?? defaultPortalActions
+  ).filter((action) => visibleNavKeys.has(action.target));
   const dashboardPortalItems = visibleNavItems.filter(
     (item) => item.key !== "dashboard",
   );
@@ -3234,7 +3316,9 @@ export default function App() {
       label:
         invoice.amountPaidCents > 0 ? "Payment recorded" : "Invoice opened",
       meta: `${invoice.traceCode} · ${formatMoney(
-        invoice.amountPaidCents > 0 ? invoice.amountPaidCents : invoice.amountDueCents,
+        invoice.amountPaidCents > 0
+          ? invoice.amountPaidCents
+          : invoice.amountDueCents,
       )}`,
       occurredAt: invoice.createdAt,
       tone: invoice.balanceCents > 0 ? "warn" : "good",
@@ -3280,7 +3364,12 @@ export default function App() {
       setPortalHash(nextHash);
 
       const route = parsePortalHash(nextHash);
-      if (authSession && route && route.role === currentRole && visibleNavKeys.has(route.nav)) {
+      if (
+        authSession &&
+        route &&
+        route.role === currentRole &&
+        visibleNavKeys.has(route.nav)
+      ) {
         setActiveNav(route.nav);
       }
     };
@@ -3617,40 +3706,41 @@ export default function App() {
   async function handleReportSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const presetMeasurementLines = isUltrasoundTemplate(reportForm.templateKind)
-      ? buildPresetMeasurementLines(reportForm.templateKind, ultrasoundReportAssist)
+      ? buildPresetMeasurementLines(
+          reportForm.templateKind,
+          ultrasoundReportAssist,
+        )
       : [];
     const compiledMeasurements = [
       ultrasoundReportAssist.measurementsText.trim(),
       ...presetMeasurementLines,
     ].filter(Boolean);
-    const findings =
-      isUltrasoundTemplate(reportForm.templateKind)
-        ? [
-            ultrasoundReportAssist.technique
-              ? `Technique: ${ultrasoundReportAssist.technique}`
-              : "",
-            ultrasoundReportAssist.sonographerName
-              ? `Prepared by: ${ultrasoundReportAssist.sonographerName}`
-              : "",
-            reportForm.findings,
-            compiledMeasurements.length > 0
-              ? `Measurements:\n${compiledMeasurements.join("\n")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n\n")
-        : reportForm.findings;
-    const impression =
-      isUltrasoundTemplate(reportForm.templateKind)
-        ? [
-            reportForm.impression,
-            ultrasoundReportAssist.recommendation
-              ? `Recommendation: ${ultrasoundReportAssist.recommendation}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : reportForm.impression;
+    const findings = isUltrasoundTemplate(reportForm.templateKind)
+      ? [
+          ultrasoundReportAssist.technique
+            ? `Technique: ${ultrasoundReportAssist.technique}`
+            : "",
+          ultrasoundReportAssist.sonographerName
+            ? `Prepared by: ${ultrasoundReportAssist.sonographerName}`
+            : "",
+          reportForm.findings,
+          compiledMeasurements.length > 0
+            ? `Measurements:\n${compiledMeasurements.join("\n")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : reportForm.findings;
+    const impression = isUltrasoundTemplate(reportForm.templateKind)
+      ? [
+          reportForm.impression,
+          ultrasoundReportAssist.recommendation
+            ? `Recommendation: ${ultrasoundReportAssist.recommendation}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : reportForm.impression;
     const payload: ReportInput = {
       ...reportForm,
       summary: reportForm.summary.trim(),
@@ -3667,7 +3757,9 @@ export default function App() {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setStatusText(`Scan report ${payload.title} prepared with printable output`);
+      setStatusText(
+        `Scan report ${payload.title} prepared with printable output`,
+      );
       setReportForm({
         patientId: "",
         orderId: "",
@@ -3718,7 +3810,9 @@ export default function App() {
 
   function openUltrasoundReportDraft() {
     if (!selectedImagingStudy) {
-      setStatusText("Choose a sonography study before opening the scan report draft");
+      setStatusText(
+        "Choose a sonography study before opening the scan report draft",
+      );
       return;
     }
 
@@ -3993,9 +4087,13 @@ export default function App() {
 </html>`;
 
     if (writePreviewWindow(preview, html)) {
-      setStatusText(`Opened printable patient record ${selectedPatient.traceCode}`);
+      setStatusText(
+        `Opened printable patient record ${selectedPatient.traceCode}`,
+      );
     } else {
-      setStatusText("Preview window was closed before the patient record loaded");
+      setStatusText(
+        "Preview window was closed before the patient record loaded",
+      );
     }
   }
 
@@ -4139,7 +4237,7 @@ export default function App() {
 
     const amountCents = Math.round(Number(expenseForm.amount || "0") * 100);
     const refundTests = selectedRefundPatient
-      ? patientTestsById.get(selectedRefundPatient.id) ?? []
+      ? (patientTestsById.get(selectedRefundPatient.id) ?? [])
       : [];
 
     if (expenseEntryType === "REFUND" && !selectedRefundPatient) {
@@ -4184,7 +4282,8 @@ export default function App() {
       });
       setExpenseForm((current) => ({
         ...current,
-        category: expenseEntryType === "REFUND" ? "Patient Refund" : current.category,
+        category:
+          expenseEntryType === "REFUND" ? "Patient Refund" : current.category,
         description: "",
         amount: "",
         notes: "",
@@ -4845,7 +4944,9 @@ export default function App() {
             </p>
           </div>
           <div className="dashboard-status-row">
-            <span className={`sync-chip ${syncTone.tone}`}>{syncTone.label}</span>
+            <span className={`sync-chip ${syncTone.tone}`}>
+              {syncTone.label}
+            </span>
             <button
               type="button"
               className="icon-button"
@@ -4864,7 +4965,9 @@ export default function App() {
                   <span>{metric.label}</span>
                   <strong>{metric.value}</strong>
                 </div>
-                <div className="dashboard-stat-icon">{metric.label.slice(0, 2).toUpperCase()}</div>
+                <div className="dashboard-stat-icon">
+                  {metric.label.slice(0, 2).toUpperCase()}
+                </div>
               </div>
               <p>{metric.note}</p>
             </article>
@@ -4874,9 +4977,12 @@ export default function App() {
         <section className="dashboard-feature-grid">
           <article className="surface-card dashboard-revenue-card">
             <span>Today&apos;s revenue</span>
-            <strong>{formatMoney(adminOverview.finance.revenueTodayCents)}</strong>
+            <strong>
+              {formatMoney(adminOverview.finance.revenueTodayCents)}
+            </strong>
             <p>
-              Outstanding balances: {formatMoney(adminOverview.finance.outstandingCents)}
+              Outstanding balances:{" "}
+              {formatMoney(adminOverview.finance.outstandingCents)}
             </p>
           </article>
         </section>
@@ -4907,7 +5013,10 @@ export default function App() {
             <div className="section-head compact-head">
               <div>
                 <h3>Recent activity</h3>
-                <p>Latest workflow movement across requests, billing, and reports.</p>
+                <p>
+                  Latest workflow movement across requests, billing, and
+                  reports.
+                </p>
               </div>
             </div>
             <div className="dashboard-activity-list">
@@ -4918,7 +5027,10 @@ export default function App() {
                 </div>
               ) : null}
               {dashboardActivityItems.map((item) => (
-                <article key={item.id} className={`dashboard-activity-item tone-${item.tone}`}>
+                <article
+                  key={item.id}
+                  className={`dashboard-activity-item tone-${item.tone}`}
+                >
                   <div className="dashboard-activity-badge">
                     {item.label.slice(0, 2).toUpperCase()}
                   </div>
@@ -4946,8 +5058,8 @@ export default function App() {
             <div>
               <h2>Operational flow</h2>
               <p>
-                Sonography intake through scan reporting with clear scheduling and
-                release checkpoints.
+                Sonography intake through scan reporting with clear scheduling
+                and release checkpoints.
               </p>
             </div>
           </div>
@@ -4999,7 +5111,10 @@ export default function App() {
       <div className="section-head">
         <div>
           <h2>Patient records</h2>
-          <p>All patient records in the lab, including their ordered tests and scan history.</p>
+          <p>
+            All patient records in the lab, including their ordered tests and
+            scan history.
+          </p>
         </div>
       </div>
       <div className="form-grid">
@@ -5049,7 +5164,9 @@ export default function App() {
         <div className="section-head">
           <div>
             <h3>Selected patient record</h3>
-            <p>Review the patient's tests, billing summary, and visit timeline.</p>
+            <p>
+              Review the patient's tests, billing summary, and visit timeline.
+            </p>
           </div>
         </div>
         {selectedPatient && selectedPatientHistorySummary ? (
@@ -5058,13 +5175,20 @@ export default function App() {
               <span>Patient details</span>
               <strong>
                 {selectedPatient.firstName}{" "}
-                {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ""}
+                {selectedPatient.middleName
+                  ? `${selectedPatient.middleName} `
+                  : ""}
                 {selectedPatient.lastName}
               </strong>
               <p className="muted-copy">
-                {selectedPatient.traceCode} · {selectedPatient.gender || "Gender not recorded"}
-                {selectedPatient.dateOfBirth ? ` · DOB ${selectedPatient.dateOfBirth}` : ""}
-                {selectedPatient.nhisId ? ` · NHIS ${selectedPatient.nhisId}` : ""}
+                {selectedPatient.traceCode} ·{" "}
+                {selectedPatient.gender || "Gender not recorded"}
+                {selectedPatient.dateOfBirth
+                  ? ` · DOB ${selectedPatient.dateOfBirth}`
+                  : ""}
+                {selectedPatient.nhisId
+                  ? ` · NHIS ${selectedPatient.nhisId}`
+                  : ""}
               </p>
               <p className="muted-copy">
                 {selectedPatient.allergies || selectedPatient.medicalHistory
@@ -5095,7 +5219,10 @@ export default function App() {
               </div>
             </div>
             {canEditPatientRecords && isEditingPatientRecord ? (
-              <form className="form-grid bordered-top" onSubmit={handlePatientRecordUpdate}>
+              <form
+                className="form-grid bordered-top"
+                onSubmit={handlePatientRecordUpdate}
+              >
                 <label>
                   <span>First name</span>
                   <input
@@ -5241,31 +5368,47 @@ export default function App() {
             <div className="history-summary-grid">
               <div className="summary-panel">
                 <span>Tests and scans</span>
-                <strong>{(patientTestsById.get(selectedPatient.id) ?? []).length}</strong>
+                <strong>
+                  {(patientTestsById.get(selectedPatient.id) ?? []).length}
+                </strong>
                 <p className="muted-copy">
-                  {(patientTestsById.get(selectedPatient.id) ?? []).join(", ") ||
-                    "No tests or scans ordered yet."}
+                  {(patientTestsById.get(selectedPatient.id) ?? []).join(
+                    ", ",
+                  ) || "No tests or scans ordered yet."}
                 </p>
               </div>
               <div className="summary-panel">
                 <span>Orders</span>
                 <strong>{selectedPatientHistorySummary.orderCount}</strong>
-                <p className="muted-copy">Requests linked to this patient record.</p>
+                <p className="muted-copy">
+                  Requests linked to this patient record.
+                </p>
               </div>
               <div className="summary-panel">
                 <span>Reports</span>
                 <strong>{selectedPatientHistorySummary.reportCount}</strong>
-                <p className="muted-copy">Drafted or approved result documents.</p>
+                <p className="muted-copy">
+                  Drafted or approved result documents.
+                </p>
               </div>
               <div className="summary-panel">
                 <span>Outstanding</span>
-                <strong>{formatMoney(selectedPatientHistorySummary.outstandingBalanceCents)}</strong>
-                <p className="muted-copy">Current unpaid balance across patient invoices.</p>
+                <strong>
+                  {formatMoney(
+                    selectedPatientHistorySummary.outstandingBalanceCents,
+                  )}
+                </strong>
+                <p className="muted-copy">
+                  Current unpaid balance across patient invoices.
+                </p>
               </div>
             </div>
             <div className="timeline-list compact-scroll">
               {selectedPatientTimeline.map((entry) => (
-                <article key={entry.id} className={`timeline-item tone-${entry.tone}`}>
+                <article
+                  key={entry.id}
+                  className={`timeline-item tone-${entry.tone}`}
+                >
                   <div className="timeline-marker" aria-hidden="true" />
                   <div className="timeline-content">
                     <div className="timeline-head">
@@ -5298,7 +5441,8 @@ export default function App() {
               <div className="summary-panel full-width">
                 <span>Active patient</span>
                 <strong>
-                  {selectedPatient.traceCode} · {selectedPatient.firstName} {selectedPatient.lastName}
+                  {selectedPatient.traceCode} · {selectedPatient.firstName}{" "}
+                  {selectedPatient.lastName}
                 </strong>
                 <p className="muted-copy">
                   {selectedPatient.referralDoctorName
@@ -5333,12 +5477,19 @@ export default function App() {
             </div>
           ) : (
             <p className="section-note">
-              Search or open a patient first to update the linked referral doctor.
+              Search or open a patient first to update the linked referral
+              doctor.
             </p>
           )}
         </div>
       ) : null}
     </article>
+  );
+
+  const patientRecordsSection = (
+    <section className="content-grid">
+      {patientRecordsPanel}
+    </section>
   );
 
   const patientSection = showPatientIntakeTools ? (
@@ -5349,8 +5500,8 @@ export default function App() {
             <h2>Reception intake</h2>
             <p>
               Register the patient, assign a trace code when needed, attach
-              requested services, collect payment, and open the receipt from
-              one front-desk flow.
+              requested services, collect payment, and open the receipt from one
+              front-desk flow.
             </p>
           </div>
           <span className="trace-preview">{patientTracePreview}</span>
@@ -5595,7 +5746,8 @@ export default function App() {
                 })}
               </div>
             ) : null}
-            {registrationServiceQuery.trim() && filteredRegistrationServices.length === 0 ? (
+            {registrationServiceQuery.trim() &&
+            filteredRegistrationServices.length === 0 ? (
               <p className="section-note full-width">
                 No registered services match that search yet.
               </p>
@@ -5707,9 +5859,7 @@ export default function App() {
       {patientRecordsPanel}
     </section>
   ) : (
-    <section className="content-grid">
-      {patientRecordsPanel}
-    </section>
+    <section className="content-grid">{patientRecordsPanel}</section>
   );
 
   const ordersSection = (
@@ -5718,7 +5868,10 @@ export default function App() {
         <div className="section-head">
           <div>
             <h2>Orders and requests</h2>
-            <p>Ultrasound-first ordering with slot, sonographer, and prior-study context.</p>
+            <p>
+              Ultrasound-first ordering with slot, sonographer, and prior-study
+              context.
+            </p>
           </div>
           <span className="patient-chip">
             {selectedPatient?.traceCode ?? "Select patient"}
@@ -6014,7 +6167,8 @@ export default function App() {
           <div>
             <h2>Sonography worklist</h2>
             <p>
-              Scheduled ultrasound scans with slot time, assigned staff, and immediate scan reporting context.
+              Scheduled ultrasound scans with slot time, assigned staff, and
+              immediate scan reporting context.
             </p>
           </div>
         </div>
@@ -6022,71 +6176,77 @@ export default function App() {
           <div className="summary-panel">
             <span>Scheduled</span>
             <strong>
-              {sonographyStudies.filter(
-                (study) => study.appointmentStatus === "SCHEDULED",
-              ).length}
+              {
+                sonographyStudies.filter(
+                  (study) => study.appointmentStatus === "SCHEDULED",
+                ).length
+              }
             </strong>
             <p className="muted-copy">Patients still expected today.</p>
           </div>
           <div className="summary-panel">
             <span>Scanning</span>
             <strong>
-              {sonographyStudies.filter(
-                (study) => study.appointmentStatus === "SCANNING",
-              ).length}
+              {
+                sonographyStudies.filter(
+                  (study) => study.appointmentStatus === "SCANNING",
+                ).length
+              }
             </strong>
             <p className="muted-copy">Studies currently on the bench.</p>
           </div>
           <div className="summary-panel">
             <span>Ready to report</span>
             <strong>
-              {sonographyStudies.filter(
-                (study) =>
-                  study.appointmentStatus === "REPORTED" ||
-                  study.appointmentStatus === "COMPLETED",
-              ).length}
+              {
+                sonographyStudies.filter(
+                  (study) =>
+                    study.appointmentStatus === "REPORTED" ||
+                    study.appointmentStatus === "COMPLETED",
+                ).length
+              }
             </strong>
             <p className="muted-copy">Scans ready for interpretation.</p>
           </div>
         </div>
         <div className="list-stack">
           {sonographyStudies.map((study) => (
-              <button
-                key={study.id}
-                type="button"
-                className={`imaging-row button-row ${
-                  selectedImagingStudy?.id === study.id ? "selected-study" : ""
-                }`}
-                onClick={() => {
-                  setSelectedImagingStudyId(study.id);
-                  setSelectedPatientId(study.patientId);
-                }}
-              >
-                <div className="thumb-placeholder">IMG</div>
-                <div>
-                  <strong>{study.patientTraceCode}</strong>
-                  <span>{study.patientName}</span>
-                  <small>
-                    {study.serviceName}
-                    {study.scheduledAt
-                      ? ` · ${formatDate(study.scheduledAt)}`
-                      : " · No slot set"}
-                  </small>
-                </div>
-                <small
-                  className={`status-pill tone-${getOrderTone(
-                    study.appointmentStatus === "REPORTED" ||
-                      study.appointmentStatus === "COMPLETED"
-                      ? "READY_FOR_REVIEW"
-                      : study.appointmentStatus === "SCANNING"
-                        ? "IN_PROGRESS"
-                        : "REGISTERED",
-                  )}`}
-                >
-                  {study.appointmentStatus}
+            <button
+              key={study.id}
+              type="button"
+              className={`imaging-row button-row ${
+                selectedImagingStudy?.id === study.id ? "selected-study" : ""
+              }`}
+              onClick={() => {
+                setSelectedImagingStudyId(study.id);
+                setSelectedPatientId(study.patientId);
+              }}
+            >
+              <div className="thumb-placeholder">IMG</div>
+              <div>
+                <strong>{study.patientTraceCode}</strong>
+                <span>{study.patientName}</span>
+                <small>
+                  {study.serviceName}
+                  {study.scheduledAt
+                    ? ` · ${formatDate(study.scheduledAt)}`
+                    : " · No slot set"}
                 </small>
-              </button>
-            ))}
+              </div>
+              <small
+                className={`status-pill tone-${getOrderTone(
+                  study.appointmentStatus === "REPORTED" ||
+                    study.appointmentStatus === "COMPLETED"
+                    ? "READY_FOR_REVIEW"
+                    : study.appointmentStatus === "SCANNING"
+                      ? "IN_PROGRESS"
+                      : "REGISTERED",
+                )}`}
+              >
+                {study.appointmentStatus}
+              </small>
+            </button>
+          ))}
         </div>
       </article>
 
@@ -6095,7 +6255,8 @@ export default function App() {
           <div>
             <h2>Scan desk</h2>
             <p>
-              Assign staff, confirm the appointment slot, and hand the study off to scan reports.
+              Assign staff, confirm the appointment slot, and hand the study off
+              to scan reports.
             </p>
           </div>
         </div>
@@ -6104,7 +6265,8 @@ export default function App() {
             <div className="summary-panel full-width">
               <span>Active study</span>
               <strong>
-                {selectedImagingStudy.patientTraceCode} · {selectedImagingStudy.serviceName}
+                {selectedImagingStudy.patientTraceCode} ·{" "}
+                {selectedImagingStudy.serviceName}
               </strong>
               <p className="muted-copy">
                 {selectedImagingStudy.patientName}
@@ -6197,102 +6359,110 @@ export default function App() {
             </label>
             <div className="full-width action-row">
               <button type="submit">Save scan desk update</button>
-              <button type="button" className="ghost-action" onClick={openUltrasoundReportDraft}>
+              <button
+                type="button"
+                className="ghost-action"
+                onClick={openUltrasoundReportDraft}
+              >
                 Open scan report draft
               </button>
             </div>
           </form>
         ) : (
           <p className="section-note">
-            Select an ultrasound study from the worklist to assign staff and slot time.
+            Select an ultrasound study from the worklist to assign staff and
+            slot time.
           </p>
         )}
         <div className="bordered-top">
           <div className="section-head">
             <div>
               <h3>Patient notice</h3>
-              <p>Queue WhatsApp, SMS, or email updates straight from the scan desk.</p>
+              <p>
+                Queue WhatsApp, SMS, or email updates straight from the scan
+                desk.
+              </p>
             </div>
           </div>
           <form className="form-grid" onSubmit={handleNotificationSubmit}>
-          <label>
-            <span>Recipient</span>
-            <input
-              value={notificationForm.recipient}
-              onChange={(event) =>
-                setNotificationForm((current) => ({
-                  ...current,
-                  recipient: event.target.value,
-                }))
-              }
-              disabled={!canQueueNotifications}
-            />
-          </label>
-          <label>
-            <span>Channel</span>
-            <select
-              value={notificationForm.channel}
-              onChange={(event) =>
-                setNotificationForm((current) => ({
-                  ...current,
-                  channel: event.target.value as NotificationInput["channel"],
-                }))
-              }
-              disabled={!canQueueNotifications}
-            >
-              {externalNotificationChannels.map((channel) => (
-                <option key={channel} value={channel}>
-                  {channel}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Trace Code</span>
-            <input
-              value={notificationForm.traceCode}
-              onChange={(event) =>
-                setNotificationForm((current) => ({
-                  ...current,
-                  traceCode: event.target.value,
-                }))
-              }
-              disabled={!canQueueNotifications}
-            />
-          </label>
-          <label>
-            <span>Schedule</span>
-            <input
-              type="datetime-local"
-              value={notificationForm.scheduledFor}
-              onChange={(event) =>
-                setNotificationForm((current) => ({
-                  ...current,
-                  scheduledFor: event.target.value,
-                }))
-              }
-              disabled={!canQueueNotifications}
-            />
-          </label>
-          <label className="full-width">
-            <span>Message</span>
-            <textarea
-              rows={4}
-              value={notificationForm.message}
-              onChange={(event) =>
-                setNotificationForm((current) => ({
-                  ...current,
-                  message: event.target.value,
-                }))
-              }
-              disabled={!canQueueNotifications}
-            />
-          </label>
-          <div className="full-width action-row">
-            <button type="submit" disabled={!canQueueNotifications}>
-              Queue notification
-            </button>
-          </div>
+            <label>
+              <span>Recipient</span>
+              <input
+                value={notificationForm.recipient}
+                onChange={(event) =>
+                  setNotificationForm((current) => ({
+                    ...current,
+                    recipient: event.target.value,
+                  }))
+                }
+                disabled={!canQueueNotifications}
+              />
+            </label>
+            <label>
+              <span>Channel</span>
+              <select
+                value={notificationForm.channel}
+                onChange={(event) =>
+                  setNotificationForm((current) => ({
+                    ...current,
+                    channel: event.target.value as NotificationInput["channel"],
+                  }))
+                }
+                disabled={!canQueueNotifications}
+              >
+                {externalNotificationChannels.map((channel) => (
+                  <option key={channel} value={channel}>
+                    {channel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Trace Code</span>
+              <input
+                value={notificationForm.traceCode}
+                onChange={(event) =>
+                  setNotificationForm((current) => ({
+                    ...current,
+                    traceCode: event.target.value,
+                  }))
+                }
+                disabled={!canQueueNotifications}
+              />
+            </label>
+            <label>
+              <span>Schedule</span>
+              <input
+                type="datetime-local"
+                value={notificationForm.scheduledFor}
+                onChange={(event) =>
+                  setNotificationForm((current) => ({
+                    ...current,
+                    scheduledFor: event.target.value,
+                  }))
+                }
+                disabled={!canQueueNotifications}
+              />
+            </label>
+            <label className="full-width">
+              <span>Message</span>
+              <textarea
+                rows={4}
+                value={notificationForm.message}
+                onChange={(event) =>
+                  setNotificationForm((current) => ({
+                    ...current,
+                    message: event.target.value,
+                  }))
+                }
+                disabled={!canQueueNotifications}
+              />
+            </label>
+            <div className="full-width action-row">
+              <button type="submit" disabled={!canQueueNotifications}>
+                Queue notification
+              </button>
+            </div>
           </form>
         </div>
       </article>
@@ -6307,287 +6477,301 @@ export default function App() {
             <div>
               <h2>Scan Reports</h2>
               <p>
-                Structured ultrasound scan reporting with printable output and guided measurement capture.
+                Structured ultrasound scan reporting with printable output and
+                guided measurement capture.
               </p>
             </div>
           </div>
           <form className="form-grid" onSubmit={handleReportSubmit}>
-          <label className="full-width">
-            <span>Search patient or trace code</span>
-            <input
-              value={reportPatientQuery}
-              onChange={(event) => setReportPatientQuery(event.target.value)}
-              placeholder="Search by patient name or trace code"
-              disabled={!canWriteReports}
-            />
-          </label>
-          <label>
-            <span>Patient</span>
-            <select
-              value={reportForm.patientId}
-              onChange={(event) => {
-                const nextPatient = patients.find(
-                  (patient) => patient.id === event.target.value,
-                );
-
-                setReportForm((current) => ({
-                  ...current,
-                  patientId: event.target.value,
-                }));
-                setReportPatientQuery(
-                  nextPatient
-                    ? `${nextPatient.traceCode} · ${nextPatient.firstName} ${nextPatient.lastName}`
-                    : "",
-                );
-              }}
-              disabled={!canWriteReports}
-            >
-              <option value="">Select patient</option>
-              {filteredReportPatients.map((patient) => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.traceCode} · {patient.firstName} {patient.lastName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Order</span>
-            <select
-              value={reportForm.orderId}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  orderId: event.target.value,
-                }))
-              }
-              disabled={!canWriteReports}
-            >
-              <option value="">Select order</option>
-              {reportOrdersForSelectedPatient.map((order) => (
-                <option key={order.id} value={order.id}>
-                  {order.patientTraceCode} · {order.accessionNumber} · {order.items.join(", ")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Template</span>
-            <select
-              value={reportForm.templateKind}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  templateKind: event.target.value as ReportInput["templateKind"],
-                }))
-              }
-              disabled={!canWriteReports}
-            >
-              {reportTemplateKinds.map((templateKind) => (
-                <option key={templateKind} value={templateKind}>
-                  {reportTemplateLabels[templateKind]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Report title</span>
-            <input
-              value={reportForm.title}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              disabled={!canWriteReports}
-            />
-          </label>
-          {isUltrasoundTemplate(reportForm.templateKind) &&
-          selectedReportImagingStudy ? (
-            <div className="summary-panel full-width">
-              <span>{reportTemplateLabels[reportForm.templateKind]} study context</span>
-              <strong>
-                {selectedReportImagingStudy.patientTraceCode} · {selectedReportImagingStudy.serviceName}
-              </strong>
-              <p className="muted-copy">
-                {selectedReportImagingStudy.patientName}
-                {selectedReportImagingStudy.sonographerName
-                  ? ` · Sonographer ${selectedReportImagingStudy.sonographerName}`
-                  : " · Sonographer not captured yet"}
-              </p>
-            </div>
-          ) : null}
-          {isUltrasoundTemplate(reportForm.templateKind) ? (
-            <>
-              <label>
-                <span>Sonographer</span>
-                <input
-                  value={ultrasoundReportAssist.sonographerName}
-                  onChange={(event) =>
-                    updateUltrasoundAssistField(
-                      "sonographerName",
-                      event.target.value,
-                    )
-                  }
-                  disabled={!canWriteReports}
-                />
-              </label>
-              <label className="full-width">
-                <span>Technique</span>
-                <textarea
-                  rows={2}
-                  value={ultrasoundReportAssist.technique}
-                  onChange={(event) =>
-                    updateUltrasoundAssistField("technique", event.target.value)
-                  }
-                  placeholder={
-                    selectedUltrasoundTemplatePreset?.techniquePlaceholder
-                  }
-                  disabled={!canWriteReports}
-                />
-              </label>
-            </>
-          ) : null}
-          <label className="full-width">
-            <span>History</span>
-            <textarea
-              rows={3}
-              value={reportForm.medicalHistory}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  medicalHistory: event.target.value,
-                }))
-              }
-              placeholder="Type the clinical history for this scan report"
-              disabled={!canWriteReports}
-            />
-          </label>
-          <label className="full-width">
-            <span>Description</span>
-            <textarea
-              rows={8}
-              value={reportForm.findings}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  findings: event.target.value,
-                }))
-              }
-              placeholder="Type or paste the report description here, then edit as needed"
-              disabled={!canWriteReports}
-            />
-          </label>
-          {isUltrasoundTemplate(reportForm.templateKind) ? (
             <label className="full-width">
-              <span>Measurements</span>
-              <textarea
-                rows={3}
-                value={ultrasoundReportAssist.measurementsText}
+              <span>Search patient or trace code</span>
+              <input
+                value={reportPatientQuery}
+                onChange={(event) => setReportPatientQuery(event.target.value)}
+                placeholder="Search by patient name or trace code"
+                disabled={!canWriteReports}
+              />
+            </label>
+            <label>
+              <span>Patient</span>
+              <select
+                value={reportForm.patientId}
+                onChange={(event) => {
+                  const nextPatient = patients.find(
+                    (patient) => patient.id === event.target.value,
+                  );
+
+                  setReportForm((current) => ({
+                    ...current,
+                    patientId: event.target.value,
+                  }));
+                  setReportPatientQuery(
+                    nextPatient
+                      ? `${nextPatient.traceCode} · ${nextPatient.firstName} ${nextPatient.lastName}`
+                      : "",
+                  );
+                }}
+                disabled={!canWriteReports}
+              >
+                <option value="">Select patient</option>
+                {filteredReportPatients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.traceCode} · {patient.firstName} {patient.lastName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Order</span>
+              <select
+                value={reportForm.orderId}
                 onChange={(event) =>
-                  updateUltrasoundAssistField(
-                    "measurementsText",
-                    event.target.value,
-                  )
+                  setReportForm((current) => ({
+                    ...current,
+                    orderId: event.target.value,
+                  }))
                 }
-                placeholder={
-                  selectedUltrasoundTemplatePreset?.measurementsPlaceholder
+                disabled={!canWriteReports}
+              >
+                <option value="">Select order</option>
+                {reportOrdersForSelectedPatient.map((order) => (
+                  <option key={order.id} value={order.id}>
+                    {order.patientTraceCode} · {order.accessionNumber} ·{" "}
+                    {order.items.join(", ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Template</span>
+              <select
+                value={reportForm.templateKind}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    templateKind: event.target
+                      .value as ReportInput["templateKind"],
+                  }))
+                }
+                disabled={!canWriteReports}
+              >
+                {reportTemplateKinds.map((templateKind) => (
+                  <option key={templateKind} value={templateKind}>
+                    {reportTemplateLabels[templateKind]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Report title</span>
+              <input
+                value={reportForm.title}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
                 }
                 disabled={!canWriteReports}
               />
             </label>
-          ) : null}
-          {selectedUltrasoundPresetFields.length > 0 ? (
-            <div className="full-width report-assist-grid">
-              {selectedUltrasoundPresetFields.map((field) => (
-                <label key={field.key}>
-                  <span>{field.label}</span>
+            {isUltrasoundTemplate(reportForm.templateKind) &&
+            selectedReportImagingStudy ? (
+              <div className="summary-panel full-width">
+                <span>
+                  {reportTemplateLabels[reportForm.templateKind]} study context
+                </span>
+                <strong>
+                  {selectedReportImagingStudy.patientTraceCode} ·{" "}
+                  {selectedReportImagingStudy.serviceName}
+                </strong>
+                <p className="muted-copy">
+                  {selectedReportImagingStudy.patientName}
+                  {selectedReportImagingStudy.sonographerName
+                    ? ` · Sonographer ${selectedReportImagingStudy.sonographerName}`
+                    : " · Sonographer not captured yet"}
+                </p>
+              </div>
+            ) : null}
+            {isUltrasoundTemplate(reportForm.templateKind) ? (
+              <>
+                <label>
+                  <span>Sonographer</span>
                   <input
-                    value={ultrasoundReportAssist[field.key]}
+                    value={ultrasoundReportAssist.sonographerName}
                     onChange={(event) =>
-                      updateUltrasoundAssistField(field.key, event.target.value)
+                      updateUltrasoundAssistField(
+                        "sonographerName",
+                        event.target.value,
+                      )
                     }
-                    placeholder={field.placeholder}
                     disabled={!canWriteReports}
                   />
                 </label>
-              ))}
-            </div>
-          ) : null}
-          <label className="full-width">
-            <span>Impression</span>
-            <textarea
-              rows={3}
-              value={reportForm.impression}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  impression: event.target.value,
-                }))
-              }
-              disabled={!canWriteReports}
-            />
-          </label>
-          {isUltrasoundTemplate(reportForm.templateKind) ? (
+                <label className="full-width">
+                  <span>Technique</span>
+                  <textarea
+                    rows={2}
+                    value={ultrasoundReportAssist.technique}
+                    onChange={(event) =>
+                      updateUltrasoundAssistField(
+                        "technique",
+                        event.target.value,
+                      )
+                    }
+                    placeholder={
+                      selectedUltrasoundTemplatePreset?.techniquePlaceholder
+                    }
+                    disabled={!canWriteReports}
+                  />
+                </label>
+              </>
+            ) : null}
             <label className="full-width">
-              <span>Recommendation</span>
+              <span>History</span>
               <textarea
-                rows={2}
-                value={ultrasoundReportAssist.recommendation}
+                rows={3}
+                value={reportForm.medicalHistory}
                 onChange={(event) =>
-                  updateUltrasoundAssistField(
-                    "recommendation",
-                    event.target.value,
-                  )
+                  setReportForm((current) => ({
+                    ...current,
+                    medicalHistory: event.target.value,
+                  }))
                 }
-                placeholder={
-                  selectedUltrasoundTemplatePreset?.recommendationPlaceholder
+                placeholder="Type the clinical history for this scan report"
+                disabled={!canWriteReports}
+              />
+            </label>
+            <label className="full-width">
+              <span>Description</span>
+              <textarea
+                rows={8}
+                value={reportForm.findings}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    findings: event.target.value,
+                  }))
+                }
+                placeholder="Type or paste the report description here, then edit as needed"
+                disabled={!canWriteReports}
+              />
+            </label>
+            {isUltrasoundTemplate(reportForm.templateKind) ? (
+              <label className="full-width">
+                <span>Measurements</span>
+                <textarea
+                  rows={3}
+                  value={ultrasoundReportAssist.measurementsText}
+                  onChange={(event) =>
+                    updateUltrasoundAssistField(
+                      "measurementsText",
+                      event.target.value,
+                    )
+                  }
+                  placeholder={
+                    selectedUltrasoundTemplatePreset?.measurementsPlaceholder
+                  }
+                  disabled={!canWriteReports}
+                />
+              </label>
+            ) : null}
+            {selectedUltrasoundPresetFields.length > 0 ? (
+              <div className="full-width report-assist-grid">
+                {selectedUltrasoundPresetFields.map((field) => (
+                  <label key={field.key}>
+                    <span>{field.label}</span>
+                    <input
+                      value={ultrasoundReportAssist[field.key]}
+                      onChange={(event) =>
+                        updateUltrasoundAssistField(
+                          field.key,
+                          event.target.value,
+                        )
+                      }
+                      placeholder={field.placeholder}
+                      disabled={!canWriteReports}
+                    />
+                  </label>
+                ))}
+              </div>
+            ) : null}
+            <label className="full-width">
+              <span>Impression</span>
+              <textarea
+                rows={3}
+                value={reportForm.impression}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    impression: event.target.value,
+                  }))
                 }
                 disabled={!canWriteReports}
               />
             </label>
-          ) : null}
-          <label>
-            <span>Signed by</span>
-            <input
-              value={reportForm.signedBy}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  signedBy: event.target.value,
-                }))
-              }
-              disabled={!canWriteReports}
-            />
-          </label>
-          <label>
-            <span>Image references</span>
-            <input
-              value={reportImagePathsText}
-              onChange={(event) => setReportImagePathsText(event.target.value)}
-              placeholder="abdomen-01.png, scan-02.dcm"
-              disabled={!canWriteReports}
-            />
-          </label>
-          <label className="full-width inline-toggle">
-            <input
-              type="checkbox"
-              checked={reportForm.criticalFlag}
-              onChange={(event) =>
-                setReportForm((current) => ({
-                  ...current,
-                  criticalFlag: event.target.checked,
-                }))
-              }
-              disabled={!canWriteReports}
-            />
-            <span>Highlight critical value and notify clinician</span>
-          </label>
-          <div className="full-width action-row">
-            <button type="submit" disabled={!canWriteReports}>
-              Generate report PDF
-            </button>
-          </div>
+            {isUltrasoundTemplate(reportForm.templateKind) ? (
+              <label className="full-width">
+                <span>Recommendation</span>
+                <textarea
+                  rows={2}
+                  value={ultrasoundReportAssist.recommendation}
+                  onChange={(event) =>
+                    updateUltrasoundAssistField(
+                      "recommendation",
+                      event.target.value,
+                    )
+                  }
+                  placeholder={
+                    selectedUltrasoundTemplatePreset?.recommendationPlaceholder
+                  }
+                  disabled={!canWriteReports}
+                />
+              </label>
+            ) : null}
+            <label>
+              <span>Signed by</span>
+              <input
+                value={reportForm.signedBy}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    signedBy: event.target.value,
+                  }))
+                }
+                disabled={!canWriteReports}
+              />
+            </label>
+            <label>
+              <span>Image references</span>
+              <input
+                value={reportImagePathsText}
+                onChange={(event) =>
+                  setReportImagePathsText(event.target.value)
+                }
+                placeholder="abdomen-01.png, scan-02.dcm"
+                disabled={!canWriteReports}
+              />
+            </label>
+            <label className="full-width inline-toggle">
+              <input
+                type="checkbox"
+                checked={reportForm.criticalFlag}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    criticalFlag: event.target.checked,
+                  }))
+                }
+                disabled={!canWriteReports}
+              />
+              <span>Highlight critical value and notify clinician</span>
+            </label>
+            <div className="full-width action-row">
+              <button type="submit" disabled={!canWriteReports}>
+                Generate report PDF
+              </button>
+            </div>
           </form>
         </article>
       ) : (
@@ -7241,7 +7425,9 @@ export default function App() {
                   key={department}
                   type="button"
                   className={`pill-filter ${
-                    analyticsStudyDepartmentFilter === department ? "active" : ""
+                    analyticsStudyDepartmentFilter === department
+                      ? "active"
+                      : ""
                   }`}
                   onClick={() => setAnalyticsStudyDepartmentFilter(department)}
                 >
@@ -7257,7 +7443,9 @@ export default function App() {
               Study
               <select
                 value={selectedAnalyticsStudy}
-                onChange={(event) => setSelectedAnalyticsStudy(event.target.value)}
+                onChange={(event) =>
+                  setSelectedAnalyticsStudy(event.target.value)
+                }
               >
                 {filteredStudyPerformance.map((study) => (
                   <option key={study.description} value={study.description}>
@@ -7273,68 +7461,94 @@ export default function App() {
             <div className="list-row user-admin-row">
               <div>
                 <strong>No study activity in range</strong>
-                <span>No billed tests or scans match the selected department.</span>
+                <span>
+                  No billed tests or scans match the selected department.
+                </span>
               </div>
             </div>
           ) : null}
           {selectedAnalyticsStudyEntry ? (
-              <div key={selectedAnalyticsStudyEntry.description} className="stack-gap-md">
-                <div className="study-chip-row">
-                  <span className="study-chip">
-                    {formatStudyDepartmentLabel(selectedAnalyticsStudyEntry.department)}
-                  </span>
-                  <span className="study-chip">
-                    {formatStudyKindLabel(selectedAnalyticsStudyEntry.kind)}
-                  </span>
-                  <span
-                    className={`trend-pill ${
-                      selectedAnalyticsStudyEntry.growthRatePercent > 0
-                        ? "trend-up"
-                        : selectedAnalyticsStudyEntry.growthRatePercent < 0
-                          ? "trend-down"
-                          : "trend-flat"
-                    }`}
-                  >
-                    Growth {formatPercent(selectedAnalyticsStudyEntry.growthRatePercent)}
-                  </span>
+            <div
+              key={selectedAnalyticsStudyEntry.description}
+              className="stack-gap-md"
+            >
+              <div className="study-chip-row">
+                <span className="study-chip">
+                  {formatStudyDepartmentLabel(
+                    selectedAnalyticsStudyEntry.department,
+                  )}
+                </span>
+                <span className="study-chip">
+                  {formatStudyKindLabel(selectedAnalyticsStudyEntry.kind)}
+                </span>
+                <span
+                  className={`trend-pill ${
+                    selectedAnalyticsStudyEntry.growthRatePercent > 0
+                      ? "trend-up"
+                      : selectedAnalyticsStudyEntry.growthRatePercent < 0
+                        ? "trend-down"
+                        : "trend-flat"
+                  }`}
+                >
+                  Growth{" "}
+                  {formatPercent(selectedAnalyticsStudyEntry.growthRatePercent)}
+                </span>
+              </div>
+              <div className="metric-cluster">
+                <div className="metric-mini">
+                  <span>Study billed</span>
+                  <strong>
+                    {formatMoney(selectedAnalyticsStudyEntry.billedCents)}
+                  </strong>
                 </div>
-                <div className="metric-cluster">
-                  <div className="metric-mini">
-                    <span>Study billed</span>
-                    <strong>{formatMoney(selectedAnalyticsStudyEntry.billedCents)}</strong>
-                  </div>
-                  <div className="metric-mini">
-                    <span>Collected</span>
-                    <strong>{formatMoney(selectedAnalyticsStudyEntry.collectedCents)}</strong>
-                  </div>
-                  <div className="metric-mini">
-                    <span>Outstanding</span>
-                    <strong>{formatMoney(selectedAnalyticsStudyEntry.outstandingCents)}</strong>
-                  </div>
-                  <div className="metric-mini">
-                    <span>Study count</span>
-                    <strong>{selectedAnalyticsStudyEntry.quantity}</strong>
-                  </div>
-                  <div className="metric-mini">
-                    <span>Invoices</span>
-                    <strong>{selectedAnalyticsStudyEntry.invoicesCount}</strong>
-                  </div>
-                  <div className="metric-mini">
-                    <span>Avg billed</span>
-                    <strong>{formatMoney(selectedAnalyticsStudyEntry.averageBilledCents)}</strong>
-                  </div>
+                <div className="metric-mini">
+                  <span>Collected</span>
+                  <strong>
+                    {formatMoney(selectedAnalyticsStudyEntry.collectedCents)}
+                  </strong>
                 </div>
-                <StudyPerformanceChart points={selectedAnalyticsStudyEntry.trend} />
-                <div className="list-stack compact-scroll">
+                <div className="metric-mini">
+                  <span>Outstanding</span>
+                  <strong>
+                    {formatMoney(selectedAnalyticsStudyEntry.outstandingCents)}
+                  </strong>
+                </div>
+                <div className="metric-mini">
+                  <span>Study count</span>
+                  <strong>{selectedAnalyticsStudyEntry.quantity}</strong>
+                </div>
+                <div className="metric-mini">
+                  <span>Invoices</span>
+                  <strong>{selectedAnalyticsStudyEntry.invoicesCount}</strong>
+                </div>
+                <div className="metric-mini">
+                  <span>Avg billed</span>
+                  <strong>
+                    {formatMoney(
+                      selectedAnalyticsStudyEntry.averageBilledCents,
+                    )}
+                  </strong>
+                </div>
+              </div>
+              <StudyPerformanceChart
+                points={selectedAnalyticsStudyEntry.trend}
+              />
+              <div className="list-stack compact-scroll">
                 {selectedAnalyticsStudyEntry.trend.map((month) => (
-                  <div key={`${selectedAnalyticsStudyEntry.description}-${month.label}`} className="list-row user-admin-row">
+                  <div
+                    key={`${selectedAnalyticsStudyEntry.description}-${month.label}`}
+                    className="list-row user-admin-row"
+                  >
                     <div>
                       <strong>{month.label}</strong>
                       <span>
-                        Billed {formatMoney(month.billedCents)} · Collected {formatMoney(month.collectedCents)} · Outstanding {formatMoney(month.outstandingCents)}
+                        Billed {formatMoney(month.billedCents)} · Collected{" "}
+                        {formatMoney(month.collectedCents)} · Outstanding{" "}
+                        {formatMoney(month.outstandingCents)}
                       </span>
                       <small>
-                        {month.quantity} study item(s) · {month.invoicesCount} invoice(s)
+                        {month.quantity} study item(s) · {month.invoicesCount}{" "}
+                        invoice(s)
                       </small>
                     </div>
                     <small>
@@ -7346,11 +7560,12 @@ export default function App() {
                     </small>
                   </div>
                 ))}
-                </div>
-                <p className="section-note">
-                  Growth compares the latest half of the selected range against the earliest half for this study.
-                </p>
               </div>
+              <p className="section-note">
+                Growth compares the latest half of the selected range against
+                the earliest half for this study.
+              </p>
+            </div>
           ) : null}
         </div>
       </article>
@@ -7378,16 +7593,22 @@ export default function App() {
             </div>
           ) : null}
           {rankedStudyPerformance.map((study, index) => (
-            <div key={`${study.description}-momentum`} className="list-row user-admin-row">
+            <div
+              key={`${study.description}-momentum`}
+              className="list-row user-admin-row"
+            >
               <div>
                 <strong>
                   {index + 1}. {study.description}
                 </strong>
                 <span>
-                  {formatStudyDepartmentLabel(study.department)} · {formatStudyKindLabel(study.kind)} · Billed {formatMoney(study.billedCents)}
+                  {formatStudyDepartmentLabel(study.department)} ·{" "}
+                  {formatStudyKindLabel(study.kind)} · Billed{" "}
+                  {formatMoney(study.billedCents)}
                 </span>
                 <small>
-                  {study.quantity} study item(s) · {study.invoicesCount} invoice(s)
+                  {study.quantity} study item(s) · {study.invoicesCount}{" "}
+                  invoice(s)
                 </small>
               </div>
               <small
@@ -7430,10 +7651,16 @@ export default function App() {
               <div>
                 <strong>{entry.actorName}</strong>
                 <span>
-                  Collections {formatMoney(entry.generatedCents)} · Expenses {formatMoney(entry.lossCents)} · Net {formatMoney(entry.netCents)}
+                  Collections {formatMoney(entry.generatedCents)} · Expenses{" "}
+                  {formatMoney(entry.lossCents)} · Net{" "}
+                  {formatMoney(entry.netCents)}
                 </span>
                 <small>
-                  {entry.paymentsCount} payment(s) · {entry.expensesCount} expense entry(ies) · {entry.inventoryActions} inventory action(s) · Received {entry.stockReceivedQuantity.toFixed(1)} · Issued {entry.stockIssuedQuantity.toFixed(1)} · Expired {entry.stockExpiredQuantity.toFixed(1)}
+                  {entry.paymentsCount} payment(s) · {entry.expensesCount}{" "}
+                  expense entry(ies) · {entry.inventoryActions} inventory
+                  action(s) · Received {entry.stockReceivedQuantity.toFixed(1)}{" "}
+                  · Issued {entry.stockIssuedQuantity.toFixed(1)} · Expired{" "}
+                  {entry.stockExpiredQuantity.toFixed(1)}
                 </small>
               </div>
               <small>{formatMoney(entry.netCents)}</small>
@@ -7441,7 +7668,8 @@ export default function App() {
           ))}
         </div>
         <p className="section-note">
-          Inventory movement comes from audit activity counts because stock items do not currently store unit cost in the database.
+          Inventory movement comes from audit activity counts because stock
+          items do not currently store unit cost in the database.
         </p>
       </article>
 
@@ -7549,7 +7777,9 @@ export default function App() {
               <div>
                 <strong>{service.description}</strong>
                 <span>
-                  {formatStudyDepartmentLabel(service.department)} · {service.quantity} unit(s) · {service.invoicesCount} invoice(s)
+                  {formatStudyDepartmentLabel(service.department)} ·{" "}
+                  {service.quantity} unit(s) · {service.invoicesCount}{" "}
+                  invoice(s)
                 </span>
                 <small>Growth {formatPercent(service.growthRatePercent)}</small>
               </div>
@@ -7602,8 +7832,8 @@ export default function App() {
           <div>
             <h2>Operating expenses</h2>
             <p>
-              Record day-to-day expenses like utilities, transport,
-              consumables, or maintenance from one front-desk page.
+              Record day-to-day expenses like utilities, transport, consumables,
+              or maintenance from one front-desk page.
             </p>
             <div className="inline-actions">
               {analyticsRangeKeys.map((rangeKey) => (
@@ -7627,11 +7857,15 @@ export default function App() {
         <div className="metric-cluster">
           <div className="metric-mini">
             <span>Total expenses</span>
-            <strong>{formatMoney(financeAnalytics.summary.expenseCents)}</strong>
+            <strong>
+              {formatMoney(financeAnalytics.summary.expenseCents)}
+            </strong>
           </div>
           <div className="metric-mini">
             <span>Net profit</span>
-            <strong>{formatMoney(financeAnalytics.summary.netProfitCents)}</strong>
+            <strong>
+              {formatMoney(financeAnalytics.summary.netProfitCents)}
+            </strong>
           </div>
           <div className="metric-mini">
             <span>Range</span>
@@ -7661,7 +7895,10 @@ export default function App() {
             </p>
           </div>
         </div>
-        <form className="form-grid" onSubmit={(event) => event.preventDefault()}>
+        <form
+          className="form-grid"
+          onSubmit={(event) => event.preventDefault()}
+        >
           <label>
             <span>Category</span>
             <select
@@ -7742,9 +7979,7 @@ export default function App() {
             <select
               value={expenseEntryType}
               onChange={(event) =>
-                setExpenseEntryType(
-                  event.target.value as "EXPENSE" | "REFUND",
-                )
+                setExpenseEntryType(event.target.value as "EXPENSE" | "REFUND")
               }
             >
               <option value="EXPENSE">Expense</option>
@@ -7772,7 +8007,9 @@ export default function App() {
                 <span>Search patient or trace code</span>
                 <input
                   value={refundPatientQuery}
-                  onChange={(event) => setRefundPatientQuery(event.target.value)}
+                  onChange={(event) =>
+                    setRefundPatientQuery(event.target.value)
+                  }
                   placeholder="Search by patient name or trace code"
                   required
                 />
@@ -7787,7 +8024,8 @@ export default function App() {
                   <option value="">Select patient</option>
                   {refundPatientMatches.map((patient) => (
                     <option key={`refund-${patient.id}`} value={patient.id}>
-                      {patient.traceCode} · {patient.firstName} {patient.lastName}
+                      {patient.traceCode} · {patient.firstName}{" "}
+                      {patient.lastName}
                     </option>
                   ))}
                 </select>
@@ -7796,18 +8034,23 @@ export default function App() {
                 <div className="summary-panel full-width">
                   <span>Patient refund context</span>
                   <strong>
-                    {selectedRefundPatient.traceCode} · {selectedRefundPatient.firstName} {selectedRefundPatient.lastName}
+                    {selectedRefundPatient.traceCode} ·{" "}
+                    {selectedRefundPatient.firstName}{" "}
+                    {selectedRefundPatient.lastName}
                   </strong>
                   <p className="muted-copy">
-                    {(patientTestsById.get(selectedRefundPatient.id) ?? []).join(", ") ||
-                      "No tests or scans ordered yet."}
+                    {(
+                      patientTestsById.get(selectedRefundPatient.id) ?? []
+                    ).join(", ") || "No tests or scans ordered yet."}
                   </p>
                 </div>
               ) : null}
             </>
           ) : null}
           <label>
-            <span>{expenseEntryType === "REFUND" ? "Refund reason" : "Description"}</span>
+            <span>
+              {expenseEntryType === "REFUND" ? "Refund reason" : "Description"}
+            </span>
             <input
               value={expenseForm.description}
               onChange={(event) =>
@@ -7916,9 +8159,7 @@ export default function App() {
         <div className="section-head">
           <div>
             <h2>Recent expenses</h2>
-            <p>
-              The latest expense entries that match the current filters.
-            </p>
+            <p>The latest expense entries that match the current filters.</p>
           </div>
         </div>
         <div className="list-stack compact-scroll">
@@ -7954,9 +8195,7 @@ export default function App() {
         <div className="section-head">
           <div>
             <h2>Service catalog</h2>
-            <p>
-              Check available services, prices, and turnaround times here.
-            </p>
+            <p>Check available services, prices, and turnaround times here.</p>
           </div>
         </div>
         <form className="form-grid" onSubmit={handleServiceSubmit}>
@@ -8685,6 +8924,7 @@ export default function App() {
   const sectionMap: Record<NavKey, React.JSX.Element> = {
     dashboard: dashboardSection,
     patients: patientSection,
+    patientRecords: patientRecordsSection,
     orders: ordersSection,
     tracking: trackingSection,
     sonography: sonographySection,
@@ -8721,7 +8961,10 @@ export default function App() {
           <div className="login-dna login-dna-left" />
           <div className="login-dna login-dna-right" />
         </div>
-        <section className="login-glass-card" aria-label="Sign in to MediLab Nexus">
+        <section
+          className="login-glass-card"
+          aria-label="Sign in to MediLab Nexus"
+        >
           <div className="login-brand-heading">
             <h1>MediLab</h1>
             <p>Nexus</p>
@@ -8775,13 +9018,18 @@ export default function App() {
                 type="button"
                 className="login-link-button"
                 onClick={() =>
-                  setStatusText("Use a demo profile below or contact your administrator.")
+                  setStatusText(
+                    "Use a demo profile below or contact your administrator.",
+                  )
                 }
               >
                 Forgot PIN?
               </button>
             </div>
-            <button type="submit" className="primary-action full-width login-submit">
+            <button
+              type="submit"
+              className="primary-action full-width login-submit"
+            >
               Login
             </button>
           </form>
@@ -8928,7 +9176,9 @@ export default function App() {
                       <span className="nav-icon">{item.short}</span>
                       <span>{item.label}</span>
                       {item.key === "alerts" && incomingAlerts.length > 0 ? (
-                        <span className="nav-count">{incomingAlerts.length}</span>
+                        <span className="nav-count">
+                          {incomingAlerts.length}
+                        </span>
                       ) : null}
                     </button>
                   ))}

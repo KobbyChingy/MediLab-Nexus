@@ -725,6 +725,19 @@ export type WorkflowPayload = {
     createdAt: string;
     paymentsCount: number;
   }>;
+  payments: Array<{
+    id: string;
+    invoiceId: string;
+    patientId: string;
+    traceCode: string;
+    accessionNumber: string;
+    amountCents: number;
+    method: string;
+    reference: string | null;
+    receivedBy: string | null;
+    notes: string | null;
+    createdAt: string;
+  }>;
   maintenance: Array<Record<string, unknown>>;
   notifications: Array<Record<string, unknown>>;
 };
