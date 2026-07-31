@@ -22,7 +22,7 @@ services:
       - key: MEDILAB_SESSION_COOKIE_SAMESITE
         value: Lax
       - key: MEDILAB_ALLOWED_ORIGINS
-        value: ""
+        value: https://medilab-nexus-demo-uij2.onrender.com
       - key: MEDILAB_DISPATCH_WORKER_ENABLED
         value: "false"
       - key: MEDILAB_FACILITY_CODE

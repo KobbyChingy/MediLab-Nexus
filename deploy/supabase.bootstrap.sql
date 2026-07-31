@@ -1,65 +1,106 @@
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
--- CreateEnum
-CREATE TYPE "CatalogKind" AS ENUM ('TEST', 'IMAGING');
+CREATE OR REPLACE FUNCTION public.medilab_create_type_if_not_exists(
+    p_type_name TEXT,
+    p_ddl TEXT
+) RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = p_type_name
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        EXECUTE p_ddl;
+    END IF;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION public.medilab_add_constraint_if_not_exists(
+    p_table_name TEXT,
+    p_constraint_name TEXT,
+    p_ddl TEXT
+) RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = p_constraint_name
+          AND table_info.relname = p_table_name
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        EXECUTE p_ddl;
+    END IF;
+END
+$$;
 
 -- CreateEnum
-CREATE TYPE "Department" AS ENUM ('LAB', 'IMAGING');
+SELECT public.medilab_create_type_if_not_exists('CatalogKind', 'CREATE TYPE "CatalogKind" AS ENUM (''TEST'', ''IMAGING'')');
 
 -- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('DRAFT', 'REGISTERED', 'COLLECTED', 'IN_PROGRESS', 'READY_FOR_REVIEW', 'VERIFIED', 'RELEASED', 'REJECTED', 'CANCELLED');
+SELECT public.medilab_create_type_if_not_exists('Department', 'CREATE TYPE "Department" AS ENUM (''LAB'', ''IMAGING'')');
 
 -- CreateEnum
-CREATE TYPE "Priority" AS ENUM ('ROUTINE', 'URGENT', 'STAT');
+SELECT public.medilab_create_type_if_not_exists('OrderStatus', 'CREATE TYPE "OrderStatus" AS ENUM (''DRAFT'', ''REGISTERED'', ''COLLECTED'', ''IN_PROGRESS'', ''READY_FOR_REVIEW'', ''VERIFIED'', ''RELEASED'', ''REJECTED'', ''CANCELLED'')');
 
 -- CreateEnum
-CREATE TYPE "SampleStatus" AS ENUM ('PENDING', 'COLLECTED', 'RECEIVED', 'PROCESSING', 'STORED', 'REJECTED', 'DISPOSED');
+SELECT public.medilab_create_type_if_not_exists('Priority', 'CREATE TYPE "Priority" AS ENUM (''ROUTINE'', ''URGENT'', ''STAT'')');
 
 -- CreateEnum
-CREATE TYPE "AppointmentStatus" AS ENUM ('SCHEDULED', 'ARRIVED', 'SCANNING', 'REPORTED', 'COMPLETED', 'CANCELLED');
+SELECT public.medilab_create_type_if_not_exists('SampleStatus', 'CREATE TYPE "SampleStatus" AS ENUM (''PENDING'', ''COLLECTED'', ''RECEIVED'', ''PROCESSING'', ''STORED'', ''REJECTED'', ''DISPOSED'')');
 
 -- CreateEnum
-CREATE TYPE "ReportStatus" AS ENUM ('DRAFT', 'IN_REVIEW', 'APPROVED', 'RELEASED', 'AMENDED');
+SELECT public.medilab_create_type_if_not_exists('AppointmentStatus', 'CREATE TYPE "AppointmentStatus" AS ENUM (''SCHEDULED'', ''ARRIVED'', ''SCANNING'', ''REPORTED'', ''COMPLETED'', ''CANCELLED'')');
 
 -- CreateEnum
-CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'PAID', 'VOID');
+SELECT public.medilab_create_type_if_not_exists('ReportStatus', 'CREATE TYPE "ReportStatus" AS ENUM (''DRAFT'', ''IN_REVIEW'', ''APPROVED'', ''RELEASED'', ''AMENDED'')');
 
 -- CreateEnum
-CREATE TYPE "SyncStatus" AS ENUM ('LOCAL_ONLY', 'PENDING_SYNC', 'SYNCED', 'CONFLICT', 'FAILED');
+SELECT public.medilab_create_type_if_not_exists('InvoiceStatus', 'CREATE TYPE "InvoiceStatus" AS ENUM (''DRAFT'', ''OPEN'', ''PARTIAL'', ''PAID'', ''VOID'')');
 
 -- CreateEnum
-CREATE TYPE "InventoryTxnType" AS ENUM ('RECEIPT', 'ISSUE', 'ADJUSTMENT', 'EXPIRY', 'RETURN');
+SELECT public.medilab_create_type_if_not_exists('SyncStatus', 'CREATE TYPE "SyncStatus" AS ENUM (''LOCAL_ONLY'', ''PENDING_SYNC'', ''SYNCED'', ''CONFLICT'', ''FAILED'')');
 
 -- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'MOBILE_MONEY_MTN', 'MOBILE_MONEY_VODAFONE', 'CARD', 'NHIS', 'BANK_TRANSFER');
+SELECT public.medilab_create_type_if_not_exists('InventoryTxnType', 'CREATE TYPE "InventoryTxnType" AS ENUM (''RECEIPT'', ''ISSUE'', ''ADJUSTMENT'', ''EXPIRY'', ''RETURN'')');
 
 -- CreateEnum
-CREATE TYPE "PaymentResponsibility" AS ENUM ('PATIENT', 'PAYER');
+SELECT public.medilab_create_type_if_not_exists('PaymentMethod', 'CREATE TYPE "PaymentMethod" AS ENUM (''CASH'', ''MOBILE_MONEY_MTN'', ''MOBILE_MONEY_VODAFONE'', ''CARD'', ''NHIS'', ''BANK_TRANSFER'')');
 
 -- CreateEnum
-CREATE TYPE "PayerType" AS ENUM ('SELF_PAY', 'NHIS', 'INSURANCE', 'CORPORATE');
+SELECT public.medilab_create_type_if_not_exists('PaymentResponsibility', 'CREATE TYPE "PaymentResponsibility" AS ENUM (''PATIENT'', ''PAYER'')');
 
 -- CreateEnum
-CREATE TYPE "ClaimStatus" AS ENUM ('NOT_APPLICABLE', 'PENDING', 'SUBMITTED', 'PARTIAL', 'SETTLED', 'REJECTED');
+SELECT public.medilab_create_type_if_not_exists('PayerType', 'CREATE TYPE "PayerType" AS ENUM (''SELF_PAY'', ''NHIS'', ''INSURANCE'', ''CORPORATE'')');
 
 -- CreateEnum
-CREATE TYPE "NotificationChannel" AS ENUM ('SMS', 'EMAIL', 'WHATSAPP', 'INTERNAL');
+SELECT public.medilab_create_type_if_not_exists('ClaimStatus', 'CREATE TYPE "ClaimStatus" AS ENUM (''NOT_APPLICABLE'', ''PENDING'', ''SUBMITTED'', ''PARTIAL'', ''SETTLED'', ''REJECTED'')');
 
 -- CreateEnum
-CREATE TYPE "NotificationStatus" AS ENUM ('QUEUED', 'SENT', 'FAILED', 'CANCELLED');
+SELECT public.medilab_create_type_if_not_exists('NotificationChannel', 'CREATE TYPE "NotificationChannel" AS ENUM (''SMS'', ''EMAIL'', ''WHATSAPP'', ''INTERNAL'')');
 
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('RECEPTION', 'PHLEBOTOMIST', 'SONOGRAPHER', 'DOCTOR', 'LAB_TECH', 'RADIOLOGIST', 'MANAGER', 'FINANCE', 'QA', 'ADMIN');
+SELECT public.medilab_create_type_if_not_exists('NotificationStatus', 'CREATE TYPE "NotificationStatus" AS ENUM (''QUEUED'', ''SENT'', ''FAILED'', ''CANCELLED'')');
 
 -- CreateEnum
-CREATE TYPE "MaintenanceStatus" AS ENUM ('SCHEDULED', 'DUE', 'COMPLETED', 'OVERDUE');
+SELECT public.medilab_create_type_if_not_exists('UserRole', 'CREATE TYPE "UserRole" AS ENUM (''RECEPTION'', ''PHLEBOTOMIST'', ''SONOGRAPHER'', ''DOCTOR'', ''LAB_TECH'', ''RADIOLOGIST'', ''MANAGER'', ''FINANCE'', ''QA'', ''ADMIN'')');
 
 -- CreateEnum
-CREATE TYPE "InstrumentCategory" AS ENUM ('ANALYZER', 'ULTRASOUND', 'PRINTER', 'SERVER');
+SELECT public.medilab_create_type_if_not_exists('MaintenanceStatus', 'CREATE TYPE "MaintenanceStatus" AS ENUM (''SCHEDULED'', ''DUE'', ''COMPLETED'', ''OVERDUE'')');
+
+-- CreateEnum
+SELECT public.medilab_create_type_if_not_exists('InstrumentCategory', 'CREATE TYPE "InstrumentCategory" AS ENUM (''ANALYZER'', ''ULTRASOUND'', ''PRINTER'', ''SERVER'')');
 
 -- CreateTable
-CREATE TABLE "Facility" (
+CREATE TABLE IF NOT EXISTS "Facility" (
     "id" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -78,7 +119,7 @@ CREATE TABLE "Facility" (
 );
 
 -- CreateTable
-CREATE TABLE "ExpenseRecord" (
+CREATE TABLE IF NOT EXISTS "ExpenseRecord" (
     "id" TEXT NOT NULL,
     "facilityId" TEXT NOT NULL,
     "category" TEXT NOT NULL,
@@ -94,7 +135,7 @@ CREATE TABLE "ExpenseRecord" (
 );
 
 -- CreateTable
-CREATE TABLE "ReferralDoctor" (
+CREATE TABLE IF NOT EXISTS "ReferralDoctor" (
     "id" TEXT NOT NULL,
     "facilityId" TEXT NOT NULL,
     "fullName" TEXT NOT NULL,
@@ -109,7 +150,7 @@ CREATE TABLE "ReferralDoctor" (
 );
 
 -- CreateTable
-CREATE TABLE "AppUser" (
+CREATE TABLE IF NOT EXISTS "AppUser" (
     "id" TEXT NOT NULL,
     "facilityId" TEXT NOT NULL,
     "username" TEXT NOT NULL,
@@ -129,7 +170,7 @@ CREATE TABLE "AppUser" (
 );
 
 -- CreateTable
-CREATE TABLE "AppSession" (
+CREATE TABLE IF NOT EXISTS "AppSession" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "tokenHash" TEXT NOT NULL,
@@ -141,7 +182,7 @@ CREATE TABLE "AppSession" (
 );
 
 -- CreateTable
-CREATE TABLE "Patient" (
+CREATE TABLE IF NOT EXISTS "Patient" (
     "id" TEXT NOT NULL,
     "facilityId" TEXT NOT NULL,
     "referralDoctorId" TEXT,
@@ -170,7 +211,7 @@ CREATE TABLE "Patient" (
 );
 
 -- CreateTable
-CREATE TABLE "CatalogItem" (
+CREATE TABLE IF NOT EXISTS "CatalogItem" (
     "id" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -189,7 +230,7 @@ CREATE TABLE "CatalogItem" (
 );
 
 -- CreateTable
-CREATE TABLE "DiagnosticOrder" (
+CREATE TABLE IF NOT EXISTS "DiagnosticOrder" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
     "accessionNumber" TEXT NOT NULL,
@@ -214,7 +255,7 @@ CREATE TABLE "DiagnosticOrder" (
 );
 
 -- CreateTable
-CREATE TABLE "OrderItem" (
+CREATE TABLE IF NOT EXISTS "OrderItem" (
     "id" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
     "catalogItemId" TEXT NOT NULL,
@@ -232,7 +273,7 @@ CREATE TABLE "OrderItem" (
 );
 
 -- CreateTable
-CREATE TABLE "Sample" (
+CREATE TABLE IF NOT EXISTS "Sample" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
@@ -249,7 +290,7 @@ CREATE TABLE "Sample" (
 );
 
 -- CreateTable
-CREATE TABLE "ImagingStudy" (
+CREATE TABLE IF NOT EXISTS "ImagingStudy" (
     "id" TEXT NOT NULL,
     "orderItemId" TEXT NOT NULL,
     "modality" TEXT NOT NULL,
@@ -268,7 +309,7 @@ CREATE TABLE "ImagingStudy" (
 );
 
 -- CreateTable
-CREATE TABLE "Report" (
+CREATE TABLE IF NOT EXISTS "Report" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
@@ -290,7 +331,7 @@ CREATE TABLE "Report" (
 );
 
 -- CreateTable
-CREATE TABLE "ReportTemplate" (
+CREATE TABLE IF NOT EXISTS "ReportTemplate" (
     "id" TEXT NOT NULL,
     "facilityId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -310,7 +351,7 @@ CREATE TABLE "ReportTemplate" (
 );
 
 -- CreateTable
-CREATE TABLE "Invoice" (
+CREATE TABLE IF NOT EXISTS "Invoice" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
@@ -335,7 +376,7 @@ CREATE TABLE "Invoice" (
 );
 
 -- CreateTable
-CREATE TABLE "InvoiceLine" (
+CREATE TABLE IF NOT EXISTS "InvoiceLine" (
     "id" TEXT NOT NULL,
     "invoiceId" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -347,7 +388,7 @@ CREATE TABLE "InvoiceLine" (
 );
 
 -- CreateTable
-CREATE TABLE "InventoryItem" (
+CREATE TABLE IF NOT EXISTS "InventoryItem" (
     "id" TEXT NOT NULL,
     "sku" TEXT NOT NULL,
     "category" TEXT NOT NULL DEFAULT 'Reagent',
@@ -366,7 +407,7 @@ CREATE TABLE "InventoryItem" (
 );
 
 -- CreateTable
-CREATE TABLE "InventoryTransaction" (
+CREATE TABLE IF NOT EXISTS "InventoryTransaction" (
     "id" TEXT NOT NULL,
     "itemId" TEXT NOT NULL,
     "type" "InventoryTxnType" NOT NULL,
@@ -378,7 +419,7 @@ CREATE TABLE "InventoryTransaction" (
 );
 
 -- CreateTable
-CREATE TABLE "QualityControlEvent" (
+CREATE TABLE IF NOT EXISTS "QualityControlEvent" (
     "id" TEXT NOT NULL,
     "module" TEXT NOT NULL,
     "instrumentName" TEXT NOT NULL,
@@ -401,7 +442,7 @@ CREATE TABLE "QualityControlEvent" (
 );
 
 -- CreateTable
-CREATE TABLE "SyncEvent" (
+CREATE TABLE IF NOT EXISTS "SyncEvent" (
     "id" TEXT NOT NULL,
     "entityType" TEXT NOT NULL,
     "entityId" TEXT NOT NULL,
@@ -417,7 +458,7 @@ CREATE TABLE "SyncEvent" (
 );
 
 -- CreateTable
-CREATE TABLE "PaymentRecord" (
+CREATE TABLE IF NOT EXISTS "PaymentRecord" (
     "id" TEXT NOT NULL,
     "invoiceId" TEXT NOT NULL,
     "method" "PaymentMethod" NOT NULL,
@@ -433,7 +474,7 @@ CREATE TABLE "PaymentRecord" (
 );
 
 -- CreateTable
-CREATE TABLE "Instrument" (
+CREATE TABLE IF NOT EXISTS "Instrument" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "category" "InstrumentCategory" NOT NULL,
@@ -448,7 +489,7 @@ CREATE TABLE "Instrument" (
 );
 
 -- CreateTable
-CREATE TABLE "MaintenanceEvent" (
+CREATE TABLE IF NOT EXISTS "MaintenanceEvent" (
     "id" TEXT NOT NULL,
     "instrumentId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -464,7 +505,7 @@ CREATE TABLE "MaintenanceEvent" (
 );
 
 -- CreateTable
-CREATE TABLE "NotificationQueue" (
+CREATE TABLE IF NOT EXISTS "NotificationQueue" (
     "id" TEXT NOT NULL,
     "patientId" TEXT,
     "traceCode" TEXT,
@@ -481,7 +522,7 @@ CREATE TABLE "NotificationQueue" (
 );
 
 -- CreateTable
-CREATE TABLE "AuditLog" (
+CREATE TABLE IF NOT EXISTS "AuditLog" (
     "id" TEXT NOT NULL,
     "actorName" TEXT NOT NULL,
     "actorRole" "UserRole" NOT NULL,
@@ -497,7 +538,7 @@ CREATE TABLE "AuditLog" (
 );
 
 -- CreateTable
-CREATE TABLE "BackupSnapshot" (
+CREATE TABLE IF NOT EXISTS "BackupSnapshot" (
     "id" TEXT NOT NULL,
     "label" TEXT NOT NULL,
     "filePath" TEXT NOT NULL,
@@ -511,181 +552,184 @@ CREATE TABLE "BackupSnapshot" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Facility_code_key" ON "Facility"("code");
+CREATE UNIQUE INDEX IF NOT EXISTS "Facility_code_key" ON "Facility"("code");
 
 -- CreateIndex
-CREATE INDEX "ExpenseRecord_facilityId_incurredAt_idx" ON "ExpenseRecord"("facilityId", "incurredAt");
+CREATE INDEX IF NOT EXISTS "ExpenseRecord_facilityId_incurredAt_idx" ON "ExpenseRecord"("facilityId", "incurredAt");
 
 -- CreateIndex
-CREATE INDEX "ExpenseRecord_category_incurredAt_idx" ON "ExpenseRecord"("category", "incurredAt");
+CREATE INDEX IF NOT EXISTS "ExpenseRecord_category_incurredAt_idx" ON "ExpenseRecord"("category", "incurredAt");
 
 -- CreateIndex
-CREATE INDEX "ReferralDoctor_facilityId_fullName_idx" ON "ReferralDoctor"("facilityId", "fullName");
+CREATE INDEX IF NOT EXISTS "ReferralDoctor_facilityId_fullName_idx" ON "ReferralDoctor"("facilityId", "fullName");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ReferralDoctor_facilityId_fullName_key" ON "ReferralDoctor"("facilityId", "fullName");
+CREATE UNIQUE INDEX IF NOT EXISTS "ReferralDoctor_facilityId_fullName_key" ON "ReferralDoctor"("facilityId", "fullName");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AppUser_username_key" ON "AppUser"("username");
+CREATE UNIQUE INDEX IF NOT EXISTS "AppUser_username_key" ON "AppUser"("username");
 
 -- CreateIndex
-CREATE INDEX "AppUser_role_isActive_idx" ON "AppUser"("role", "isActive");
+CREATE INDEX IF NOT EXISTS "AppUser_role_isActive_idx" ON "AppUser"("role", "isActive");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AppSession_tokenHash_key" ON "AppSession"("tokenHash");
+CREATE UNIQUE INDEX IF NOT EXISTS "AppSession_tokenHash_key" ON "AppSession"("tokenHash");
 
 -- CreateIndex
-CREATE INDEX "AppSession_userId_expiresAt_idx" ON "AppSession"("userId", "expiresAt");
+CREATE INDEX IF NOT EXISTS "AppSession_userId_expiresAt_idx" ON "AppSession"("userId", "expiresAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Patient_traceCode_key" ON "Patient"("traceCode");
+CREATE UNIQUE INDEX IF NOT EXISTS "Patient_traceCode_key" ON "Patient"("traceCode");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Patient_nhisId_key" ON "Patient"("nhisId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Patient_nhisId_key" ON "Patient"("nhisId");
 
 -- CreateIndex
-CREATE INDEX "Patient_lastName_firstName_idx" ON "Patient"("lastName", "firstName");
+CREATE INDEX IF NOT EXISTS "Patient_lastName_firstName_idx" ON "Patient"("lastName", "firstName");
 
 -- CreateIndex
-CREATE INDEX "Patient_phone_idx" ON "Patient"("phone");
+CREATE INDEX IF NOT EXISTS "Patient_phone_idx" ON "Patient"("phone");
 
 -- CreateIndex
-CREATE INDEX "Patient_traceSequence_idx" ON "Patient"("traceSequence");
+CREATE INDEX IF NOT EXISTS "Patient_traceSequence_idx" ON "Patient"("traceSequence");
 
 -- CreateIndex
-CREATE INDEX "Patient_referralDoctorId_idx" ON "Patient"("referralDoctorId");
+CREATE INDEX IF NOT EXISTS "Patient_referralDoctorId_idx" ON "Patient"("referralDoctorId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CatalogItem_code_key" ON "CatalogItem"("code");
+CREATE UNIQUE INDEX IF NOT EXISTS "CatalogItem_code_key" ON "CatalogItem"("code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "DiagnosticOrder_accessionNumber_key" ON "DiagnosticOrder"("accessionNumber");
+CREATE UNIQUE INDEX IF NOT EXISTS "DiagnosticOrder_accessionNumber_key" ON "DiagnosticOrder"("accessionNumber");
 
 -- CreateIndex
-CREATE INDEX "DiagnosticOrder_patientId_createdAt_idx" ON "DiagnosticOrder"("patientId", "createdAt");
+CREATE INDEX IF NOT EXISTS "DiagnosticOrder_patientId_createdAt_idx" ON "DiagnosticOrder"("patientId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "DiagnosticOrder_status_idx" ON "DiagnosticOrder"("status");
+CREATE INDEX IF NOT EXISTS "DiagnosticOrder_status_idx" ON "DiagnosticOrder"("status");
 
 -- CreateIndex
-CREATE INDEX "Sample_traceLabel_idx" ON "Sample"("traceLabel");
+CREATE INDEX IF NOT EXISTS "Sample_traceLabel_idx" ON "Sample"("traceLabel");
 
 -- CreateIndex
-CREATE INDEX "Sample_status_idx" ON "Sample"("status");
+CREATE INDEX IF NOT EXISTS "Sample_status_idx" ON "Sample"("status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ImagingStudy_orderItemId_key" ON "ImagingStudy"("orderItemId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ImagingStudy_orderItemId_key" ON "ImagingStudy"("orderItemId");
 
 -- CreateIndex
-CREATE INDEX "ImagingStudy_appointmentStatus_idx" ON "ImagingStudy"("appointmentStatus");
+CREATE INDEX IF NOT EXISTS "ImagingStudy_appointmentStatus_idx" ON "ImagingStudy"("appointmentStatus");
 
 -- CreateIndex
-CREATE INDEX "Report_status_idx" ON "Report"("status");
+CREATE INDEX IF NOT EXISTS "Report_status_idx" ON "Report"("status");
 
 -- CreateIndex
-CREATE INDEX "ReportTemplate_facilityId_templateKind_idx" ON "ReportTemplate"("facilityId", "templateKind");
+CREATE INDEX IF NOT EXISTS "ReportTemplate_facilityId_templateKind_idx" ON "ReportTemplate"("facilityId", "templateKind");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ReportTemplate_facilityId_name_key" ON "ReportTemplate"("facilityId", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "ReportTemplate_facilityId_name_key" ON "ReportTemplate"("facilityId", "name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Invoice_orderId_key" ON "Invoice"("orderId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Invoice_orderId_key" ON "Invoice"("orderId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "InventoryItem_sku_key" ON "InventoryItem"("sku");
+CREATE UNIQUE INDEX IF NOT EXISTS "InventoryItem_sku_key" ON "InventoryItem"("sku");
 
 -- CreateIndex
-CREATE INDEX "QualityControlEvent_module_status_idx" ON "QualityControlEvent"("module", "status");
+CREATE INDEX IF NOT EXISTS "QualityControlEvent_module_status_idx" ON "QualityControlEvent"("module", "status");
 
 -- CreateIndex
-CREATE INDEX "QualityControlEvent_instrumentName_analyte_occurredAt_idx" ON "QualityControlEvent"("instrumentName", "analyte", "occurredAt");
+CREATE INDEX IF NOT EXISTS "QualityControlEvent_instrumentName_analyte_occurredAt_idx" ON "QualityControlEvent"("instrumentName", "analyte", "occurredAt");
 
 -- CreateIndex
-CREATE INDEX "SyncEvent_status_createdAt_idx" ON "SyncEvent"("status", "createdAt");
+CREATE INDEX IF NOT EXISTS "SyncEvent_status_createdAt_idx" ON "SyncEvent"("status", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "SyncEvent_entityType_entityId_idx" ON "SyncEvent"("entityType", "entityId");
+CREATE INDEX IF NOT EXISTS "SyncEvent_entityType_entityId_idx" ON "SyncEvent"("entityType", "entityId");
 
 -- CreateIndex
-CREATE INDEX "PaymentRecord_method_createdAt_idx" ON "PaymentRecord"("method", "createdAt");
+CREATE INDEX IF NOT EXISTS "PaymentRecord_method_createdAt_idx" ON "PaymentRecord"("method", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Instrument_name_key" ON "Instrument"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "Instrument_name_key" ON "Instrument"("name");
 
 -- CreateIndex
-CREATE INDEX "MaintenanceEvent_status_nextDueAt_idx" ON "MaintenanceEvent"("status", "nextDueAt");
+CREATE INDEX IF NOT EXISTS "MaintenanceEvent_status_nextDueAt_idx" ON "MaintenanceEvent"("status", "nextDueAt");
 
 -- CreateIndex
-CREATE INDEX "NotificationQueue_status_channel_createdAt_idx" ON "NotificationQueue"("status", "channel", "createdAt");
+CREATE INDEX IF NOT EXISTS "NotificationQueue_status_channel_createdAt_idx" ON "NotificationQueue"("status", "channel", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_entityType_entityId_idx" ON "AuditLog"("entityType", "entityId");
+CREATE INDEX IF NOT EXISTS "AuditLog_entityType_entityId_idx" ON "AuditLog"("entityType", "entityId");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_traceCode_createdAt_idx" ON "AuditLog"("traceCode", "createdAt");
+CREATE INDEX IF NOT EXISTS "AuditLog_traceCode_createdAt_idx" ON "AuditLog"("traceCode", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_actorRole_createdAt_idx" ON "AuditLog"("actorRole", "createdAt");
+CREATE INDEX IF NOT EXISTS "AuditLog_actorRole_createdAt_idx" ON "AuditLog"("actorRole", "createdAt");
 
 -- AddForeignKey
-ALTER TABLE "ExpenseRecord" ADD CONSTRAINT "ExpenseRecord_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('ExpenseRecord', 'ExpenseRecord_facilityId_fkey', 'ALTER TABLE "ExpenseRecord" ADD CONSTRAINT "ExpenseRecord_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "ReferralDoctor" ADD CONSTRAINT "ReferralDoctor_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('ReferralDoctor', 'ReferralDoctor_facilityId_fkey', 'ALTER TABLE "ReferralDoctor" ADD CONSTRAINT "ReferralDoctor_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "AppUser" ADD CONSTRAINT "AppUser_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('AppUser', 'AppUser_facilityId_fkey', 'ALTER TABLE "AppUser" ADD CONSTRAINT "AppUser_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "AppSession" ADD CONSTRAINT "AppSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AppUser"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('AppSession', 'AppSession_userId_fkey', 'ALTER TABLE "AppSession" ADD CONSTRAINT "AppSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AppUser"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Patient" ADD CONSTRAINT "Patient_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Patient', 'Patient_facilityId_fkey', 'ALTER TABLE "Patient" ADD CONSTRAINT "Patient_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Patient" ADD CONSTRAINT "Patient_referralDoctorId_fkey" FOREIGN KEY ("referralDoctorId") REFERENCES "ReferralDoctor"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Patient', 'Patient_referralDoctorId_fkey', 'ALTER TABLE "Patient" ADD CONSTRAINT "Patient_referralDoctorId_fkey" FOREIGN KEY ("referralDoctorId") REFERENCES "ReferralDoctor"("id") ON DELETE SET NULL ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "DiagnosticOrder" ADD CONSTRAINT "DiagnosticOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('DiagnosticOrder', 'DiagnosticOrder_patientId_fkey', 'ALTER TABLE "DiagnosticOrder" ADD CONSTRAINT "DiagnosticOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('OrderItem', 'OrderItem_orderId_fkey', 'ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_catalogItemId_fkey" FOREIGN KEY ("catalogItemId") REFERENCES "CatalogItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('OrderItem', 'OrderItem_catalogItemId_fkey', 'ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_catalogItemId_fkey" FOREIGN KEY ("catalogItemId") REFERENCES "CatalogItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Sample" ADD CONSTRAINT "Sample_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Sample', 'Sample_patientId_fkey', 'ALTER TABLE "Sample" ADD CONSTRAINT "Sample_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Sample" ADD CONSTRAINT "Sample_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Sample', 'Sample_orderId_fkey', 'ALTER TABLE "Sample" ADD CONSTRAINT "Sample_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "ImagingStudy" ADD CONSTRAINT "ImagingStudy_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('ImagingStudy', 'ImagingStudy_orderItemId_fkey', 'ALTER TABLE "ImagingStudy" ADD CONSTRAINT "ImagingStudy_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Report" ADD CONSTRAINT "Report_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Report', 'Report_patientId_fkey', 'ALTER TABLE "Report" ADD CONSTRAINT "Report_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Report" ADD CONSTRAINT "Report_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Report', 'Report_orderId_fkey', 'ALTER TABLE "Report" ADD CONSTRAINT "Report_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "ReportTemplate" ADD CONSTRAINT "ReportTemplate_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('ReportTemplate', 'ReportTemplate_facilityId_fkey', 'ALTER TABLE "ReportTemplate" ADD CONSTRAINT "ReportTemplate_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Invoice', 'Invoice_patientId_fkey', 'ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('Invoice', 'Invoice_orderId_fkey', 'ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "InvoiceLine" ADD CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('InvoiceLine', 'InvoiceLine_invoiceId_fkey', 'ALTER TABLE "InvoiceLine" ADD CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "InventoryTransaction" ADD CONSTRAINT "InventoryTransaction_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('InventoryTransaction', 'InventoryTransaction_itemId_fkey', 'ALTER TABLE "InventoryTransaction" ADD CONSTRAINT "InventoryTransaction_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "PaymentRecord" ADD CONSTRAINT "PaymentRecord_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('PaymentRecord', 'PaymentRecord_invoiceId_fkey', 'ALTER TABLE "PaymentRecord" ADD CONSTRAINT "PaymentRecord_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
 
 -- AddForeignKey
-ALTER TABLE "MaintenanceEvent" ADD CONSTRAINT "MaintenanceEvent_instrumentId_fkey" FOREIGN KEY ("instrumentId") REFERENCES "Instrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+SELECT public.medilab_add_constraint_if_not_exists('MaintenanceEvent', 'MaintenanceEvent_instrumentId_fkey', 'ALTER TABLE "MaintenanceEvent" ADD CONSTRAINT "MaintenanceEvent_instrumentId_fkey" FOREIGN KEY ("instrumentId") REFERENCES "Instrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+
+DROP FUNCTION IF EXISTS public.medilab_add_constraint_if_not_exists(TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.medilab_create_type_if_not_exists(TEXT, TEXT);

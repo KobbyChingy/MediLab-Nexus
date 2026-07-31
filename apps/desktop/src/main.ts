@@ -99,11 +99,14 @@ if (!singleInstanceLock) {
     mainWindow.focus();
   });
 
-  app.whenReady().then(() => createMainWindow()).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    dialog.showErrorBox("MediLab Nexus", message);
-    app.quit();
-  });
+  app
+    .whenReady()
+    .then(() => createMainWindow())
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      dialog.showErrorBox("MediLab Nexus", message);
+      app.quit();
+    });
 }
 
 app.on("window-all-closed", () => {
