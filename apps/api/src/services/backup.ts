@@ -10,12 +10,62 @@ const storageRoot =
   path.resolve(process.cwd(), "storage");
 const backupDir = path.join(storageRoot, "backups");
 
+const requiredSnapshotCollections = [
+  "facilities",
+  "users",
+  "sessions",
+  "catalogItems",
+  "patients",
+  "orders",
+  "orderItems",
+  "samples",
+  "imagingStudies",
+  "reports",
+  "invoices",
+  "invoiceLines",
+  "inventoryItems",
+  "inventoryTransactions",
+  "qualityControlEvents",
+  "instruments",
+  "maintenanceEvents",
+  "paymentRecords",
+  "notifications",
+  "syncEvents",
+  "auditLogs",
+] as const;
+
+function normalizeBackupLabel(label: string | undefined) {
+  const sanitized = label
+    ?.trim()
+    .replace(/\.enc$/iu, "")
+    .replace(/[^a-z0-9._-]+/giu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 90);
+
+  if (sanitized) {
+    return sanitized;
+  }
+
+  return "medilab-import";
+}
+
+function assertBackupSnapshotShape(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Backup file is malformed.");
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const key of requiredSnapshotCollections) {
+    if (!Array.isArray(record[key])) {
+      throw new Error("Backup file is incomplete.");
+    }
+  }
+}
+
 function reviveDates<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => reviveDates(item)) as T;
-  }
-
-  if (value && typeof value === "object") {
+  } else if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, entry]) => {
         if (typeof entry === "string" && /(At|Date|Birth|For)$/u.test(key)) {
@@ -132,6 +182,56 @@ export async function createEncryptedBackup(
     entityType: "BackupSnapshot",
     entityId: snapshotRecord.id,
     summary: `Encrypted local backup ${label} created`,
+  });
+
+  return snapshotRecord;
+}
+
+export async function importEncryptedBackup(
+  prisma: PrismaClient,
+  actor: ActorContext,
+  input: {
+    label?: string;
+    encryptedPayload: string;
+  },
+) {
+  await mkdir(backupDir, { recursive: true });
+
+  const encryptedPayload = input.encryptedPayload.trim();
+
+  try {
+    const decryptedPayload = JSON.parse(decryptText(encryptedPayload));
+    assertBackupSnapshotShape(decryptedPayload);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.message.startsWith("Backup file")
+        ? error.message
+        : "Backup file could not be decrypted or verified.",
+    );
+  }
+
+  const checksum = createHash("sha256").update(encryptedPayload).digest("hex");
+  const timestamp = new Date().toISOString().replace(/[.:]/g, "-");
+  const label = `${normalizeBackupLabel(input.label)}-${timestamp}`;
+  const filePath = path.join(backupDir, `${label}.enc`);
+
+  await writeFile(filePath, encryptedPayload, "utf8");
+
+  const snapshotRecord = await prisma.backupSnapshot.create({
+    data: {
+      label,
+      filePath,
+      checksum,
+      encrypted: true,
+      createdBy: actor.displayName,
+    },
+  });
+
+  await recordAudit(prisma, actor, {
+    action: "BACKUP_IMPORTED",
+    entityType: "BackupSnapshot",
+    entityId: snapshotRecord.id,
+    summary: `Encrypted backup ${label} imported`,
   });
 
   return snapshotRecord;

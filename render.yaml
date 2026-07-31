@@ -33,3 +33,5 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: DIRECT_URL
+        sync: false

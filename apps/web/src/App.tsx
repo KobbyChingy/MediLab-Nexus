@@ -1,9 +1,12 @@
 import {
+  type ChangeOwnPinInput,
   type AdminOverviewPayload,
   type AdminUserInput,
   type AdminUserSummaryPayload,
   type AuthSessionPayload,
   analyticsRangeKeys,
+  claimStatuses,
+  sampleStatuses,
   type BulkServiceImportMode,
   type BulkServiceInput,
   type BootstrapPayload,
@@ -17,6 +20,7 @@ import {
   appointmentStatuses,
   type InternalAlertPayload,
   type ImagingStudyUpdateInput,
+  type InitialSetupInput,
   type NotificationInput,
   type OrderInput,
   type PatientInput,
@@ -30,7 +34,14 @@ import {
   type ReferralDoctorInput,
   type ReferralDoctorSummaryPayload,
   type ReportInput,
+  type ReportTemplateInput,
+  type ReportTemplatePayload,
+  type ReportTemplateAssistPayload,
+  type ReportStatusUpdateInput,
   type ServiceInput,
+  type SetupStatusPayload,
+  reportStatuses,
+  type SampleUpdateInput,
   type UserDirectoryEntryPayload,
   type IntegrationDispatchRunPayload,
   type IntegrationDispatchStatusPayload,
@@ -38,6 +49,8 @@ import {
   catalogSeed,
   notificationChannels,
   paymentMethods,
+  paymentResponsibilities,
+  payerTypes,
   reportTemplateKinds,
   userRoles,
 } from "@medilab/shared";
@@ -49,7 +62,6 @@ import {
   fallbackBootstrap,
   fallbackFinanceAnalytics,
 } from "./data/fallback";
-import { PortalLoginSelector } from "./components/portal-surfaces";
 import {
   InternalBellPanel,
   SystemAlertsSection,
@@ -57,6 +69,7 @@ import {
   SystemSettingsSection,
   SystemUserManagementSection,
 } from "./components/system-sections";
+import { RichTextEditor } from "./components/rich-text-editor";
 
 type NavKey =
   | "dashboard"
@@ -87,6 +100,7 @@ type PatientRecord = {
   dateOfBirth?: string;
   gender?: string;
   phone: string;
+  location?: string;
   nhisId?: string;
   allergies?: string;
   medicalHistory?: string;
@@ -98,6 +112,8 @@ type PatientRecord = {
   referralDoctorName?: string | null;
   referralDoctorCommissionPercent?: number | null;
 };
+
+type InitialSetupFormState = InitialSetupInput;
 
 type PatientTimelineEntry = {
   id: string;
@@ -117,10 +133,17 @@ type BackupRecord = {
 };
 
 type InvoiceRecord = WorkflowPayload["invoices"][number];
+type SampleRecord = WorkflowPayload["samples"][number];
+type ReportRecord = WorkflowPayload["reports"][number];
 
 type IntakeOrderState = {
   orderedBy: string;
   priority: OrderInput["priority"];
+  payerType: OrderInput["payerType"];
+  payerName: string;
+  payerCoveragePercent: number;
+  payerMemberId: string;
+  payerAuthorizationCode: string;
   insuranceProvider: string;
   insuranceAuthorized: boolean;
   scheduledFor: string;
@@ -171,28 +194,7 @@ type ExpenseFiltersState = {
   endDate: string;
 };
 
-type UltrasoundReportAssistState = {
-  sonographerName: string;
-  technique: string;
-  measurementsText: string;
-  recommendation: string;
-  gestationalAge: string;
-  fetalHeartRate: string;
-  placentaLocation: string;
-  amnioticFluid: string;
-  liverSpan: string;
-  gallbladder: string;
-  biliaryTree: string;
-  renalSurvey: string;
-  uterineSize: string;
-  endometriumThickness: string;
-  rightAdnexa: string;
-  leftAdnexa: string;
-  ejectionFraction: string;
-  chamberAssessment: string;
-  valveAssessment: string;
-  pericardium: string;
-};
+type UltrasoundReportAssistState = ReportTemplateAssistPayload;
 
 type PresetAssistFieldConfig = {
   key: keyof UltrasoundReportAssistState;
@@ -249,8 +251,6 @@ type PortalProfile = {
   highlights: string[];
   steps: string[];
   actions: PortalAction[];
-  demoUsername: string;
-  demoPin: string;
 };
 
 type PortalSnapshotCard = {
@@ -283,6 +283,7 @@ function buildPatientDraft(
     dateOfBirth: patient?.dateOfBirth ?? "",
     gender: patient?.gender ?? "Female",
     phone: patient?.phone ?? "",
+    location: patient?.location ?? "",
     nhisId: patient?.nhisId ?? "",
     allergies: patient?.allergies ?? "",
     medicalHistory: patient?.medicalHistory ?? "",
@@ -321,12 +322,20 @@ const defaultUltrasoundReportAssistState: UltrasoundReportAssistState = {
 const apiBase = import.meta.env.VITE_API_BASE ?? "/api";
 
 const analyticsRangeLabels: Record<FinanceAnalyticsPayload["range"], string> = {
+  TODAY: "Today",
+  YESTERDAY: "Yesterday",
   "7D": "7 days",
-  "30D": "30 days",
-  "90D": "90 days",
-  "365D": "365 days",
+  "30D": "A month",
+  CUSTOM: "Custom",
   ALL: "All time",
 };
+
+const analyticsQuickRangeKeys: Array<FinanceAnalyticsPayload["range"]> = [
+  "TODAY",
+  "YESTERDAY",
+  "7D",
+  "30D",
+];
 
 const reportTemplateLabels: Record<ReportInput["templateKind"], string> = {
   LAB_STANDARD: "Scan standard",
@@ -654,14 +663,6 @@ const defaultPortalActions: PortalAction[] = [
   { label: "Open sonography", target: "sonography", tone: "ghost" },
 ];
 
-const primaryPortalRoles: PrimaryPortalRole[] = [
-  "ADMIN",
-  "MANAGER",
-  "DOCTOR",
-  "RECEPTION",
-  "SONOGRAPHER",
-];
-
 const navCapabilityRequirements: Partial<Record<NavKey, Capability[]>> = {
   orders: ["order:write"],
   tracking: ["order:write"],
@@ -772,8 +773,6 @@ const portalProfiles: Partial<
       { label: "Open sonography", target: "sonography", tone: "primary" },
       { label: "System settings", target: "settings", tone: "ghost" },
     ],
-    demoUsername: "admin",
-    demoPin: "2468",
   },
   MANAGER: {
     label: "Manager portal",
@@ -812,8 +811,6 @@ const portalProfiles: Partial<
       { label: "Open operations report", target: "analytics", tone: "primary" },
       { label: "Open scan reports", target: "scanReports", tone: "ghost" },
     ],
-    demoUsername: "ops.manager",
-    demoPin: "5566",
   },
   DOCTOR: {
     label: "Doctor portal",
@@ -844,8 +841,6 @@ const portalProfiles: Partial<
       { label: "Open sonography", target: "sonography", tone: "primary" },
       { label: "Write scan report", target: "scanReports", tone: "ghost" },
     ],
-    demoUsername: "doctor.sono",
-    demoPin: "8899",
   },
   RECEPTION: {
     label: "Receptionist portal",
@@ -878,8 +873,6 @@ const portalProfiles: Partial<
       { label: "Register patient", target: "patients", tone: "primary" },
       { label: "Open reports", target: "scanReports", tone: "ghost" },
     ],
-    demoUsername: "frontdesk",
-    demoPin: "1122",
   },
   SONOGRAPHER: {
     label: "Sonographer portal",
@@ -911,8 +904,6 @@ const portalProfiles: Partial<
       { label: "Open worklist", target: "sonography", tone: "primary" },
       { label: "Draft report", target: "scanReports", tone: "ghost" },
     ],
-    demoUsername: "sono.tech",
-    demoPin: "7788",
   },
 };
 
@@ -969,6 +960,145 @@ function formatMoney(cents: number) {
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function buildAnalyticsQueryString(
+  range: FinanceAnalyticsPayload["range"],
+  customDateRange: { startDate: string; endDate: string },
+) {
+  const params = new URLSearchParams({ range });
+  if (range === "CUSTOM") {
+    if (customDateRange.startDate) {
+      params.set("startDate", customDateRange.startDate);
+    }
+    if (customDateRange.endDate) {
+      params.set("endDate", customDateRange.endDate);
+    }
+  }
+  return params.toString();
+}
+
+function stripFileExtension(fileName: string) {
+  return fileName.replace(/\.[^.]+$/u, "").trim();
+}
+
+function normalizeImportedTemplateText(value: string) {
+  return value
+    .replace(/\r\n?/gu, "\n")
+    .replace(/\u0000/gu, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+function escapeEditorHtml(value: string) {
+  return value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
+}
+
+function plainTextToRichHtml(value: string) {
+  const normalized = normalizeImportedTemplateText(value);
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized
+    .split(/\n{2,}/u)
+    .map(
+      (paragraph) =>
+        `<p>${escapeEditorHtml(paragraph).replace(/\n/gu, "<br />")}</p>`,
+    )
+    .join("");
+}
+
+function looksLikeHtml(value: string) {
+  return /<\/?[a-z][^>]*>/iu.test(value);
+}
+
+function ensureRichTextHtml(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return looksLikeHtml(trimmed) ? trimmed : plainTextToRichHtml(trimmed);
+}
+
+function buildRichTextTextBlock(value: string) {
+  return plainTextToRichHtml(value);
+}
+
+function joinRichTextSections(...sections: string[]) {
+  return sections
+    .map((section) => section.trim())
+    .filter(Boolean)
+    .join("");
+}
+
+function richTextToPlainText(value: string) {
+  if (!value.trim()) {
+    return "";
+  }
+
+  if (typeof document === "undefined") {
+    return value.replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ").trim();
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = value;
+  return (container.textContent || container.innerText || "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function extractStructuredTemplateSections(text: string) {
+  const normalized = normalizeImportedTemplateText(text);
+  const sectionPattern =
+    /^(TITLE|REPORT TITLE|MEDICAL HISTORY|HISTORY|SUMMARY|DESCRIPTION|FINDINGS|IMPRESSION|RECOMMENDATION)\s*:?\s*$/gimu;
+  const matches = Array.from(normalized.matchAll(sectionPattern));
+  const sections = new Map<string, string>();
+
+  if (matches.length > 0) {
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index];
+      if (!match) {
+        continue;
+      }
+      const nextMatch = matches[index + 1];
+      const key = (match[1] ?? "").toUpperCase();
+      const start = (match.index ?? 0) + match[0].length;
+      const end = nextMatch?.index ?? normalized.length;
+      sections.set(key, normalized.slice(start, end).trim());
+    }
+  }
+
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const detectedTitle =
+    sections.get("TITLE") ||
+    sections.get("REPORT TITLE") ||
+    (lines[0] && !lines[0].includes(":") ? lines[0] : "");
+  const findings =
+    sections.get("FINDINGS") || sections.get("DESCRIPTION") || normalized;
+  const impression = sections.get("IMPRESSION") || "";
+  const summary =
+    sections.get("SUMMARY") ||
+    (impression ? impression.split("\n")[0]?.trim() ?? "" : "");
+
+  return {
+    title: detectedTitle,
+    medicalHistory:
+      sections.get("MEDICAL HISTORY") || sections.get("HISTORY") || "",
+    summary,
+    findings,
+    impression,
+    recommendation: sections.get("RECOMMENDATION") || "",
+  };
 }
 
 function formatStudyDepartmentLabel(
@@ -1113,6 +1243,15 @@ function downloadTextFile(content: string, fileName: string) {
   window.URL.revokeObjectURL(objectUrl);
 }
 
+function downloadBlobFile(blob: Blob, fileName: string) {
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  link.click();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? "P"}${lastName[0] ?? "T"}`.toUpperCase();
 }
@@ -1136,6 +1275,15 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error("Logo upload failed"));
     reader.readAsDataURL(file);
   });
+}
+
+function sanitizeDownloadName(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-z0-9_-]+/giu, "-")
+    .replace(/-{2,}/gu, "-")
+    .replace(/^-|-$/gu, "")
+    .toLowerCase();
 }
 
 function estimateDataUrlBytes(dataUrl: string) {
@@ -1208,16 +1356,52 @@ function getSyncTone(syncStatus: IntegrationDispatchStatusPayload) {
 }
 
 function getOrderTone(status: string) {
-  if (["VERIFIED", "RELEASED"].includes(status)) {
+  if (["VERIFIED", "RELEASED", "APPROVED", "COMPLETED", "STORED"].includes(status)) {
     return "good";
   }
-  if (["READY_FOR_REVIEW", "IN_PROGRESS"].includes(status)) {
+  if (["READY_FOR_REVIEW", "IN_PROGRESS", "IN_REVIEW", "PROCESSING", "COLLECTED", "RECEIVED", "AMENDED"].includes(status)) {
     return "warn";
   }
-  if (["REGISTERED", "SCHEDULED", "ARRIVED", "SCANNING"].includes(status)) {
+  if (["REGISTERED", "SCHEDULED", "ARRIVED", "SCANNING", "DRAFT", "PENDING"].includes(status)) {
     return "neutral";
   }
   return "critical";
+}
+
+function formatStatusLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getSampleTone(status: SampleRecord["status"]) {
+  if (["STORED", "DISPOSED"].includes(status)) {
+    return "good";
+  }
+  if (["COLLECTED", "RECEIVED", "PROCESSING"].includes(status)) {
+    return "warn";
+  }
+  if (status === "PENDING") {
+    return "neutral";
+  }
+  return "critical";
+}
+
+function getNextReportStatus(
+  status: ReportRecord["status"],
+): ReportStatusUpdateInput["status"] | null {
+  if (status === "DRAFT") {
+    return "IN_REVIEW";
+  }
+  if (status === "IN_REVIEW") {
+    return "APPROVED";
+  }
+  if (status === "APPROVED" || status === "AMENDED") {
+    return "RELEASED";
+  }
+  return null;
 }
 
 function isSonographyServiceLabel(value: string) {
@@ -1718,8 +1902,19 @@ export default function App() {
   );
   const [globalQuery, setGlobalQuery] = useState("");
   const [loginForm, setLoginForm] = useState({
-    username: "admin",
-    pin: "2468",
+    username: "",
+    pin: "",
+  });
+  const [showInitialSetupForm, setShowInitialSetupForm] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<SetupStatusPayload | null>(
+    null,
+  );
+  const [setupForm, setSetupForm] = useState<InitialSetupFormState>({
+    admin: {
+      displayName: "",
+      username: "",
+      pin: "",
+    },
   });
   const [bootstrap, setBootstrap] =
     useState<BootstrapPayload>(fallbackBootstrap);
@@ -1732,9 +1927,19 @@ export default function App() {
   const [analyticsRange, setAnalyticsRange] = useState<
     FinanceAnalyticsPayload["range"]
   >(fallbackFinanceAnalytics.range);
+  const [analyticsCustomDateRange, setAnalyticsCustomDateRange] = useState({
+    startDate: "",
+    endDate: "",
+  });
   const [selectedAnalyticsStudy, setSelectedAnalyticsStudy] = useState("");
   const [analyticsStudyDepartmentFilter, setAnalyticsStudyDepartmentFilter] =
     useState<"ALL" | "LAB" | "IMAGING">("ALL");
+  const [billingPayerTypeFilter, setBillingPayerTypeFilter] = useState<
+    "ALL" | InvoiceRecord["payerType"]
+  >("ALL");
+  const [billingClaimStatusFilter, setBillingClaimStatusFilter] = useState<
+    "ALL" | InvoiceRecord["claimStatus"]
+  >("ALL");
   const [expenseWorkspace, setExpenseWorkspace] =
     useState<ExpenseWorkspacePayload>(() =>
       buildEmptyExpenseWorkspace(fallbackFinanceAnalytics.range),
@@ -1742,6 +1947,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] =
     useState<IntegrationDispatchStatusPayload>(emptySyncStatus);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
+  const backupImportInputRef = useRef<HTMLInputElement | null>(null);
   const [patients, setPatients] = useState<PatientRecord[]>([]);
   const [users, setUsers] = useState<AdminUserSummaryPayload[]>([]);
   const [services, setServices] = useState<CatalogSeedItem[]>([]);
@@ -1760,6 +1966,7 @@ export default function App() {
   const [selectedReferralDoctorId, setSelectedReferralDoctorId] = useState("");
   const [selectedPatientReferralDoctorId, setSelectedPatientReferralDoctorId] =
     useState("");
+  const [selectedSampleId, setSelectedSampleId] = useState("");
   const [selectedBackupId, setSelectedBackupId] = useState("");
   const [statusText, setStatusText] = useState("Ready to connect");
   const [patientForm, setPatientForm] = useState<PatientIntakeFormState>({
@@ -1768,6 +1975,7 @@ export default function App() {
     middleName: "",
     traceCode: "",
     phone: "",
+    location: "",
     allergies: "",
     medicalHistory: "",
     referralDoctorId: "",
@@ -1779,6 +1987,11 @@ export default function App() {
   const [intakeOrder, setIntakeOrder] = useState<IntakeOrderState>({
     orderedBy: "Front Desk",
     priority: "ROUTINE",
+    payerType: "SELF_PAY",
+    payerName: "",
+    payerCoveragePercent: 0,
+    payerMemberId: "",
+    payerAuthorizationCode: "",
     insuranceProvider: "",
     insuranceAuthorized: false,
     scheduledFor: "",
@@ -1794,6 +2007,11 @@ export default function App() {
     itemIds: [],
     orderedBy: "Front Desk",
     priority: "ROUTINE",
+    payerType: "SELF_PAY",
+    payerName: "",
+    payerCoveragePercent: 0,
+    payerMemberId: "",
+    payerAuthorizationCode: "",
     insuranceProvider: "",
     insuranceAuthorized: false,
     notes: "",
@@ -1821,9 +2039,16 @@ export default function App() {
     findings: "",
     impression: "",
     signedBy: "System Administrator",
+    status: "IN_REVIEW",
     templateKind: "LAB_STANDARD",
     criticalFlag: false,
     imagePaths: [],
+  });
+  const [sampleForm, setSampleForm] = useState<SampleUpdateInput>({
+    status: "PENDING",
+    collectedBy: "",
+    rejectionReason: "",
+    note: "",
   });
   const [ultrasoundReportAssist, setUltrasoundReportAssist] =
     useState<UltrasoundReportAssistState>(defaultUltrasoundReportAssistState);
@@ -1850,11 +2075,15 @@ export default function App() {
     reason: "",
     traceCode: "",
     actor: userDisplayByRole.LAB_TECH,
+    expiryDate: "",
+    preferredVendor: "",
+    storageLocation: "",
   });
   const [paymentForm, setPaymentForm] = useState<PaymentInput>({
     invoiceId: "",
     amountCents: 0,
     method: "CASH",
+    responsibility: "PATIENT",
     reference: "",
     receivedBy: userDisplayByRole.FINANCE,
     traceCode: "",
@@ -1867,12 +2096,18 @@ export default function App() {
     location: fallbackBootstrap.facility.location,
     logoDataUrl: fallbackBootstrap.facility.logoDataUrl,
     footerMessage: fallbackBootstrap.facility.footerMessage,
+    printFontSize: fallbackBootstrap.facility.printFontSize,
   });
   const [latestReceipt, setLatestReceipt] = useState<{
     paymentId: string;
     traceCode: string;
   } | null>(null);
   const [latestInvoiceId, setLatestInvoiceId] = useState("");
+  const [reportTemplates, setReportTemplates] = useState<
+    ReportTemplatePayload[]
+  >([]);
+  const [selectedReportTemplateId, setSelectedReportTemplateId] = useState("");
+  const [reportTemplateName, setReportTemplateName] = useState("");
   const [serviceForm, setServiceForm] = useState<ServiceFormState>({
     code: "",
     name: "",
@@ -1883,6 +2118,7 @@ export default function App() {
     tatMinutes: "60",
     isActive: true,
   });
+  const [serviceEditorOpen, setServiceEditorOpen] = useState(false);
   const [referralDoctorForm, setReferralDoctorForm] =
     useState<ReferralDoctorFormState>({
       fullName: "",
@@ -1935,11 +2171,17 @@ export default function App() {
     role: "RECEPTION",
     pin: "",
   });
-  const [pinRotation, setPinRotation] = useState({ userId: "", newPin: "" });
+  const [pinRecovery, setPinRecovery] = useState({ userId: "", newPin: "" });
+  const [selfPinChange, setSelfPinChange] = useState<ChangeOwnPinInput>({
+    currentPin: "",
+    newPin: "",
+  });
   const [passwordVisibility, setPasswordVisibility] = useState({
     login: false,
     userCreate: false,
-    rotatePin: false,
+    recoverPin: false,
+    selfCurrentPin: false,
+    selfNewPin: false,
   });
   const [directoryUsers, setDirectoryUsers] = useState<
     UserDirectoryEntryPayload[]
@@ -1955,15 +2197,12 @@ export default function App() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const heardAlertIdsRef = useRef<Set<string>>(new Set());
   const alertAudioContextRef = useRef<AudioContext | null>(null);
+  const reportTemplateFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentRole = authSession?.user.role ?? "ADMIN";
   const actorName = authSession?.user.displayName ?? "Unauthenticated";
   const allowedActions = authSession?.user.allowedActions ?? [];
   const portalProfile = portalProfiles[currentRole];
-  const requestedPortalRoute = useMemo(
-    () => parsePortalHash(portalHash),
-    [portalHash],
-  );
   const syncTone = getSyncTone(syncStatus);
   const externalNotificationChannels = notificationChannels.filter(
     (channel) => channel !== "INTERNAL",
@@ -2043,6 +2282,7 @@ export default function App() {
         }
 
         setAuthSession(session);
+        setSetupStatus(null);
         setActiveNav(resolvePortalNavForRole(session.user.role));
         setReportForm((current) => ({
           ...current,
@@ -2051,9 +2291,38 @@ export default function App() {
         setAuthReady(true);
       })
       .catch(() => {
-        if (mounted) {
-          setAuthReady(true);
-        }
+        fetch(`${apiBase}/setup/status`, {
+          credentials: "include",
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              throw new Error("Setup status unavailable");
+            }
+
+            return (await response.json()) as SetupStatusPayload;
+          })
+          .then((status) => {
+            if (!mounted) {
+              return;
+            }
+
+            setSetupStatus(status);
+            if (status.requiresSetup) {
+              setStatusText(
+                "Complete the first administrator setup to open MediLab Nexus.",
+              );
+            }
+            setAuthReady(true);
+          })
+          .catch(() => {
+            if (mounted) {
+              setSetupStatus(null);
+              setStatusText(
+                "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
+              );
+              setAuthReady(true);
+            }
+          });
       });
 
     return () => {
@@ -2193,6 +2462,7 @@ export default function App() {
         directoryList,
         serviceList,
         referralDoctorList,
+        reportTemplateList,
         syncPayload,
       ] = await Promise.all([
         requestJson<BootstrapPayload>("/bootstrap"),
@@ -2203,7 +2473,10 @@ export default function App() {
           : Promise.resolve(baseOverview),
         allowedActions.includes("finance:manage")
           ? requestJson<FinanceAnalyticsPayload>(
-              `/analytics/finance?range=${encodeURIComponent(analyticsRange)}`,
+              `/analytics/finance?${buildAnalyticsQueryString(
+                analyticsRange,
+                analyticsCustomDateRange,
+              )}`,
             )
           : Promise.resolve(fallbackFinanceAnalytics),
         allowedActions.includes("backup:manage")
@@ -2221,6 +2494,9 @@ export default function App() {
               "/admin/referral-doctors",
             )
           : requestJson<ReferralDoctorSummaryPayload[]>("/referral-doctors"),
+        canWriteReports
+          ? requestJson<ReportTemplatePayload[]>("/report-templates")
+          : Promise.resolve([]),
         allowedActions.includes("integration:manage")
           ? requestJson<IntegrationDispatchStatusPayload>(
               "/admin/integrations/status",
@@ -2239,6 +2515,7 @@ export default function App() {
         setDirectoryUsers(directoryList);
         setServices(serviceList);
         setReferralDoctors(referralDoctorList);
+        setReportTemplates(reportTemplateList);
         setSyncStatus(syncPayload);
       });
 
@@ -2254,6 +2531,14 @@ export default function App() {
       setFinanceAnalytics({
         ...fallbackFinanceAnalytics,
         range: analyticsRange,
+        customStartDate:
+          analyticsRange === "CUSTOM" && analyticsCustomDateRange.startDate
+            ? new Date(analyticsCustomDateRange.startDate).toISOString()
+            : null,
+        customEndDate:
+          analyticsRange === "CUSTOM" && analyticsCustomDateRange.endDate
+            ? new Date(analyticsCustomDateRange.endDate).toISOString()
+            : null,
         generatedAt: new Date().toISOString(),
       });
       setExpenseWorkspace(buildEmptyExpenseWorkspace(analyticsRange));
@@ -2262,6 +2547,7 @@ export default function App() {
       setDirectoryUsers([]);
       setServices([]);
       setReferralDoctors([]);
+      setReportTemplates([]);
       setSyncStatus(emptySyncStatus);
       setStatusText(
         `Unable to reach the MediLab Nexus server for ${authSession.user.displayName}. Check the connection and try again.`,
@@ -2300,7 +2586,12 @@ export default function App() {
 
   useEffect(() => {
     void loadOperationalData();
-  }, [authSession?.user.id, analyticsRange]);
+  }, [
+    authSession?.user.id,
+    analyticsRange,
+    analyticsCustomDateRange.startDate,
+    analyticsCustomDateRange.endDate,
+  ]);
 
   useEffect(() => {
     void loadExpenseWorkspace();
@@ -2311,6 +2602,12 @@ export default function App() {
     expenseFilters.startDate,
     expenseFilters.endDate,
   ]);
+
+  useEffect(() => {
+    if (!setupStatus?.requiresSetup) {
+      setShowInitialSetupForm(false);
+    }
+  }, [setupStatus]);
 
   useEffect(() => {
     const primeAudio = () => {
@@ -2421,6 +2718,7 @@ export default function App() {
       location: bootstrap.facility.location,
       logoDataUrl: bootstrap.facility.logoDataUrl,
       footerMessage: bootstrap.facility.footerMessage,
+      printFontSize: bootstrap.facility.printFontSize,
     });
   }, [bootstrap.facility]);
 
@@ -2553,7 +2851,7 @@ export default function App() {
         id: `invoice-${invoice.id}`,
         occurredAt: invoice.createdAt,
         label: `Invoice ${invoice.accessionNumber}`,
-        detail: `${formatMoney(invoice.amountPaidCents)} paid against ${formatMoney(invoice.amountDueCents)} due.`,
+        detail: `${formatMoney(invoice.amountPaidCents)} paid against ${formatMoney(invoice.totalDueCents)} due.`,
         meta:
           invoice.balanceCents > 0
             ? `${invoice.status} · Balance ${formatMoney(invoice.balanceCents)}`
@@ -2747,6 +3045,88 @@ export default function App() {
         }),
     [workflow.imaging],
   );
+  const specimenBoard = useMemo(
+    () => [
+      {
+        label: "Pending",
+        statuses: ["PENDING", "REJECTED"] as SampleRecord["status"][],
+      },
+      {
+        label: "Collected",
+        statuses: ["COLLECTED", "RECEIVED"] as SampleRecord["status"][],
+      },
+      {
+        label: "In Lab",
+        statuses: ["PROCESSING", "STORED", "DISPOSED"] as SampleRecord["status"][],
+      },
+    ],
+    [],
+  );
+  const [sampleSearchQuery, setSampleSearchQuery] = useState("");
+  const [selectedSampleStatus, setSelectedSampleStatus] = useState<
+    "ALL" | SampleRecord["status"]
+  >("ALL");
+  const filteredSamples = useMemo(() => {
+    const query = sampleSearchQuery.trim().toLowerCase();
+
+    return workflow.samples.filter((sample) => {
+      if (
+        selectedSampleStatus !== "ALL" &&
+        sample.status !== selectedSampleStatus
+      ) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        sample.patientTraceCode,
+        sample.specimenType,
+        sample.traceLabel,
+        sample.collectedBy ?? "",
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [sampleSearchQuery, selectedSampleStatus, workflow.samples]);
+  const pendingSampleCount = useMemo(
+    () =>
+      filteredSamples.filter((sample) =>
+        ["PENDING", "REJECTED"].includes(sample.status),
+      ).length,
+    [filteredSamples],
+  );
+  const activeBenchSampleCount = useMemo(
+    () =>
+      filteredSamples.filter((sample) =>
+        ["COLLECTED", "RECEIVED", "PROCESSING"].includes(sample.status),
+      ).length,
+    [filteredSamples],
+  );
+  const selectedSample = useMemo(
+    () =>
+      workflow.samples.find((sample) => sample.id === selectedSampleId) ??
+      workflow.samples[0] ??
+      null,
+    [selectedSampleId, workflow.samples],
+  );
+  useEffect(() => {
+    if (!selectedSampleId && workflow.samples[0]) {
+      setSelectedSampleId(workflow.samples[0].id);
+    }
+  }, [selectedSampleId, workflow.samples]);
+  useEffect(() => {
+    if (!selectedSample) {
+      return;
+    }
+
+    setSampleForm({
+      status: selectedSample.status,
+      collectedBy: selectedSample.collectedBy ?? "",
+      rejectionReason: selectedSample.rejectionReason ?? "",
+      note: "",
+    });
+  }, [selectedSample]);
   const filteredRegistrationServices = useMemo(() => {
     const query = registrationServiceQuery.trim().toLowerCase();
     if (!query) {
@@ -2833,6 +3213,10 @@ export default function App() {
   const showPatientIntakeTools =
     currentRole !== "DOCTOR" && currentRole !== "SONOGRAPHER";
   const canEditPatientRecords = allowedActions.includes("patient:write");
+  const [orderSearchQuery, setOrderSearchQuery] = useState("");
+  const [selectedOrderStatus, setSelectedOrderStatus] = useState<
+    "ALL" | string
+  >("ALL");
   const orderMatches = useMemo(() => {
     const query = globalQuery.trim().toLowerCase();
     if (!query) {
@@ -2850,6 +3234,45 @@ export default function App() {
       )
       .slice(0, 8);
   }, [globalQuery, workflow.orders]);
+  const orderStatusOptions = useMemo(
+    () =>
+      Array.from(new Set(workflow.orders.map((order) => order.status).filter(Boolean))),
+    [workflow.orders],
+  );
+  const filteredOrders = useMemo(() => {
+    const query = orderSearchQuery.trim().toLowerCase();
+
+    return workflow.orders.filter((order) => {
+      if (selectedOrderStatus !== "ALL" && order.status !== selectedOrderStatus) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        order.patientTraceCode,
+        order.patientName,
+        order.accessionNumber,
+        order.items.join(" "),
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [orderSearchQuery, selectedOrderStatus, workflow.orders]);
+  const openOrderCount = useMemo(
+    () =>
+      filteredOrders.filter(
+        (order) => !["COMPLETED", "RELEASED", "CANCELLED"].includes(order.status),
+      ).length,
+    [filteredOrders],
+  );
+  const completedOrderCount = useMemo(
+    () =>
+      filteredOrders.filter((order) =>
+        ["COMPLETED", "RELEASED"].includes(order.status),
+      ).length,
+    [filteredOrders],
+  );
   const recentCritical = useMemo(
     () => adminOverview.aiFlags.filter((flag) => flag.severity === "high"),
     [adminOverview.aiFlags],
@@ -2870,10 +3293,19 @@ export default function App() {
   );
   const registrationDueCents = useMemo(
     () =>
-      intakeOrder.insuranceAuthorized
-        ? registrationTotalCents - Math.round(registrationTotalCents * 0.4)
-        : registrationTotalCents,
-    [intakeOrder.insuranceAuthorized, registrationTotalCents],
+      registrationTotalCents -
+      Math.round(
+        registrationTotalCents *
+          ((intakeOrder.payerType === "SELF_PAY"
+            ? 0
+            : intakeOrder.payerCoveragePercent) /
+            100),
+      ),
+    [
+      intakeOrder.payerCoveragePercent,
+      intakeOrder.payerType,
+      registrationTotalCents,
+    ],
   );
   const expenseFilterCategories = useMemo(
     () => ["ALL", ...expenseWorkspace.availableCategories],
@@ -3037,11 +3469,11 @@ export default function App() {
         findings:
           current.orderId === selectedReportOrder.id && current.findings
             ? current.findings
-            : (preset?.findingsStarter ?? ""),
+            : ensureRichTextHtml(preset?.findingsStarter ?? ""),
         impression:
           current.orderId === selectedReportOrder.id && current.impression
             ? current.impression
-            : (preset?.impressionStarter ?? ""),
+            : ensureRichTextHtml(preset?.impressionStarter ?? ""),
       };
     });
 
@@ -3094,6 +3526,49 @@ export default function App() {
             left.name.localeCompare(right.name),
         ),
     [services],
+  );
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+  const [selectedServiceKind, setSelectedServiceKind] = useState<
+    "ALL" | ServiceInput["kind"]
+  >("ALL");
+  const [selectedServiceState, setSelectedServiceState] = useState<
+    "ALL" | "ACTIVE" | "ARCHIVED"
+  >("ALL");
+  const filteredServiceRows = useMemo(() => {
+    const query = serviceSearchQuery.trim().toLowerCase();
+
+    return services.filter((service) => {
+      if (selectedServiceKind !== "ALL" && service.kind !== selectedServiceKind) {
+        return false;
+      }
+
+      if (selectedServiceState === "ACTIVE" && service.isActive === false) {
+        return false;
+      }
+      if (selectedServiceState === "ARCHIVED" && service.isActive !== false) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        service.name,
+        service.code,
+        service.kind,
+        service.modality ?? "",
+        service.specimenType ?? "",
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [selectedServiceKind, selectedServiceState, serviceSearchQuery, services]);
+  const activeServiceCount = useMemo(
+    () => filteredServiceRows.filter((service) => service.isActive !== false).length,
+    [filteredServiceRows],
+  );
+  const imagingServiceCount = useMemo(
+    () => filteredServiceRows.filter((service) => service.kind === "IMAGING").length,
+    [filteredServiceRows],
   );
   const bulkServicePreview = useMemo(
     () => parseBulkServiceText(bulkServiceText),
@@ -3156,11 +3631,12 @@ export default function App() {
     () =>
       [...workflow.invoices]
         .filter(
-          (invoice) => invoice.balanceCents > 0 && invoice.status !== "VOID",
+          (invoice) =>
+            invoice.patientBalanceCents > 0 && invoice.status !== "VOID",
         )
         .sort((left, right) => {
-          if (right.balanceCents !== left.balanceCents) {
-            return right.balanceCents - left.balanceCents;
+          if (right.patientBalanceCents !== left.patientBalanceCents) {
+            return right.patientBalanceCents - left.patientBalanceCents;
           }
 
           return (
@@ -3170,28 +3646,64 @@ export default function App() {
         }),
     [workflow.invoices],
   );
+  const claimInvoices = useMemo(
+    () =>
+      workflow.invoices.filter((invoice) => invoice.payerType !== "SELF_PAY"),
+    [workflow.invoices],
+  );
+  const filteredClaimInvoices = useMemo(
+    () =>
+      claimInvoices.filter((invoice) => {
+        if (
+          billingPayerTypeFilter !== "ALL" &&
+          invoice.payerType !== billingPayerTypeFilter
+        ) {
+          return false;
+        }
+        if (
+          billingClaimStatusFilter !== "ALL" &&
+          invoice.claimStatus !== billingClaimStatusFilter
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [billingClaimStatusFilter, billingPayerTypeFilter, claimInvoices],
+  );
+  const filteredClaimSummary = useMemo(
+    () => ({
+      invoicesCount: filteredClaimInvoices.length,
+      coveredCents: filteredClaimInvoices.reduce(
+        (sum, invoice) => sum + invoice.payerResponsibilityCents,
+        0,
+      ),
+      pendingCount: filteredClaimInvoices.filter((invoice) =>
+        ["PENDING", "SUBMITTED", "PARTIAL"].includes(invoice.claimStatus),
+      ).length,
+      settledCount: filteredClaimInvoices.filter(
+        (invoice) => invoice.claimStatus === "SETTLED",
+      ).length,
+    }),
+    [filteredClaimInvoices],
+  );
   const metrics = getRoleMetricCards(
     currentRole,
     bootstrap,
     adminOverview,
     workflow,
   );
-  const loginPortalProfiles = primaryPortalRoles.flatMap((role) => {
-    const profile = portalProfiles[role];
-    return profile
-      ? [
-          {
-            key: role,
-            label: profile.label,
-            summary: profile.summary,
-            demoUsername: profile.demoUsername,
-            demoPin: profile.demoPin,
-          },
-        ]
-      : [];
-  });
-
   const canWriteReports = allowedActions.includes("report:write");
+  const pickupReports = useMemo(
+    () =>
+      workflow.reports.filter(
+        (report) => !["DRAFT", "IN_REVIEW"].includes(report.status),
+      ),
+    [workflow.reports],
+  );
+  const canEditPrintSettings =
+    currentRole === "DOCTOR" ||
+    currentRole === "SONOGRAPHER" ||
+    currentRole === "ADMIN";
   const canManageQc = allowedActions.includes("qc:manage");
   const canManageInventory = allowedActions.includes("inventory:manage");
   const canManageFinance = allowedActions.includes("finance:manage");
@@ -3224,6 +3736,12 @@ export default function App() {
         }))
         .filter((section) => section.items.length > 0),
     [visibleNavItems],
+  );
+  const selectedSavedReportTemplate = useMemo(
+    () =>
+      reportTemplates.find((template) => template.id === selectedReportTemplateId) ??
+      null,
+    [reportTemplates, selectedReportTemplateId],
   );
   const filteredStudyPerformance = useMemo(
     () =>
@@ -3318,7 +3836,7 @@ export default function App() {
       meta: `${invoice.traceCode} · ${formatMoney(
         invoice.amountPaidCents > 0
           ? invoice.amountPaidCents
-          : invoice.amountDueCents,
+          : invoice.totalDueCents,
       )}`,
       occurredAt: invoice.createdAt,
       tone: invoice.balanceCents > 0 ? "warn" : "good",
@@ -3423,6 +3941,7 @@ export default function App() {
 
       const session = (await response.json()) as AuthSessionPayload;
       setAuthSession(session);
+      setSetupStatus(null);
       setActiveNav(resolvePortalNavForRole(session.user.role));
       setStatusText(`Signed in as ${session.user.displayName}`);
     } catch (error) {
@@ -3430,6 +3949,85 @@ export default function App() {
         error instanceof Error
           ? error.message
           : "Login failed. Confirm the MediLab Nexus server is running.",
+      );
+    }
+  }
+
+  async function handleInitialSetup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    try {
+      const session = await requestJson<AuthSessionPayload>(
+        "/setup/initialize",
+        {
+          method: "POST",
+          body: JSON.stringify(setupForm satisfies InitialSetupInput),
+        },
+      );
+      setAuthSession(session);
+      setSetupStatus({
+        requiresSetup: false,
+        hasUsers: true,
+        hasFacility: true,
+        facility: setupStatus?.facility ?? bootstrap.facility,
+      });
+      setActiveNav(resolvePortalNavForRole(session.user.role));
+      setStatusText(`Setup complete. Signed in as ${session.user.displayName}.`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Initial setup failed. Confirm the MediLab Nexus server is running.",
+      );
+    }
+  }
+
+  async function handleDeletePatient() {
+    if (!selectedPatient) {
+      setStatusText("Choose a patient record before deleting it");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete patient ${selectedPatient.traceCode}? This only works when no dependent workflow records exist.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await requestJson(`/patients/${selectedPatient.id}`, {
+        method: "DELETE",
+      });
+      setPatients((current) =>
+        current.filter((patient) => patient.id !== selectedPatient.id),
+      );
+      setSelectedPatientId("");
+      setPatientRecordDraft(buildPatientDraft(null));
+      setIsEditingPatientRecord(false);
+      setRefundPatientId((current) =>
+        current === selectedPatient.id ? "" : current,
+      );
+      setOrderForm((current) => ({
+        ...current,
+        patientId:
+          current.patientId === selectedPatient.id ? "" : current.patientId,
+      }));
+      setNotificationForm((current) => ({
+        ...current,
+        patientId:
+          current.patientId === selectedPatient.id ? "" : current.patientId,
+        traceCode:
+          current.patientId === selectedPatient.id ? "" : current.traceCode,
+      }));
+      await loadOperationalData();
+      setStatusText(`Deleted patient ${selectedPatient.traceCode}`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Patient record could not be deleted right now",
       );
     }
   }
@@ -3451,7 +4049,7 @@ export default function App() {
     }
   }
 
-  function openPatient(patient: PatientRecord) {
+  function openPatient(patient: PatientRecord, nextNav: NavKey = "patients") {
     setSelectedPatientId(patient.id);
     setOrderForm((current) => ({ ...current, patientId: patient.id }));
     setNotificationForm((current) => ({
@@ -3460,7 +4058,7 @@ export default function App() {
       traceCode: patient.traceCode,
       recipient: current.recipient || patient.phone,
     }));
-    setActiveNav("patients");
+    setActiveNav(nextNav);
   }
 
   async function handlePatientSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -3514,6 +4112,11 @@ export default function App() {
               itemIds: registrationItemIds,
               orderedBy: intakeOrder.orderedBy,
               priority: intakeOrder.priority,
+              payerType: intakeOrder.payerType,
+              payerName: intakeOrder.payerName,
+              payerCoveragePercent: intakeOrder.payerCoveragePercent,
+              payerMemberId: intakeOrder.payerMemberId,
+              payerAuthorizationCode: intakeOrder.payerAuthorizationCode,
               insuranceProvider: intakeOrder.insuranceProvider,
               insuranceAuthorized: intakeOrder.insuranceAuthorized,
               scheduledFor: intakeOrder.scheduledFor,
@@ -3541,6 +4144,7 @@ export default function App() {
                   invoiceId: orderResponse.invoice.id,
                   amountCents: Number(intakePayment.amountCents),
                   method: intakePayment.method,
+                  responsibility: "PATIENT",
                   reference: intakePayment.reference,
                   receivedBy: actorName,
                   traceCode: created.traceCode,
@@ -3565,26 +4169,18 @@ export default function App() {
       }
 
       setStatusText(statusMessage);
-      setPatientForm({
-        firstName: "",
-        lastName: "",
-        middleName: "",
-        traceCode: "",
-        phone: "",
-        allergies: "",
-        medicalHistory: "",
-        referralDoctorId: "",
-        referralName: "",
-        consentAccepted: true,
-        gender: "Female",
-        dateOfBirth: "",
-      });
+      setPatientForm(buildPatientDraft());
       setPatientReferralCommission("");
       setRegistrationItemIds([]);
       setRegistrationServiceQuery("");
       setIntakeOrder({
         orderedBy: "Front Desk",
         priority: "ROUTINE",
+        payerType: "SELF_PAY",
+        payerName: "",
+        payerCoveragePercent: 0,
+        payerMemberId: "",
+        payerAuthorizationCode: "",
         insuranceProvider: "",
         insuranceAuthorized: false,
         scheduledFor: "",
@@ -3673,10 +4269,13 @@ export default function App() {
 
   async function handleOrderSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const payerName = orderForm.payerName.trim();
     const payload: OrderInput = {
       ...orderForm,
       patientId: selectedPatientId || orderForm.patientId,
       itemIds: selectedItemIds,
+      insuranceProvider:
+        orderForm.payerType === "SELF_PAY" ? "" : payerName,
     };
     try {
       await requestJson("/orders", {
@@ -3705,52 +4304,10 @@ export default function App() {
 
   async function handleReportSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const presetMeasurementLines = isUltrasoundTemplate(reportForm.templateKind)
-      ? buildPresetMeasurementLines(
-          reportForm.templateKind,
-          ultrasoundReportAssist,
-        )
-      : [];
-    const compiledMeasurements = [
-      ultrasoundReportAssist.measurementsText.trim(),
-      ...presetMeasurementLines,
-    ].filter(Boolean);
-    const findings = isUltrasoundTemplate(reportForm.templateKind)
-      ? [
-          ultrasoundReportAssist.technique
-            ? `Technique: ${ultrasoundReportAssist.technique}`
-            : "",
-          ultrasoundReportAssist.sonographerName
-            ? `Prepared by: ${ultrasoundReportAssist.sonographerName}`
-            : "",
-          reportForm.findings,
-          compiledMeasurements.length > 0
-            ? `Measurements:\n${compiledMeasurements.join("\n")}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n")
-      : reportForm.findings;
-    const impression = isUltrasoundTemplate(reportForm.templateKind)
-      ? [
-          reportForm.impression,
-          ultrasoundReportAssist.recommendation
-            ? `Recommendation: ${ultrasoundReportAssist.recommendation}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : reportForm.impression;
-    const payload: ReportInput = {
-      ...reportForm,
-      summary: reportForm.summary.trim(),
-      findings,
-      impression,
-      imagePaths: reportImagePathsText
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    };
+    const payload = buildPreparedReportPayload();
+    if (!payload) {
+      return;
+    }
 
     try {
       await requestJson("/reports", {
@@ -3769,6 +4326,7 @@ export default function App() {
         findings: "",
         impression: "",
         signedBy: actorName,
+        status: "IN_REVIEW",
         templateKind: "LAB_STANDARD",
         criticalFlag: false,
         imagePaths: [],
@@ -3776,9 +4334,401 @@ export default function App() {
       setReportImagePathsText("");
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
       await loadOperationalData();
+      setStatusText(
+        `Scan report ${payload.title} saved as ${formatStatusLabel(payload.status)}`,
+      );
     } catch {
       setStatusText(
         "Scan report could not be submitted. Retry when the server is available.",
+      );
+    }
+  }
+
+  function buildPreparedReportPayload() {
+    if (
+      !reportForm.patientId ||
+      !reportForm.orderId ||
+      reportForm.title.trim().length < 3 ||
+      reportForm.signedBy.trim().length < 3
+    ) {
+      setStatusText(
+        "Select the patient and order, then add a report title and signature before previewing or saving.",
+      );
+      return null;
+    }
+
+    const presetMeasurementLines = isUltrasoundTemplate(reportForm.templateKind)
+      ? buildPresetMeasurementLines(
+          reportForm.templateKind,
+          ultrasoundReportAssist,
+        )
+      : [];
+    const compiledMeasurements = [
+      ultrasoundReportAssist.measurementsText.trim(),
+      ...presetMeasurementLines,
+    ].filter(Boolean);
+    const findings = isUltrasoundTemplate(reportForm.templateKind)
+      ? joinRichTextSections(
+          ultrasoundReportAssist.technique
+            ? buildRichTextTextBlock(
+                `Technique: ${ultrasoundReportAssist.technique}`,
+              )
+            : "",
+          ultrasoundReportAssist.sonographerName
+            ? buildRichTextTextBlock(
+                `Prepared by: ${ultrasoundReportAssist.sonographerName}`,
+              )
+            : "",
+          ensureRichTextHtml(reportForm.findings),
+          compiledMeasurements.length > 0
+            ? buildRichTextTextBlock(
+                `Measurements:\n${compiledMeasurements.join("\n")}`,
+              )
+            : "",
+        )
+      : ensureRichTextHtml(reportForm.findings);
+    const impression = isUltrasoundTemplate(reportForm.templateKind)
+      ? joinRichTextSections(
+          ensureRichTextHtml(reportForm.impression),
+          ultrasoundReportAssist.recommendation
+            ? buildRichTextTextBlock(
+                `Recommendation: ${ultrasoundReportAssist.recommendation}`,
+              )
+            : "",
+        )
+      : ensureRichTextHtml(reportForm.impression);
+
+    if (
+      richTextToPlainText(findings).length < 3 ||
+      richTextToPlainText(impression).length < 3
+    ) {
+      setStatusText("Add report description and impression before saving.");
+      return null;
+    }
+
+    return {
+      ...reportForm,
+      title: reportForm.title.trim(),
+      signedBy: reportForm.signedBy.trim(),
+      medicalHistory: ensureRichTextHtml(reportForm.medicalHistory),
+      summary: reportForm.summary.trim() || reportForm.title.trim(),
+      findings,
+      impression,
+      imagePaths: reportImagePathsText
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    } satisfies ReportInput;
+  }
+
+  async function handlePreviewDraftReport(autoPrint = false) {
+    const payload = buildPreparedReportPayload();
+    if (!payload) {
+      return;
+    }
+
+    const preview = openPreviewWindow(
+      autoPrint
+        ? "Popup blocked. Allow popups to print the report."
+        : "Popup blocked. Allow popups to preview the report.",
+      autoPrint ? "Preparing report for print" : "Preparing report preview",
+    );
+    if (!preview) {
+      return;
+    }
+
+    try {
+      const printable = await requestJson<PrintableReportPayload>(
+        "/reports/preview",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+      if (writePreviewWindow(preview, printable.html)) {
+        if (autoPrint) {
+          preview.focus();
+          preview.print();
+          setStatusText(`Opened printable draft ${payload.title}`);
+        } else {
+          setStatusText(`Opened preview for ${payload.title}`);
+        }
+      } else {
+        setStatusText("Preview window was closed before the report loaded");
+      }
+    } catch {
+      preview.close();
+      setStatusText("Draft preview is unavailable right now");
+    }
+  }
+
+  function applyReportTemplate(template: ReportTemplatePayload) {
+    setReportForm((current) => ({
+      ...current,
+      templateKind: template.templateKind,
+      title: template.title,
+      medicalHistory: ensureRichTextHtml(template.medicalHistory),
+      summary: template.summary,
+      findings: ensureRichTextHtml(template.findings),
+      impression: ensureRichTextHtml(template.impression),
+    }));
+    setUltrasoundReportAssist({
+      ...defaultUltrasoundReportAssistState,
+      ...template.assist,
+    });
+    setReportTemplateName(template.name);
+    setStatusText(`Loaded report template ${template.name}`);
+  }
+
+  async function handleSaveReportTemplate() {
+    const templateName = reportTemplateName.trim() || reportForm.title.trim();
+    if (
+      !templateName ||
+      reportForm.summary.trim().length < 3 ||
+      richTextToPlainText(reportForm.findings).length < 3
+    ) {
+      setStatusText(
+        "Add a template name plus report summary/findings before saving the template.",
+      );
+      return;
+    }
+
+    try {
+      const saved = await requestJson<ReportTemplatePayload>(
+        "/report-templates",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: templateName,
+            templateKind: reportForm.templateKind,
+            title: reportForm.title,
+            medicalHistory: ensureRichTextHtml(reportForm.medicalHistory),
+            summary: reportForm.summary,
+            findings: ensureRichTextHtml(reportForm.findings),
+            impression: ensureRichTextHtml(reportForm.impression),
+            assist: ultrasoundReportAssist,
+          } satisfies ReportTemplateInput),
+        },
+      );
+      setReportTemplates((current) => {
+        const remaining = current.filter((template) => template.id !== saved.id);
+        return [saved, ...remaining];
+      });
+      setSelectedReportTemplateId(saved.id);
+      setReportTemplateName(saved.name);
+      setStatusText(`Saved report template ${saved.name}`);
+    } catch {
+      setStatusText("Report template could not be saved right now.");
+    }
+  }
+
+  async function handleDeleteReportTemplate() {
+    if (!selectedSavedReportTemplate) {
+      setStatusText("Choose a saved template first.");
+      return;
+    }
+
+    if (!window.confirm(`Delete template ${selectedSavedReportTemplate.name}?`)) {
+      return;
+    }
+
+    try {
+      await requestJson(`/report-templates/${selectedSavedReportTemplate.id}`, {
+        method: "DELETE",
+      });
+      setReportTemplates((current) =>
+        current.filter((template) => template.id !== selectedSavedReportTemplate.id),
+      );
+      setSelectedReportTemplateId("");
+      setStatusText(`Deleted report template ${selectedSavedReportTemplate.name}`);
+    } catch {
+      setStatusText("Report template could not be deleted right now.");
+    }
+  }
+
+  async function handleExportCurrentTemplateDocument() {
+    const templateName = reportTemplateName.trim() || reportForm.title.trim();
+    const descriptionHtml = ensureRichTextHtml(reportForm.findings);
+    const impressionHtml = ensureRichTextHtml(reportForm.impression);
+    const historyHtml = ensureRichTextHtml(reportForm.medicalHistory);
+
+    if (!templateName || richTextToPlainText(descriptionHtml).length < 3) {
+      setStatusText("Add a template name and document content before export.");
+      return;
+    }
+
+    const facilityContact = [
+      bootstrap.facility.location,
+      bootstrap.facility.phone,
+      bootstrap.facility.email,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const wordHtml = `<!doctype html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(templateName)}</title>
+    <style>
+      @page { size: A4; margin: 1.1cm; }
+      body { font-family: Georgia, "Times New Roman", serif; color: #10233d; margin: 0; }
+      .sheet { max-width: 780px; margin: 0 auto; }
+      .brand { border-bottom: 2px solid #cbd5e1; padding-bottom: 14px; margin-bottom: 20px; }
+      .brand h1 { margin: 0 0 6px; font-size: 26px; text-transform: uppercase; }
+      .brand p { margin: 0; color: #475569; }
+      .section { margin-bottom: 18px; }
+      .section h2 { margin: 0 0 8px; font-size: 16px; text-transform: uppercase; text-decoration: underline; }
+      .section h3 { margin: 0 0 8px; font-size: 14px; }
+      .section p { margin: 0 0 12px; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+      th, td { border: 1px solid #94a3b8; padding: 8px 10px; vertical-align: top; }
+      th { background: #eff6ff; }
+      img { max-width: 100%; height: auto; }
+      mark { padding: 0.05rem 0.18rem; border-radius: 4px; }
+      .editor-page-break { page-break-before: always; break-before: page; height: 0; border: 0; }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <header class="brand">
+        <h1>${escapeHtml(bootstrap.facility.name)}</h1>
+        <p>${escapeHtml(templateName)}</p>
+        ${facilityContact ? `<p>${escapeHtml(facilityContact)}</p>` : ""}
+      </header>
+      ${historyHtml ? `<section class="section"><h2>History</h2>${historyHtml}</section>` : ""}
+      ${reportForm.summary.trim() ? `<section class="section"><h2>Summary</h2><p>${escapeHtml(reportForm.summary.trim())}</p></section>` : ""}
+      <section class="section"><h2>Description</h2>${descriptionHtml}</section>
+      ${impressionHtml ? `<section class="section"><h2>Impression</h2>${impressionHtml}</section>` : ""}
+    </div>
+  </body>
+</html>`;
+
+    try {
+      const { asBlob } = await import("html-docx-js-typescript");
+      const result = await asBlob(wordHtml, {
+        margins: {
+          top: 720,
+          right: 720,
+          bottom: 720,
+          left: 720,
+        },
+      });
+      const blob =
+        result instanceof Blob
+          ? result
+          : new Blob([
+              new Uint8Array(Array.from(result as unknown as Iterable<number>)),
+            ], {
+              type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            });
+
+      downloadBlobFile(
+        blob,
+        `${sanitizeDownloadName(templateName) || "report-template"}.docx`,
+      );
+      setStatusText(`Exported ${templateName} as a DOCX document`);
+    } catch {
+      setStatusText("DOCX export could not be completed right now.");
+    }
+  }
+
+  async function handleImportReportTemplateFile(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const [file] = Array.from(event.target.files ?? []);
+    if (!file) {
+      return;
+    }
+
+    try {
+      const lowerName = file.name.toLowerCase();
+      let rawText = "";
+
+      if (lowerName.endsWith(".pdf")) {
+        const pdfjs = await import("pdfjs-dist/build/pdf.mjs");
+        const workerModule = await import("pdfjs-dist/build/pdf.worker.mjs?url");
+        pdfjs.GlobalWorkerOptions.workerSrc = workerModule.default;
+        const document = await pdfjs.getDocument({
+          data: await file.arrayBuffer(),
+        }).promise;
+        const pages: string[] = [];
+
+        for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+          const page = await document.getPage(pageNumber);
+          const content = await page.getTextContent();
+          const textItems = content.items as Array<{ str?: string }>;
+          pages.push(
+            textItems.map((item) => item.str ?? "").join(" "),
+          );
+        }
+
+        rawText = pages.join("\n\n");
+      } else if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
+        const mammoth = await import("mammoth");
+        const result = await mammoth.extractRawText({
+          arrayBuffer: await file.arrayBuffer(),
+        });
+        rawText = result.value;
+      } else {
+        throw new Error("Unsupported template file. Use PDF or Word format.");
+      }
+
+      const parsed = extractStructuredTemplateSections(rawText);
+      setReportForm((current) => ({
+        ...current,
+        title: parsed.title || current.title,
+        medicalHistory: parsed.medicalHistory
+          ? plainTextToRichHtml(parsed.medicalHistory)
+          : current.medicalHistory,
+        summary: parsed.summary || current.summary,
+        findings: parsed.findings
+          ? plainTextToRichHtml(parsed.findings)
+          : current.findings,
+        impression: parsed.impression
+          ? plainTextToRichHtml(parsed.impression)
+          : current.impression,
+      }));
+      setUltrasoundReportAssist((current) => ({
+        ...current,
+        recommendation: parsed.recommendation || current.recommendation,
+      }));
+      setReportTemplateName(stripFileExtension(file.name));
+      setStatusText(`Loaded template from ${file.name}`);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Template file could not be loaded.";
+      setStatusText(message);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleSampleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedSample) {
+      setStatusText("Choose a specimen before updating its lifecycle");
+      return;
+    }
+
+    try {
+      await requestJson<SampleRecord>(`/samples/${selectedSample.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...sampleForm,
+          collectedBy: sampleForm.collectedBy.trim() || actorName,
+        } satisfies SampleUpdateInput),
+      });
+      await loadOperationalData();
+      setStatusText(
+        `${selectedSample.traceLabel} moved to ${formatStatusLabel(sampleForm.status)}`,
+      );
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Specimen update failed. Retry when the server is available.",
       );
     }
   }
@@ -3837,14 +4787,16 @@ export default function App() {
       templateKind,
       summary:
         current.orderId === selectedImagingStudy.orderId ? current.summary : "",
+      status:
+        current.orderId === selectedImagingStudy.orderId ? current.status : "DRAFT",
       findings:
         current.orderId === selectedImagingStudy.orderId && current.findings
           ? current.findings
-          : preset.findingsStarter,
+          : ensureRichTextHtml(preset.findingsStarter),
       impression:
         current.orderId === selectedImagingStudy.orderId && current.impression
           ? current.impression
-          : preset.impressionStarter,
+          : ensureRichTextHtml(preset.impressionStarter),
     }));
     setUltrasoundReportAssist((current) => ({
       ...defaultUltrasoundReportAssistState,
@@ -4015,6 +4967,21 @@ export default function App() {
     }
 
     const patientTests = patientTestsById.get(selectedPatient.id) ?? [];
+    const patientRecordLogoSrc =
+      bootstrap.facility.logoDataUrl.trim() || logoSrc;
+    const patientRecordTypographyCss =
+      bootstrap.facility.printFontSize === "SMALL"
+        ? "--print-body-size: 12px; --print-title-size: 24px; --print-section-title-size: 16px; --print-copy-size: 13px;"
+        : bootstrap.facility.printFontSize === "LARGE"
+          ? "--print-body-size: 16px; --print-title-size: 32px; --print-section-title-size: 20px; --print-copy-size: 16px;"
+          : "--print-body-size: 14px; --print-title-size: 28px; --print-section-title-size: 18px; --print-copy-size: 14px;";
+    const patientRecordContactLine = [
+      bootstrap.facility.location,
+      bootstrap.facility.phone,
+      bootstrap.facility.email,
+    ]
+      .filter((value) => value.trim().length > 0)
+      .join(" / ");
     const timelineMarkup = selectedPatientTimeline
       .map(
         (entry) => `
@@ -4036,50 +5003,85 @@ export default function App() {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(selectedPatient.traceCode)} Patient Record</title>
     <style>
-      :root { color-scheme: light; font-family: Georgia, "Times New Roman", serif; }
-      body { margin: 0; padding: 32px; color: #1f2a24; background: #fff; }
-      .sheet { max-width: 900px; margin: 0 auto; }
-      .header, .section { border: 1px solid #d8dfdb; border-radius: 18px; padding: 20px 24px; margin-bottom: 18px; }
-      .header h1, .section h2 { margin: 0 0 8px; }
+      :root { color-scheme: light; font-family: Georgia, "Times New Roman", serif; ${patientRecordTypographyCss} color: #1a1a1a; background: #f5f5f5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 18px; color: #1f2a24; background: #f5f5f5; font-size: var(--print-body-size); }
+      .sheet { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid #d7d7d7; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08); }
+      .hero, .section { padding: 14px 24px; }
+      .hero { border-bottom: 1px solid #d7d7d7; }
+      .section { border-bottom: 1px solid #ececec; }
+      .section:last-of-type { border-bottom: 0; }
+      .brand-row { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+      .brand-main { display: flex; gap: 18px; align-items: flex-start; }
+      .brand-logo { width: 72px; height: 72px; object-fit: contain; flex: 0 0 auto; }
+      .brand-copy { display: grid; gap: 4px; }
+      .brand-copy p, .brand-copy h1, .brand-copy h2 { margin: 0; }
+      .facility-name { font-size: calc(var(--print-title-size) - 8px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+      .brand-copy p { font-size: var(--print-copy-size); }
+      .brand-copy h2 { font-size: var(--print-title-size); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 6px; }
+      .record-type { font-size: var(--print-copy-size); text-transform: uppercase; text-decoration: underline; margin-top: 2px; }
+      .rule { margin-top: 10px; border-top: 2px solid #1f1f1f; }
+      .brand-actions { display: grid; justify-items: end; gap: 12px; }
+      .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f1f1f; background: #f3f4f6; cursor: pointer; }
+      .section h3 { margin: 0 0 8px; font-size: var(--print-section-title-size); text-transform: uppercase; text-decoration: underline; }
+      .section-copy-title { margin: 0 0 8px; font-size: var(--print-title-size); }
       .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
       .meta-grid strong, .timeline-item strong { display: block; }
+      .meta-grid strong { font-size: 13px; text-transform: uppercase; }
       .timeline-item { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #ecefed; }
       .timeline-item:first-child { border-top: 0; padding-top: 0; }
-      .print-button { margin-bottom: 18px; padding: 10px 18px; border-radius: 999px; border: 0; background: #16332c; color: #fff; cursor: pointer; }
       .muted { color: #5c6b63; }
-      @media print { .print-button { display: none; } body { padding: 0; } .header, .section { border-color: #cdd6d1; break-inside: avoid; } }
+      @media (max-width: 720px) {
+        .brand-row, .brand-main { flex-direction: column; }
+        .brand-actions { justify-items: start; }
+        .brand-logo { width: 60px; height: 60px; }
+        .meta-grid { grid-template-columns: 1fr; }
+      }
+      @media print { .print-button { display: none; } body { padding: 0; background: #fff; } .sheet { border: 0; box-shadow: none; } .section { break-inside: avoid; } }
     </style>
   </head>
   <body>
     <div class="sheet">
-      <button class="print-button" type="button" onclick="window.print()">Print patient record</button>
-      <section class="header">
-        <h1>${escapeHtml(bootstrap.facility.name)}</h1>
-        <p class="muted">${escapeHtml(bootstrap.facility.location)} · ${escapeHtml(bootstrap.facility.phone)} · ${escapeHtml(bootstrap.facility.email)}</p>
-        <h2>Patient Record</h2>
+      <section class="hero">
+        <div class="brand-row">
+          <div class="brand-main">
+            <img class="brand-logo" src="${patientRecordLogoSrc}" alt="Facility logo" />
+            <div class="brand-copy">
+              <p class="facility-name">${escapeHtml(bootstrap.facility.name)}</p>
+              ${patientRecordContactLine ? `<p>${escapeHtml(patientRecordContactLine)}</p>` : ""}
+              <h2>${escapeHtml(selectedPatient.firstName)} ${escapeHtml(selectedPatient.lastName)}</h2>
+              <p class="record-type">Patient Record</p>
+              <div class="rule"></div>
+            </div>
+          </div>
+          <div class="brand-actions">
+            <button class="print-button" type="button" onclick="window.print()">Print patient record</button>
+          </div>
+        </div>
       </section>
       <section class="section">
-        <h2>${escapeHtml(selectedPatient.firstName)} ${escapeHtml(selectedPatient.lastName)}</h2>
+        <h3>Patient details</h3>
         <div class="meta-grid">
           <div><strong>Trace code</strong><span>${escapeHtml(selectedPatient.traceCode)}</span></div>
           <div><strong>Phone</strong><span>${escapeHtml(selectedPatient.phone || "-")}</span></div>
           <div><strong>Gender</strong><span>${escapeHtml(selectedPatient.gender || "-")}</span></div>
+          <div><strong>Location</strong><span>${escapeHtml(selectedPatient.location || "-")}</span></div>
           <div><strong>Date of birth</strong><span>${escapeHtml(selectedPatient.dateOfBirth || "-")}</span></div>
           <div><strong>NHIS ID</strong><span>${escapeHtml(selectedPatient.nhisId || "-")}</span></div>
           <div><strong>Referral</strong><span>${escapeHtml(selectedPatient.referralDoctorName || selectedPatient.referralName || "-")}</span></div>
         </div>
       </section>
       <section class="section">
-        <h2>Tests and scans</h2>
+        <h3>Tests and scans</h3>
         <p>${escapeHtml(patientTests.join(", ") || "No tests or scans ordered yet.")}</p>
       </section>
       <section class="section">
-        <h2>Clinical notes</h2>
+        <h3>Clinical notes</h3>
         <p><strong>Allergies</strong><br />${escapeHtml(selectedPatient.allergies || "No allergies recorded.")}</p>
         <p><strong>Medical history</strong><br />${escapeHtml(selectedPatient.medicalHistory || "No medical history recorded.")}</p>
       </section>
       <section class="section">
-        <h2>Visit timeline</h2>
+        <h3>Visit timeline</h3>
         ${timelineMarkup || '<p class="muted">No timeline activity recorded yet.</p>'}
       </section>
     </div>
@@ -4108,7 +5110,10 @@ export default function App() {
 
     try {
       const printable = await requestJson<PrintableAnalyticsPayload>(
-        `/analytics/finance/printable?range=${encodeURIComponent(analyticsRange)}`,
+        `/analytics/finance/printable?${buildAnalyticsQueryString(
+          analyticsRange,
+          analyticsCustomDateRange,
+        )}`,
       );
       if (writePreviewWindow(preview, printable.html)) {
         setStatusText(`Opened operations report ${printable.fileName}`);
@@ -4124,12 +5129,16 @@ export default function App() {
   }
 
   function handleDownloadAnalyticsCsv() {
+    const rangeLabel =
+      financeAnalytics.range === "CUSTOM"
+        ? `${analyticsCustomDateRange.startDate || "Start"} to ${analyticsCustomDateRange.endDate || "End"}`
+        : analyticsRangeLabels[financeAnalytics.range];
     const rows = [
       ["Report Area", "Item", "Amount", "Count", "Notes"],
       [
         "Overview",
         "Range",
-        analyticsRangeLabels[financeAnalytics.range],
+        rangeLabel,
         "",
         "",
       ],
@@ -4174,6 +5183,20 @@ export default function App() {
         (item.totalCents / 100).toFixed(2),
         String(item.count),
         "",
+      ]),
+      ...financeAnalytics.payerMix.map((item) => [
+        "Payer mix",
+        `${item.payerName} (${formatStatusLabel(item.payerType)})`,
+        (item.coveredCents / 100).toFixed(2),
+        String(item.invoicesCount),
+        `Outstanding ${(item.outstandingCents / 100).toFixed(2)}`,
+      ]),
+      ...financeAnalytics.claimStatus.map((item) => [
+        "Claim status",
+        formatStatusLabel(item.claimStatus),
+        (item.coveredCents / 100).toFixed(2),
+        String(item.invoicesCount),
+        `Outstanding ${(item.outstandingCents / 100).toFixed(2)}`,
       ]),
       ...financeAnalytics.topServices.map((service) => [
         "Top service",
@@ -4308,6 +5331,27 @@ export default function App() {
     }
   }
 
+  async function handleDeleteExpense(expenseId: string, description: string) {
+    if (!window.confirm(`Delete expense ${description}?`)) {
+      return;
+    }
+
+    try {
+      await requestJson(`/finance/expenses/${expenseId}`, {
+        method: "DELETE",
+      });
+      await loadOperationalData();
+      await loadExpenseWorkspace();
+      setStatusText(`Deleted expense ${description}`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Expense could not be deleted right now",
+      );
+    }
+  }
+
   async function handleFacilityLogoChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
@@ -4338,6 +5382,14 @@ export default function App() {
 
   async function handleFacilitySave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const confirmed = window.confirm(
+      "Save these facility profile changes to receipts, reports, and other print surfaces?",
+    );
+    if (!confirmed) {
+      setStatusText("Facility profile changes were not saved");
+      return;
+    }
+
     try {
       const updatedFacility = await requestJson<FacilityProfile>(
         "/admin/facility",
@@ -4346,8 +5398,12 @@ export default function App() {
           body: JSON.stringify(facilityForm),
         },
       );
-      setBootstrap((current) => ({ ...current, facility: updatedFacility }));
-      setStatusText("Facility profile saved for receipts and reports");
+      setBootstrap((current) => ({
+        ...current,
+        facility: updatedFacility,
+      }));
+      setFacilityForm(updatedFacility);
+      setStatusText("Facility profile saved");
     } catch {
       setStatusText("Facility profile could not be saved right now");
     }
@@ -4581,6 +5637,7 @@ export default function App() {
   }
 
   function resetServiceEditor() {
+    setServiceEditorOpen(false);
     setSelectedServiceId("");
     setServiceForm({
       code: "",
@@ -4592,6 +5649,26 @@ export default function App() {
       tatMinutes: "60",
       isActive: true,
     });
+  }
+
+  function startNewServiceEditor() {
+    setServiceEditorOpen(true);
+    setSelectedServiceId("");
+    setServiceForm({
+      code: "",
+      name: "",
+      kind: "TEST",
+      specimenType: "Whole Blood",
+      modality: "Ultrasound",
+      priceCents: "0",
+      tatMinutes: "60",
+      isActive: true,
+    });
+  }
+
+  function startEditServiceEditor(serviceId: string) {
+    setServiceEditorOpen(true);
+    setSelectedServiceId(serviceId);
   }
 
   async function handleToggleServiceActive(service: CatalogSeedItem) {
@@ -4634,6 +5711,38 @@ export default function App() {
       );
     } catch {
       setStatusText("Service status could not be updated right now");
+    }
+  }
+
+  async function handleDeleteService(service: CatalogSeedItem) {
+    if (!service.id) {
+      setStatusText("This service cannot be deleted yet.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete ${service.name}? This only works when the service has not been used in workflow records.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await requestJson(`/admin/services/${service.id}`, {
+        method: "DELETE",
+      });
+      if (selectedServiceId === service.id) {
+        resetServiceEditor();
+      }
+      await loadOperationalData();
+      setStatusText(`Deleted service ${service.name}`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Service could not be deleted right now",
+      );
     }
   }
 
@@ -4708,10 +5817,83 @@ export default function App() {
       });
       await loadOperationalData();
       setStatusText("Inventory movement recorded");
+      setInventoryForm((current) => ({
+        ...current,
+        quantity: "1",
+        reason: "",
+        expiryDate: "",
+        preferredVendor: "",
+        storageLocation: "",
+      }));
     } catch {
       setStatusText(
         "Inventory movement failed. Retry when the server is available.",
       );
+    }
+  }
+
+  function applyStudyNotificationTemplate(
+    template: "ARRIVAL_REMINDER" | "REPORT_READY",
+  ) {
+    if (!selectedImagingStudy) {
+      setStatusText("Choose a sonography study before preparing a patient notice");
+      return;
+    }
+
+    const schedule =
+      selectedImagingStudy.scheduledAt?.slice(0, 16) ??
+      notificationForm.scheduledFor;
+    const message =
+      template === "ARRIVAL_REMINDER"
+        ? `Reminder: ${selectedImagingStudy.serviceName} for ${selectedImagingStudy.patientTraceCode} is scheduled${selectedImagingStudy.scheduledAt ? ` on ${formatDate(selectedImagingStudy.scheduledAt)}` : " soon"}. Please arrive 15 minutes early.`
+        : `Your ${selectedImagingStudy.serviceName} report for ${selectedImagingStudy.patientTraceCode} is ready for review or collection. Please contact MediLab Nexus if you need assistance.`;
+
+    setNotificationForm((current) => ({
+      ...current,
+      patientId: selectedImagingStudy.patientId,
+      traceCode: selectedImagingStudy.patientTraceCode,
+      scheduledFor: template === "ARRIVAL_REMINDER" ? schedule : "",
+      message,
+    }));
+    setStatusText("Notification template prepared");
+  }
+
+  async function handleReportStatusTransition(
+    report: ReportRecord,
+    status: ReportStatusUpdateInput["status"],
+  ) {
+    try {
+      await requestJson(`/reports/${report.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+          signedBy: actorName,
+        } satisfies ReportStatusUpdateInput),
+      });
+      await loadOperationalData();
+      setStatusText(
+        `${report.title} moved to ${formatStatusLabel(status)}`,
+      );
+    } catch {
+      setStatusText("Report status change failed. Retry when the server is available.");
+    }
+  }
+
+  async function handleClaimStatusUpdate(
+    invoice: InvoiceRecord,
+    claimStatus: InvoiceRecord["claimStatus"],
+  ) {
+    try {
+      await requestJson(`/billing/invoices/${invoice.id}/claim`, {
+        method: "PATCH",
+        body: JSON.stringify({ claimStatus }),
+      });
+      await loadOperationalData();
+      setStatusText(
+        `${invoice.traceCode} claim moved to ${formatStatusLabel(claimStatus)}`,
+      );
+    } catch {
+      setStatusText("Claim status update failed. Retry when the server is available.");
     }
   }
 
@@ -4735,7 +5917,11 @@ export default function App() {
       });
       setLatestInvoiceId(response.updatedInvoice.id);
       await loadOperationalData();
-      setStatusText("Payment captured");
+      setStatusText(
+        payload.responsibility === "PAYER"
+          ? "Payer remittance captured"
+          : "Payment captured",
+      );
       await handlePreviewReceipt(response.payment.id);
     } catch {
       setStatusText(
@@ -4746,18 +5932,39 @@ export default function App() {
 
   function handlePrepareInvoiceCollection(
     invoice: InvoiceRecord,
-    amountCents = invoice.balanceCents,
+    amountCents = invoice.patientBalanceCents,
   ) {
     setPaymentForm((current) => ({
       ...current,
       invoiceId: invoice.id,
       amountCents,
+      responsibility: "PATIENT",
       traceCode: invoice.traceCode,
     }));
     setLatestInvoiceId(invoice.id);
     setActiveNav("billing");
     setStatusText(
       `Prepared ${formatMoney(amountCents)} collection for ${invoice.traceCode}`,
+    );
+  }
+
+  function handlePreparePayerRemittance(
+    invoice: InvoiceRecord,
+    amountCents = invoice.payerBalanceCents,
+  ) {
+    setPaymentForm((current) => ({
+      ...current,
+      invoiceId: invoice.id,
+      amountCents,
+      responsibility: "PAYER",
+      method: "BANK_TRANSFER",
+      reference: invoice.payerName ?? current.reference,
+      traceCode: invoice.traceCode,
+    }));
+    setLatestInvoiceId(invoice.id);
+    setActiveNav("billing");
+    setStatusText(
+      `Prepared ${formatMoney(amountCents)} payer remittance for ${invoice.traceCode}`,
     );
   }
 
@@ -4825,6 +6032,86 @@ export default function App() {
     }
   }
 
+  async function handleBackupExport() {
+    if (!selectedBackupId) {
+      setStatusText("Select a backup snapshot first");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/admin/backups/${selectedBackupId}/download`,
+        {
+          credentials: "include",
+        },
+      );
+
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}`;
+        try {
+          const payload = (await response.json()) as { message?: string };
+          if (payload.message) {
+            message = payload.message;
+          }
+        } catch {
+          // Ignore non-JSON error bodies and use the status fallback.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const fileNameMatch = disposition.match(/filename="([^"]+)"/iu);
+      const fileName = fileNameMatch?.[1] ?? "medilab-backup.enc";
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+
+      anchor.href = downloadUrl;
+      anchor.download = fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      setStatusText("Backup exported to file");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "Backup export failed",
+      );
+    }
+  }
+
+  function handleBackupImportPrompt() {
+    backupImportInputRef.current?.click();
+  }
+
+  async function handleBackupImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const snapshot = await requestJson<BackupRecord>("/admin/backups/import", {
+        method: "POST",
+        body: JSON.stringify({
+          label: file.name.replace(/\.enc$/iu, ""),
+          encryptedPayload: await file.text(),
+        }),
+      });
+      setBackups((current) => [snapshot, ...current]);
+      setSelectedBackupId(snapshot.id);
+      setStatusText("Backup imported and ready to restore");
+      await loadOperationalData();
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "Backup import failed",
+      );
+    }
+  }
+
   async function handleRestoreLatest() {
     if (!selectedBackupId) {
       setStatusText("Select a backup snapshot first");
@@ -4852,7 +6139,7 @@ export default function App() {
         method: "POST",
         body: JSON.stringify(userForm),
       });
-      const username = userForm.username;
+      const { username } = userForm;
       setUserForm({
         username: "",
         displayName: "",
@@ -4861,30 +6148,52 @@ export default function App() {
       });
       await loadOperationalData();
       setStatusText(`Account ${username} created`);
-    } catch {
+    } catch (error) {
       setStatusText(
-        "User creation failed. Check duplicates or API availability.",
+        error instanceof Error
+          ? error.message
+          : "User creation failed. Check duplicates or API availability.",
       );
     }
   }
 
-  async function handleRotatePin(event: React.FormEvent<HTMLFormElement>) {
+  async function handleRecoverPin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!pinRotation.userId) {
-      setStatusText("Choose a user before rotating a PIN");
+    if (!pinRecovery.userId) {
+      setStatusText("Choose a user before recovering a PIN");
       return;
     }
 
     try {
-      await requestJson(`/admin/users/${pinRotation.userId}/rotate-pin`, {
+      await requestJson(`/admin/users/${pinRecovery.userId}/rotate-pin`, {
         method: "POST",
-        body: JSON.stringify({ newPin: pinRotation.newPin }),
+        body: JSON.stringify({ newPin: pinRecovery.newPin }),
       });
-      setPinRotation({ userId: "", newPin: "" });
+      setPinRecovery({ userId: "", newPin: "" });
       await loadOperationalData();
-      setStatusText("PIN rotated and previous sessions revoked");
-    } catch {
-      setStatusText("PIN rotation failed");
+      setStatusText("Recovery PIN updated and previous sessions revoked");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "PIN recovery failed",
+      );
+    }
+  }
+
+  async function handleChangeOwnPin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    try {
+      await requestJson("/auth/change-pin", {
+        method: "POST",
+        body: JSON.stringify(selfPinChange satisfies ChangeOwnPinInput),
+      });
+      setSelfPinChange({ currentPin: "", newPin: "" });
+      await loadOperationalData();
+      setStatusText("Your PIN was changed and previous sessions were revoked");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "PIN change failed",
+      );
     }
   }
 
@@ -5142,7 +6451,7 @@ export default function App() {
               key={patient.id}
               type="button"
               className="list-row button-row"
-              onClick={() => openPatient(patient)}
+              onClick={() => openPatient(patient, "patientRecords")}
             >
               <div>
                 <strong>{patient.traceCode}</strong>
@@ -5186,6 +6495,9 @@ export default function App() {
                 {selectedPatient.dateOfBirth
                   ? ` · DOB ${selectedPatient.dateOfBirth}`
                   : ""}
+                {selectedPatient.location
+                  ? ` · ${selectedPatient.location}`
+                  : ""}
                 {selectedPatient.nhisId
                   ? ` · NHIS ${selectedPatient.nhisId}`
                   : ""}
@@ -5207,6 +6519,15 @@ export default function App() {
                     }
                   >
                     {isEditingPatientRecord ? "Close editor" : "Edit record"}
+                  </button>
+                ) : null}
+                {canEditPatientRecords ? (
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => void handleDeletePatient()}
+                  >
+                    Delete patient
                   </button>
                 ) : null}
                 <button
@@ -5310,6 +6631,18 @@ export default function App() {
                       }))
                     }
                     required
+                  />
+                </label>
+                <label>
+                  <span>Location / Address</span>
+                  <input
+                    value={patientRecordDraft.location ?? ""}
+                    onChange={(event) =>
+                      setPatientRecordDraft((current) => ({
+                        ...current,
+                        location: event.target.value,
+                      }))
+                    }
                   />
                 </label>
                 <label>
@@ -5493,7 +6826,7 @@ export default function App() {
   );
 
   const patientSection = showPatientIntakeTools ? (
-    <section className="content-grid two-wide">
+    <section className="content-grid">
       <article className="surface-card form-card">
         <div className="section-head">
           <div>
@@ -5577,6 +6910,19 @@ export default function App() {
                 />
               </label>
               <label>
+                <span>Location / Address</span>
+                <input
+                  value={patientForm.location ?? ""}
+                  onChange={(event) =>
+                    setPatientForm((current) => ({
+                      ...current,
+                      location: event.target.value,
+                    }))
+                  }
+                  placeholder="Town, district, or patient address"
+                />
+              </label>
+              <label>
                 <span>Trace code</span>
                 <input
                   value={patientForm.traceCode}
@@ -5644,19 +6990,6 @@ export default function App() {
                   placeholder="Optional"
                 />
               </label>
-              <div className="summary-panel">
-                <span>Trace and referral</span>
-                <strong>
-                  {patientForm.traceCode.trim()
-                    ? patientForm.traceCode.trim().toUpperCase()
-                    : `${patientTracePreview} · auto`}
-                </strong>
-                <p className="muted-copy">
-                  {patientForm.referralName.trim()
-                    ? `${patientForm.referralName.trim()}${patientReferralCommission.trim() ? ` will be recorded at ${patientReferralCommission.trim()}% commission.` : " will be recorded on this intake."}`
-                    : "Manual trace codes must keep the initials-plus-number format. Leave blank to continue sequential numbering."}
-                </p>
-              </div>
               <label className="full-width">
                 <span>Allergies</span>
                 <textarea
@@ -5765,6 +7098,85 @@ export default function App() {
               </div>
             </div>
             <div className="intake-step-grid">
+              <label>
+                <span>Payer type</span>
+                <select
+                  value={intakeOrder.payerType}
+                  onChange={(event) => {
+                    const payerType = event.target.value as OrderInput["payerType"];
+                    setIntakeOrder((current) => ({
+                      ...current,
+                      payerType,
+                      insuranceAuthorized: payerType === "SELF_PAY" ? false : current.insuranceAuthorized,
+                      insuranceProvider:
+                        payerType === "SELF_PAY" ? "" : current.insuranceProvider,
+                    }));
+                  }}
+                >
+                  {payerTypes.map((type) => (
+                    <option key={`intake-payer-${type}`} value={type}>
+                      {formatStatusLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Payer name</span>
+                <input
+                  value={intakeOrder.payerName}
+                  onChange={(event) =>
+                    setIntakeOrder((current) => ({
+                      ...current,
+                      payerName: event.target.value,
+                      insuranceProvider: event.target.value,
+                    }))
+                  }
+                  placeholder="NHIS, insurer, or corporate sponsor"
+                  disabled={intakeOrder.payerType === "SELF_PAY"}
+                />
+              </label>
+              <label>
+                <span>Coverage %</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={intakeOrder.payerCoveragePercent}
+                  onChange={(event) =>
+                    setIntakeOrder((current) => ({
+                      ...current,
+                      payerCoveragePercent: Number(event.target.value),
+                    }))
+                  }
+                  disabled={intakeOrder.payerType === "SELF_PAY"}
+                />
+              </label>
+              <label>
+                <span>Member ID</span>
+                <input
+                  value={intakeOrder.payerMemberId}
+                  onChange={(event) =>
+                    setIntakeOrder((current) => ({
+                      ...current,
+                      payerMemberId: event.target.value,
+                    }))
+                  }
+                  disabled={intakeOrder.payerType === "SELF_PAY"}
+                />
+              </label>
+              <label className="full-width">
+                <span>Authorization code</span>
+                <input
+                  value={intakeOrder.payerAuthorizationCode}
+                  onChange={(event) =>
+                    setIntakeOrder((current) => ({
+                      ...current,
+                      payerAuthorizationCode: event.target.value,
+                    }))
+                  }
+                  disabled={intakeOrder.payerType === "SELF_PAY"}
+                />
+              </label>
               <label className="full-width inline-toggle">
                 <input
                   type="checkbox"
@@ -5839,6 +7251,11 @@ export default function App() {
                   ? `${registrationItemIds.length} service item(s) selected · Amount due now ${formatMoney(registrationDueCents)}`
                   : "Register the patient first, then search for the scan service before billing."}
               </p>
+              {registrationItemIds.length > 0 && intakeOrder.payerType !== "SELF_PAY" ? (
+                <p className="muted-copy">
+                  {formatStatusLabel(intakeOrder.payerType)} covering {intakeOrder.payerCoveragePercent}% via {intakeOrder.payerName || "selected payer"}.
+                </p>
+              ) : null}
             </div>
             <button type="submit">
               {registrationItemIds.length > 0
@@ -5856,15 +7273,27 @@ export default function App() {
           </div>
         </form>
       </article>
-      {patientRecordsPanel}
     </section>
   ) : (
-    <section className="content-grid">{patientRecordsPanel}</section>
+    <section className="content-grid">
+      <article className="surface-card">
+        <div className="section-head">
+          <div>
+            <h2>Patients</h2>
+            <p>
+              Intake tools are not available in this portal. Use Patient
+              Records when you need the visit history, billing summary, or
+              receipt reprints.
+            </p>
+          </div>
+        </div>
+      </article>
+    </section>
   );
 
   const ordersSection = (
-    <section className="content-grid two-wide">
-      <article className="surface-card form-card">
+    <section className="content-grid admin-workspace-layout">
+      <article className="surface-card form-card workspace-form-card">
         <div className="section-head">
           <div>
             <h2>Orders and requests</h2>
@@ -5922,15 +7351,59 @@ export default function App() {
             </select>
           </label>
           <label>
-            <span>Insurance</span>
-            <input
-              value={orderForm.insuranceProvider}
+            <span>Payer type</span>
+            <select
+              value={orderForm.payerType}
               onChange={(event) =>
                 setOrderForm((current) => ({
                   ...current,
+                  payerType: event.target.value as OrderInput["payerType"],
+                  insuranceAuthorized:
+                    event.target.value === "SELF_PAY"
+                      ? false
+                      : current.insuranceAuthorized,
+                  insuranceProvider:
+                    event.target.value === "SELF_PAY"
+                      ? ""
+                      : current.insuranceProvider,
+                }))
+              }
+            >
+              {payerTypes.map((type) => (
+                <option key={`order-payer-${type}`} value={type}>
+                  {formatStatusLabel(type)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Payer name</span>
+            <input
+              value={orderForm.payerName}
+              onChange={(event) =>
+                setOrderForm((current) => ({
+                  ...current,
+                  payerName: event.target.value,
                   insuranceProvider: event.target.value,
                 }))
               }
+              disabled={orderForm.payerType === "SELF_PAY"}
+            />
+          </label>
+          <label>
+            <span>Coverage %</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={orderForm.payerCoveragePercent}
+              onChange={(event) =>
+                setOrderForm((current) => ({
+                  ...current,
+                  payerCoveragePercent: Number(event.target.value),
+                }))
+              }
+              disabled={orderForm.payerType === "SELF_PAY"}
             />
           </label>
           <label>
@@ -5944,6 +7417,19 @@ export default function App() {
                   scheduledFor: event.target.value,
                 }))
               }
+            />
+          </label>
+          <label>
+            <span>Member ID</span>
+            <input
+              value={orderForm.payerMemberId}
+              onChange={(event) =>
+                setOrderForm((current) => ({
+                  ...current,
+                  payerMemberId: event.target.value,
+                }))
+              }
+              disabled={orderForm.payerType === "SELF_PAY"}
             />
           </label>
           <label>
@@ -5968,6 +7454,19 @@ export default function App() {
                   radiologistName: event.target.value,
                 }))
               }
+            />
+          </label>
+          <label className="full-width">
+            <span>Authorization code</span>
+            <input
+              value={orderForm.payerAuthorizationCode}
+              onChange={(event) =>
+                setOrderForm((current) => ({
+                  ...current,
+                  payerAuthorizationCode: event.target.value,
+                }))
+              }
+              disabled={orderForm.payerType === "SELF_PAY"}
             />
           </label>
           <label className="full-width">
@@ -6060,101 +7559,373 @@ export default function App() {
         </form>
       </article>
 
-      <article className="surface-card">
-        <div className="section-head">
+      <article className="surface-card workspace-table-card">
+        <div className="section-head compact-head">
           <div>
-            <h2>Recent requests</h2>
-            <p>Trace Code first, with quick visual status tags.</p>
+            <h2>Request workspace</h2>
+            <p>Search, filter, and review the live request stream from one table.</p>
           </div>
         </div>
-        <div className="list-stack">
-          {orderMatches.map((order) => (
-            <div key={order.id} className="list-row">
-              <div>
-                <strong>{order.patientTraceCode}</strong>
-                <span>{order.items.join(", ")}</span>
-              </div>
-              <small
-                className={`status-pill tone-${getOrderTone(order.status)}`}
+        <div className="audit-log-toolbar">
+          <label className="audit-log-search">
+            <span>Search requests</span>
+            <input
+              value={orderSearchQuery}
+              onChange={(event) => setOrderSearchQuery(event.target.value)}
+              placeholder="Search trace code, patient, accession, or service"
+            />
+          </label>
+          <div className="study-filter-row audit-log-filter-row">
+            <div className="pill-filter-group">
+              <button
+                type="button"
+                className={`pill-filter${selectedOrderStatus === "ALL" ? " active" : ""}`}
+                onClick={() => setSelectedOrderStatus("ALL")}
               >
-                {order.status}
-              </small>
+                All statuses
+              </button>
+              {orderStatusOptions.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`pill-filter${selectedOrderStatus === status ? " active" : ""}`}
+                  onClick={() => setSelectedOrderStatus(status)}
+                >
+                  {formatStatusLabel(status)}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
+          <div className="audit-log-metrics">
+            <div className="metric-mini audit-log-metric">
+              <span>Visible requests</span>
+              <strong>{filteredOrders.length}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Open requests</span>
+              <strong>{openOrderCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Completed</span>
+              <strong>{completedOrderCount}</strong>
+            </div>
+          </div>
         </div>
+        {filteredOrders.length === 0 ? (
+          <div className="chart-empty audit-log-empty-state">
+            No requests match the current filters.
+          </div>
+        ) : (
+          <div className="audit-log-table-shell compact-scroll admin-table-shell">
+            <table className="audit-log-table admin-table">
+              <thead>
+                <tr>
+                  <th>Trace Code</th>
+                  <th>Patient</th>
+                  <th>Accession</th>
+                  <th>Services</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => (
+                  <tr key={order.id}>
+                    <td>
+                      <strong>{order.patientTraceCode}</strong>
+                    </td>
+                    <td>{order.patientName}</td>
+                    <td>
+                      <span className="admin-table-subcopy">{order.accessionNumber}</span>
+                    </td>
+                    <td>{order.items.join(", ")}</td>
+                    <td>
+                      <small
+                        className={`status-pill tone-${getOrderTone(order.status)}`}
+                      >
+                        {formatStatusLabel(order.status)}
+                      </small>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
     </section>
   );
 
   const trackingSection = (
-    <section className="content-grid two-wide">
-      <article className="surface-card">
+    <section className="content-grid admin-workspace-layout">
+      <article className="surface-card form-card workspace-form-card">
         <div className="section-head">
           <div>
-            <h2>Sample tracking</h2>
-            <p>Kanban-inspired lane with timing cues.</p>
+            <h2>Specimen handoff</h2>
+            <p>Update collection state, capture rejection reasons, and keep a short custody trail.</p>
           </div>
         </div>
-        <div className="workflow-board">
-          {[
-            {
-              label: "Collected",
-              value: workflow.orders.filter((order) =>
-                ["COLLECTED", "REGISTERED"].includes(order.status),
-              ),
-            },
-            {
-              label: "In Lab",
-              value: workflow.orders.filter(
-                (order) => order.status === "IN_PROGRESS",
-              ),
-            },
-            {
-              label: "Ready for Review",
-              value: workflow.orders.filter(
-                (order) => order.status === "READY_FOR_REVIEW",
-              ),
-            },
-          ].map((lane) => (
-            <div key={lane.label} className="board-column">
-              <h3>{lane.label}</h3>
-              {lane.value.map((order) => (
-                <div key={order.id} className="board-card">
-                  <strong>{order.patientTraceCode}</strong>
-                  <span>{order.patientName}</span>
-                  <small>{order.items.join(", ")}</small>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Collection priorities</h2>
-            <p>Fast glance at work that may slip turnaround targets.</p>
-          </div>
-        </div>
-        <div className="list-stack">
-          {workflow.orders.slice(0, 6).map((order, index) => (
-            <div key={order.id} className="list-row">
+        {selectedSample ? (
+          <>
+            <div className="summary-panel full-width">
               <div>
-                <strong>{order.patientTraceCode}</strong>
-                <span>{order.patientName}</span>
+                <span>Selected specimen</span>
+                <strong>
+                  {selectedSample.patientTraceCode} · {selectedSample.specimenType}
+                </strong>
+                <p className="muted-copy">{selectedSample.traceLabel}</p>
               </div>
-              <small
-                className={`tag ${index < 2 ? "tag-critical" : index < 4 ? "tag-warn" : "tag-good"}`}
-              >
-                {index < 2
-                  ? "Overdue"
-                  : index < 4
-                    ? "Approaching TAT"
-                    : "On time"}
+              <small className={`status-pill tone-${getSampleTone(selectedSample.status)}`}>
+                {formatStatusLabel(selectedSample.status)}
               </small>
             </div>
-          ))}
+            <form className="form-grid" onSubmit={handleSampleSubmit}>
+              <label>
+                <span>Specimen status</span>
+                <select
+                  value={sampleForm.status}
+                  onChange={(event) =>
+                    setSampleForm((current) => ({
+                      ...current,
+                      status: event.target.value as SampleUpdateInput["status"],
+                    }))
+                  }
+                >
+                  {sampleStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {formatStatusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Handled by</span>
+                <input
+                  value={sampleForm.collectedBy}
+                  onChange={(event) =>
+                    setSampleForm((current) => ({
+                      ...current,
+                      collectedBy: event.target.value,
+                    }))
+                  }
+                  placeholder="Collector or bench operator"
+                />
+              </label>
+              <label className="full-width">
+                <span>Rejection reason</span>
+                <input
+                  value={sampleForm.rejectionReason}
+                  onChange={(event) =>
+                    setSampleForm((current) => ({
+                      ...current,
+                      rejectionReason: event.target.value,
+                    }))
+                  }
+                  placeholder="Required when the specimen is rejected"
+                />
+              </label>
+              <label className="full-width">
+                <span>Custody note</span>
+                <textarea
+                  rows={3}
+                  value={sampleForm.note}
+                  onChange={(event) =>
+                    setSampleForm((current) => ({
+                      ...current,
+                      note: event.target.value,
+                    }))
+                  }
+                  placeholder="Collector note, storage note, or recollection instruction"
+                />
+              </label>
+              <div className="full-width action-row">
+                <button type="submit">Update specimen</button>
+              </div>
+            </form>
+            <div className="bordered-top">
+              <div className="section-head compact-head">
+                <div>
+                  <h3>Custody trail</h3>
+                  <p>Most recent handoff events for this specimen.</p>
+                </div>
+              </div>
+              <div className="list-stack compact-scroll">
+                {selectedSample.chainOfCustody.length > 0 ? (
+                  selectedSample.chainOfCustody.map((entry) => (
+                    <div key={`${entry.at}-${entry.action}`} className="list-row">
+                      <div>
+                        <strong>{formatStatusLabel(entry.action)}</strong>
+                        <span>{entry.actor}</span>
+                        <small>{entry.note || "No note recorded"}</small>
+                      </div>
+                      <small>{formatDate(entry.at)}</small>
+                    </div>
+                  ))
+                ) : (
+                  <p className="section-note">No custody updates recorded yet.</p>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="section-note">No specimens are in the workflow yet.</p>
+        )}
+      </article>
+
+      <article className="surface-card workspace-table-card">
+        <div className="section-head compact-head">
+          <div>
+            <h2>Sample tracking</h2>
+            <p>Specimen lifecycle board with rejection, custody, and bench visibility.</p>
+          </div>
+        </div>
+        <div className="audit-log-toolbar">
+          <label className="audit-log-search">
+            <span>Search specimens</span>
+            <input
+              value={sampleSearchQuery}
+              onChange={(event) => setSampleSearchQuery(event.target.value)}
+              placeholder="Search trace code, specimen, label, or handler"
+            />
+          </label>
+          <div className="study-filter-row audit-log-filter-row">
+            <div className="pill-filter-group">
+              <button
+                type="button"
+                className={`pill-filter${selectedSampleStatus === "ALL" ? " active" : ""}`}
+                onClick={() => setSelectedSampleStatus("ALL")}
+              >
+                All statuses
+              </button>
+              {sampleStatuses.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`pill-filter${selectedSampleStatus === status ? " active" : ""}`}
+                  onClick={() => setSelectedSampleStatus(status)}
+                >
+                  {formatStatusLabel(status)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="audit-log-metrics">
+            <div className="metric-mini audit-log-metric">
+              <span>Visible specimens</span>
+              <strong>{filteredSamples.length}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Pending or rejected</span>
+              <strong>{pendingSampleCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Active on bench</span>
+              <strong>{activeBenchSampleCount}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="admin-split-panels">
+          <div className="surface-subpanel">
+            <div className="section-head compact-head">
+              <div>
+                <h3>Lifecycle board</h3>
+                <p>Keep the lane view while focusing on the filtered specimens.</p>
+              </div>
+            </div>
+            <div className="workflow-board">
+              {specimenBoard.map((lane) => {
+                const laneSamples = filteredSamples.filter((sample) =>
+                  lane.statuses.includes(sample.status),
+                );
+
+                return (
+                  <div key={lane.label} className="board-column">
+                    <h3>{lane.label}</h3>
+                    {laneSamples.length === 0 ? (
+                      <p className="section-note">No specimens in this lane.</p>
+                    ) : (
+                      laneSamples.map((sample) => (
+                        <button
+                          key={sample.id}
+                          type="button"
+                          className={`board-card button-row ${
+                            selectedSample?.id === sample.id ? "selected-study" : ""
+                          }`}
+                          onClick={() => setSelectedSampleId(sample.id)}
+                        >
+                          <div>
+                            <strong>{sample.patientTraceCode}</strong>
+                            <span>{sample.specimenType}</span>
+                            <small>{sample.traceLabel}</small>
+                          </div>
+                          <small
+                            className={`status-pill tone-${getSampleTone(sample.status)}`}
+                          >
+                            {formatStatusLabel(sample.status)}
+                          </small>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="surface-subpanel">
+            <div className="section-head compact-head">
+              <div>
+                <h3>Specimen directory</h3>
+                <p>Open any specimen directly into the handoff form.</p>
+              </div>
+            </div>
+            {filteredSamples.length === 0 ? (
+              <div className="chart-empty audit-log-empty-state">
+                No specimens match the current filters.
+              </div>
+            ) : (
+              <div className="audit-log-table-shell compact-scroll admin-table-shell">
+                <table className="audit-log-table admin-table">
+                  <thead>
+                    <tr>
+                      <th>Trace Code</th>
+                      <th>Specimen</th>
+                      <th>Label</th>
+                      <th>Status</th>
+                      <th>Handled By</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSamples.map((sample) => (
+                      <tr key={sample.id}>
+                        <td>
+                          <strong>{sample.patientTraceCode}</strong>
+                        </td>
+                        <td>{sample.specimenType}</td>
+                        <td>{sample.traceLabel}</td>
+                        <td>
+                          <small className={`status-pill tone-${getSampleTone(sample.status)}`}>
+                            {formatStatusLabel(sample.status)}
+                          </small>
+                        </td>
+                        <td>{sample.collectedBy || "Unassigned"}</td>
+                        <td>
+                          <div className="inline-actions admin-table-actions">
+                            <button
+                              type="button"
+                              className="ghost-action small"
+                              onClick={() => setSelectedSampleId(sample.id)}
+                            >
+                              {selectedSample?.id === sample.id ? "Open" : "Select"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </article>
     </section>
@@ -6384,6 +8155,22 @@ export default function App() {
               </p>
             </div>
           </div>
+          <div className="inline-actions template-action-row">
+            <button
+              type="button"
+              className="ghost-action small"
+              onClick={() => applyStudyNotificationTemplate("ARRIVAL_REMINDER")}
+            >
+              Arrival reminder
+            </button>
+            <button
+              type="button"
+              className="ghost-action small"
+              onClick={() => applyStudyNotificationTemplate("REPORT_READY")}
+            >
+              Report ready notice
+            </button>
+          </div>
           <form className="form-grid" onSubmit={handleNotificationSubmit}>
             <label>
               <span>Recipient</span>
@@ -6470,15 +8257,15 @@ export default function App() {
   );
 
   const scanReportsSection = (
-    <section className="content-grid two-wide">
+    <section className="content-grid">
       {canWriteReports ? (
-        <article className="surface-card form-card">
+        <article className="surface-card form-card report-compose-card">
           <div className="section-head">
             <div>
               <h2>Scan Reports</h2>
               <p>
-                Structured ultrasound scan reporting with printable output and
-                guided measurement capture.
+                Full-screen scan reporting with live preview and print while
+                you type.
               </p>
             </div>
           </div>
@@ -6563,6 +8350,96 @@ export default function App() {
               </select>
             </label>
             <label>
+              <span>Saved template</span>
+              <select
+                value={selectedReportTemplateId}
+                onChange={(event) =>
+                  setSelectedReportTemplateId(event.target.value)
+                }
+                disabled={!canWriteReports}
+              >
+                <option value="">Choose saved template</option>
+                {reportTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} · {reportTemplateLabels[template.templateKind]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Template name</span>
+              <input
+                value={reportTemplateName}
+                onChange={(event) => setReportTemplateName(event.target.value)}
+                placeholder="Abdominal normal study"
+                disabled={!canWriteReports}
+              />
+            </label>
+            <div className="summary-panel full-width template-library-panel">
+              <div className="template-library-copy">
+                <span className="eyebrow">Reusable templates</span>
+                <strong>Save a scan or test template and load it any time</strong>
+                <p>
+                  Load a saved template, import one from your device, or save
+                  the current report for reuse.
+                </p>
+              </div>
+              <input
+                ref={reportTemplateFileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="sr-only"
+                onChange={(event) => void handleImportReportTemplateFile(event)}
+                disabled={!canWriteReports}
+              />
+              <div className="template-library-actions">
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() =>
+                    selectedSavedReportTemplate
+                      ? applyReportTemplate(selectedSavedReportTemplate)
+                      : setStatusText("Choose a saved template first.")
+                  }
+                  disabled={!canWriteReports}
+                >
+                  Load template
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() => reportTemplateFileInputRef.current?.click()}
+                  disabled={!canWriteReports}
+                >
+                  Load from drive
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() => void handleSaveReportTemplate()}
+                  disabled={!canWriteReports}
+                >
+                  Save current as template
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={handleExportCurrentTemplateDocument}
+                  disabled={!canWriteReports}
+                >
+                  Export DOCX file
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() => void handleDeleteReportTemplate()}
+                  disabled={!canWriteReports || !selectedSavedReportTemplate}
+                >
+                  Delete template
+                </button>
+              </div>
+            </div>
+            <label>
               <span>Report title</span>
               <input
                 value={reportForm.title}
@@ -6574,6 +8451,25 @@ export default function App() {
                 }
                 disabled={!canWriteReports}
               />
+            </label>
+            <label>
+              <span>Workflow status</span>
+              <select
+                value={reportForm.status}
+                onChange={(event) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    status: event.target.value as ReportInput["status"],
+                  }))
+                }
+                disabled={!canWriteReports}
+              >
+                {reportStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {formatStatusLabel(status)}
+                  </option>
+                ))}
+              </select>
             </label>
             {isUltrasoundTemplate(reportForm.templateKind) &&
             selectedReportImagingStudy ? (
@@ -6627,36 +8523,31 @@ export default function App() {
                 </label>
               </>
             ) : null}
-            <label className="full-width">
-              <span>History</span>
-              <textarea
-                rows={3}
-                value={reportForm.medicalHistory}
-                onChange={(event) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    medicalHistory: event.target.value,
-                  }))
-                }
-                placeholder="Type the clinical history for this scan report"
-                disabled={!canWriteReports}
-              />
-            </label>
-            <label className="full-width">
-              <span>Description</span>
-              <textarea
-                rows={8}
-                value={reportForm.findings}
-                onChange={(event) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    findings: event.target.value,
-                  }))
-                }
-                placeholder="Type or paste the report description here, then edit as needed"
-                disabled={!canWriteReports}
-              />
-            </label>
+            <RichTextEditor
+              label="History"
+              value={ensureRichTextHtml(reportForm.medicalHistory)}
+              onChange={(value) =>
+                setReportForm((current) => ({
+                  ...current,
+                  medicalHistory: value,
+                }))
+              }
+              placeholder="Type the clinical history for this scan report"
+              disabled={!canWriteReports}
+            />
+            <RichTextEditor
+              label="Description"
+              value={ensureRichTextHtml(reportForm.findings)}
+              onChange={(value) =>
+                setReportForm((current) => ({
+                  ...current,
+                  findings: value,
+                }))
+              }
+              placeholder="Type or paste the report description here, then format it as needed"
+              disabled={!canWriteReports}
+              documentMode
+            />
             {isUltrasoundTemplate(reportForm.templateKind) ? (
               <label className="full-width">
                 <span>Measurements</span>
@@ -6696,20 +8587,18 @@ export default function App() {
                 ))}
               </div>
             ) : null}
-            <label className="full-width">
-              <span>Impression</span>
-              <textarea
-                rows={3}
-                value={reportForm.impression}
-                onChange={(event) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    impression: event.target.value,
-                  }))
-                }
-                disabled={!canWriteReports}
-              />
-            </label>
+            <RichTextEditor
+              label="Impression"
+              value={ensureRichTextHtml(reportForm.impression)}
+              onChange={(value) =>
+                setReportForm((current) => ({
+                  ...current,
+                  impression: value,
+                }))
+              }
+              placeholder="Summarize the report impression"
+              disabled={!canWriteReports}
+            />
             {isUltrasoundTemplate(reportForm.templateKind) ? (
               <label className="full-width">
                 <span>Recommendation</span>
@@ -6768,14 +8657,30 @@ export default function App() {
               <span>Highlight critical value and notify clinician</span>
             </label>
             <div className="full-width action-row">
+              <button
+                type="button"
+                className="ghost-action"
+                onClick={() => void handlePreviewDraftReport(false)}
+                disabled={!canWriteReports}
+              >
+                Preview draft
+              </button>
+              <button
+                type="button"
+                className="primary-action"
+                onClick={() => void handlePreviewDraftReport(true)}
+                disabled={!canWriteReports}
+              >
+                Print draft
+              </button>
               <button type="submit" disabled={!canWriteReports}>
-                Generate report PDF
+                Save report
               </button>
             </div>
           </form>
         </article>
       ) : (
-        <article className="surface-card">
+        <article className="surface-card report-pickup-card">
           <div className="section-head">
             <div>
               <h2>Scan report pickup</h2>
@@ -6793,43 +8698,45 @@ export default function App() {
               can write or approve them.
             </p>
           </div>
+          <div className="list-stack">
+            {pickupReports.length === 0 ? (
+              <div className="chart-empty audit-log-empty-state">
+                No finished reports are ready for reception pickup yet.
+              </div>
+            ) : (
+              pickupReports.map((report) => (
+                <div key={report.id} className="report-card-row">
+                  <div>
+                    <strong>{report.title}</strong>
+                    <span>
+                      {report.patientTraceCode} · {formatDate(report.createdAt)}
+                    </span>
+                  </div>
+                  <div className="inline-actions">
+                    <small className={`status-pill tone-${getOrderTone(report.status)}`}>
+                      {formatStatusLabel(report.status)}
+                    </small>
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() => handlePreviewReport(report.id)}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-action small"
+                      onClick={() => handleDownloadPdf(report.id, report.title)}
+                    >
+                      PDF
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </article>
       )}
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Scan reports</h2>
-            <p>Open finished reports and print the PDF when needed.</p>
-          </div>
-        </div>
-        <div className="list-stack">
-          {workflow.reports.map((report) => (
-            <div key={report.id} className="report-card-row">
-              <div>
-                <strong>{report.title}</strong>
-                <span>{formatDate(report.createdAt)}</span>
-              </div>
-              <div className="inline-actions">
-                <button
-                  type="button"
-                  className="ghost-action small"
-                  onClick={() => handlePreviewReport(report.id)}
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  className="primary-action small"
-                  onClick={() => handleDownloadPdf(report.id, report.title)}
-                >
-                  PDF
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </article>
     </section>
   );
 
@@ -6942,6 +8849,47 @@ export default function App() {
                   reason: event.target.value,
                 }))
               }
+              disabled={!canManageInventory}
+            />
+          </label>
+          <label>
+            <span>Expiry date</span>
+            <input
+              type="date"
+              value={inventoryForm.expiryDate}
+              onChange={(event) =>
+                setInventoryForm((current) => ({
+                  ...current,
+                  expiryDate: event.target.value,
+                }))
+              }
+              disabled={!canManageInventory}
+            />
+          </label>
+          <label>
+            <span>Preferred vendor</span>
+            <input
+              value={inventoryForm.preferredVendor}
+              onChange={(event) =>
+                setInventoryForm((current) => ({
+                  ...current,
+                  preferredVendor: event.target.value,
+                }))
+              }
+              disabled={!canManageInventory}
+            />
+          </label>
+          <label className="full-width">
+            <span>Storage location</span>
+            <input
+              value={inventoryForm.storageLocation}
+              onChange={(event) =>
+                setInventoryForm((current) => ({
+                  ...current,
+                  storageLocation: event.target.value,
+                }))
+              }
+              placeholder="Cold room, shelf, cabinet, or bench location"
               disabled={!canManageInventory}
             />
           </label>
@@ -7065,8 +9013,14 @@ export default function App() {
                       </small>
                     ) : null}
                     <small>
-                      Due {formatMoney(invoice.amountDueCents)} · Paid{" "}
-                      {formatMoney(invoice.amountPaidCents)}
+                      {formatStatusLabel(invoice.payerType)}
+                      {invoice.payerName ? ` · ${invoice.payerName}` : ""}
+                      {invoice.payerType !== "SELF_PAY"
+                        ? ` · Claim ${formatStatusLabel(invoice.claimStatus)}`
+                        : ""}
+                    </small>
+                    <small>
+                      Patient {formatMoney(invoice.patientPaidCents)} of {formatMoney(invoice.patientResponsibilityCents)} · Payer {formatMoney(invoice.payerPaidCents)} of {formatMoney(invoice.payerResponsibilityCents)}
                     </small>
                   </div>
                   <div className="inline-actions">
@@ -7081,7 +9035,25 @@ export default function App() {
                     >
                       Print invoice
                     </button>
-                    {invoice.balanceCents > 0 ? (
+                    {invoice.payerType !== "SELF_PAY" ? (
+                      <select
+                        value={invoice.claimStatus}
+                        onChange={(event) =>
+                          void handleClaimStatusUpdate(
+                            invoice,
+                            event.target.value as InvoiceRecord["claimStatus"],
+                          )
+                        }
+                        disabled={!canManageFinance}
+                      >
+                        {claimStatuses.map((status) => (
+                          <option key={`${invoice.id}-${status}`} value={status}>
+                            {formatStatusLabel(status)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {invoice.patientBalanceCents > 0 ? (
                       <button
                         type="button"
                         className="primary-action small"
@@ -7122,7 +9094,6 @@ export default function App() {
                     (1000 * 60 * 60 * 24),
                 ),
               );
-
               return (
                 <div
                   key={`collection-${invoice.id}`}
@@ -7143,8 +9114,15 @@ export default function App() {
                       </small>
                     ) : null}
                     <small>
-                      Outstanding {formatMoney(invoice.balanceCents)} of{" "}
-                      {formatMoney(invoice.amountDueCents)}
+                      {formatStatusLabel(invoice.payerType)}
+                      {invoice.payerName ? ` · ${invoice.payerName}` : ""}
+                      {invoice.payerType !== "SELF_PAY"
+                        ? ` · Claim ${formatStatusLabel(invoice.claimStatus)}`
+                        : ""}
+                    </small>
+                    <small>
+                      Patient outstanding {formatMoney(invoice.patientBalanceCents)} of{" "}
+                      {formatMoney(invoice.patientResponsibilityCents)}
                     </small>
                   </div>
                   <div className="inline-actions">
@@ -7154,7 +9132,7 @@ export default function App() {
                       onClick={() =>
                         handlePrepareInvoiceCollection(
                           invoice,
-                          invoice.amountDueCents,
+                          invoice.patientBalanceCents,
                         )
                       }
                       disabled={!canManageFinance}
@@ -7173,6 +9151,119 @@ export default function App() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="bordered-top">
+          <div className="section-head">
+            <div>
+              <h3>Claims worklist</h3>
+              <p>Filter third-party invoices by payer type and current claim state.</p>
+            </div>
+          </div>
+          <div className="metric-cluster">
+            <div className="metric-mini">
+              <span>Claims in view</span>
+              <strong>{filteredClaimSummary.invoicesCount}</strong>
+            </div>
+            <div className="metric-mini">
+              <span>Covered value</span>
+              <strong>{formatMoney(filteredClaimSummary.coveredCents)}</strong>
+            </div>
+            <div className="metric-mini">
+              <span>Pending action</span>
+              <strong>{filteredClaimSummary.pendingCount}</strong>
+            </div>
+            <div className="metric-mini">
+              <span>Settled claims</span>
+              <strong>{filteredClaimSummary.settledCount}</strong>
+            </div>
+          </div>
+          <div className="form-grid bordered-top">
+            <label>
+              <span>Payer type</span>
+              <select
+                value={billingPayerTypeFilter}
+                onChange={(event) =>
+                  setBillingPayerTypeFilter(
+                    event.target.value as "ALL" | InvoiceRecord["payerType"],
+                  )
+                }
+              >
+                <option value="ALL">All third-party payers</option>
+                {payerTypes
+                  .filter((type) => type !== "SELF_PAY")
+                  .map((type) => (
+                    <option key={`billing-payer-${type}`} value={type}>
+                      {formatStatusLabel(type)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              <span>Claim status</span>
+              <select
+                value={billingClaimStatusFilter}
+                onChange={(event) =>
+                  setBillingClaimStatusFilter(
+                    event.target.value as "ALL" | InvoiceRecord["claimStatus"],
+                  )
+                }
+              >
+                <option value="ALL">All claim states</option>
+                {claimStatuses
+                  .filter((status) => status !== "NOT_APPLICABLE")
+                  .map((status) => (
+                    <option key={`billing-claim-${status}`} value={status}>
+                      {formatStatusLabel(status)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <div className="list-stack compact-scroll">
+            {filteredClaimInvoices.length === 0 ? (
+              <div className="list-row user-admin-row">
+                <div>
+                  <strong>No claims match the current filters</strong>
+                  <span>Try a broader payer type or claim status selection.</span>
+                </div>
+              </div>
+            ) : null}
+            {filteredClaimInvoices.slice(0, 8).map((invoice) => (
+              <div key={`claim-${invoice.id}`} className="list-row user-admin-row">
+                <div>
+                  <strong>{invoice.traceCode}</strong>
+                  <span>
+                    {invoice.payerName || formatStatusLabel(invoice.payerType)} · {formatStatusLabel(invoice.claimStatus)}
+                  </span>
+                  <small>
+                    Covered {formatMoney(invoice.payerResponsibilityCents)} · Remittance outstanding {formatMoney(invoice.payerBalanceCents)}
+                  </small>
+                </div>
+                <div className="inline-actions">
+                  <small>{invoice.accessionNumber}</small>
+                  {invoice.payerBalanceCents > 0 ? (
+                    <button
+                      type="button"
+                      className="primary-action small"
+                      onClick={() => handlePreparePayerRemittance(invoice)}
+                      disabled={!canManageFinance}
+                    >
+                      Prepare remittance
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => handlePreviewInvoice(invoice.id)}
+                    disabled={!canManageFinance}
+                  >
+                    Print invoice
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </article>
@@ -7245,6 +9336,32 @@ export default function App() {
             </select>
           </label>
           <label>
+            <span>Applied to</span>
+            <select
+              value={paymentForm.responsibility}
+              onChange={(event) =>
+                setPaymentForm((current) => ({
+                  ...current,
+                  responsibility:
+                    event.target.value as PaymentInput["responsibility"],
+                  method:
+                    event.target.value === "PAYER"
+                      ? "BANK_TRANSFER"
+                      : current.method === "BANK_TRANSFER"
+                        ? "CASH"
+                        : current.method,
+                }))
+              }
+              disabled={!canManageFinance}
+            >
+              {paymentResponsibilities.map((responsibility) => (
+                <option key={responsibility} value={responsibility}>
+                  {formatStatusLabel(responsibility)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             <span>Reference</span>
             <input
               value={paymentForm.reference}
@@ -7291,18 +9408,25 @@ export default function App() {
     </section>
   );
 
+  const analyticsRangeSummaryLabel =
+    financeAnalytics.range === "CUSTOM"
+      ? `${analyticsCustomDateRange.startDate || "Start"} to ${analyticsCustomDateRange.endDate || "End"}`
+      : analyticsRangeLabels[financeAnalytics.range];
+  const analyticsFacilityName =
+    bootstrap.facility.name.trim() || "Facility";
+
   const analyticsSection = (
-    <section className="content-grid two-wide">
+    <section className="content-grid">
       <article className="surface-card">
         <div className="section-head">
           <div>
-            <h2>Operations report</h2>
+            <h2>{analyticsFacilityName} financial overview</h2>
             <p>
-              One management report for collections, expenses, inventory
-              activity, and staff performance across the day-to-day operation.
+              Six core figures for revenue, profit, expenses, collections,
+              payer cover, and referral obligations.
             </p>
             <div className="inline-actions">
-              {analyticsRangeKeys.map((rangeKey) => (
+              {analyticsQuickRangeKeys.map((rangeKey) => (
                 <button
                   key={rangeKey}
                   type="button"
@@ -7312,6 +9436,13 @@ export default function App() {
                   {analyticsRangeLabels[rangeKey]}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setAnalyticsRange("CUSTOM")}
+                disabled={analyticsRange === "CUSTOM"}
+              >
+                {analyticsRangeLabels.CUSTOM}
+              </button>
             </div>
           </div>
           <div className="inline-actions">
@@ -7323,55 +9454,51 @@ export default function App() {
             </button>
           </div>
         </div>
+        {analyticsRange === "CUSTOM" ? (
+          <div className="inline-form-grid two-up">
+            <label>
+              <span>Start date</span>
+              <input
+                type="date"
+                value={analyticsCustomDateRange.startDate}
+                onChange={(event) =>
+                  setAnalyticsCustomDateRange((current) => ({
+                    ...current,
+                    startDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>End date</span>
+              <input
+                type="date"
+                value={analyticsCustomDateRange.endDate}
+                onChange={(event) =>
+                  setAnalyticsCustomDateRange((current) => ({
+                    ...current,
+                    endDate: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+        ) : null}
         <p className="section-note">
-          Range: {analyticsRangeLabels[financeAnalytics.range]} · Generated{" "}
+          Range: {analyticsRangeSummaryLabel} · Generated{" "}
           {new Date(financeAnalytics.generatedAt).toLocaleString()}
         </p>
         <div className="metric-cluster">
           <div className="metric-mini">
-            <span>Gross billed</span>
+            <span>Revenue</span>
             <strong>
               {formatMoney(financeAnalytics.summary.grossBilledCents)}
             </strong>
           </div>
           <div className="metric-mini">
-            <span>Net due</span>
-            <strong>{formatMoney(financeAnalytics.summary.netDueCents)}</strong>
-          </div>
-          <div className="metric-mini">
-            <span>Collected</span>
+            <span>Profit</span>
             <strong>
-              {formatMoney(financeAnalytics.summary.collectedCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Outstanding</span>
-            <strong>
-              {formatMoney(financeAnalytics.summary.outstandingCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Collection rate</span>
-            <strong>
-              {formatPercent(financeAnalytics.summary.collectionRatePercent)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Avg invoice</span>
-            <strong>
-              {formatMoney(financeAnalytics.summary.averageInvoiceCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Discounts</span>
-            <strong>
-              {formatMoney(financeAnalytics.summary.discountCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Insurance cover</span>
-            <strong>
-              {formatMoney(financeAnalytics.summary.insuranceCoveredCents)}
+              {formatMoney(financeAnalytics.summary.netProfitCents)}
             </strong>
           </div>
           <div className="metric-mini">
@@ -7381,247 +9508,58 @@ export default function App() {
             </strong>
           </div>
           <div className="metric-mini">
-            <span>Net profit</span>
+            <span>Collected</span>
             <strong>
-              {formatMoney(financeAnalytics.summary.netProfitCents)}
+              {formatMoney(financeAnalytics.summary.collectedCents)}
             </strong>
           </div>
           <div className="metric-mini">
-            <span>Referral due</span>
+            <span>Payer cover</span>
+            <strong>
+              {formatMoney(financeAnalytics.summary.insuranceCoveredCents)}
+            </strong>
+          </div>
+          <div className="metric-mini">
+            <span>Referral payments</span>
             <strong>
               {formatMoney(financeAnalytics.summary.referralCommissionDueCents)}
             </strong>
           </div>
-          <div className="metric-mini">
-            <span>Referral outstanding</span>
-            <strong>
-              {formatMoney(
-                financeAnalytics.summary.referralCommissionOutstandingCents,
-              )}
-            </strong>
-          </div>
         </div>
       </article>
 
       <article className="surface-card">
         <div className="section-head">
           <div>
-            <h2>Study performance</h2>
+            <h2>Tests and services</h2>
             <p>
-              Pull each study from billed services and compare how that test or
-              scan performs over time.
+              Revenue generated by the studies and services billed in the
+              selected date window.
             </p>
           </div>
         </div>
-        {financeAnalytics.studyPerformance.length > 0 ? (
-          <div className="study-filter-row">
-            <div
-              className="pill-filter-group"
-              role="group"
-              aria-label="Study department filter"
-            >
-              {analyticsStudyDepartments.map((department) => (
-                <button
-                  key={department}
-                  type="button"
-                  className={`pill-filter ${
-                    analyticsStudyDepartmentFilter === department
-                      ? "active"
-                      : ""
-                  }`}
-                  onClick={() => setAnalyticsStudyDepartmentFilter(department)}
-                >
-                  {department === "ALL"
-                    ? "All studies"
-                    : department === "LAB"
-                      ? "Lab studies"
-                      : "Imaging studies"}
-                </button>
-              ))}
-            </div>
-            <label>
-              Study
-              <select
-                value={selectedAnalyticsStudy}
-                onChange={(event) =>
-                  setSelectedAnalyticsStudy(event.target.value)
-                }
-              >
-                {filteredStudyPerformance.map((study) => (
-                  <option key={study.description} value={study.description}>
-                    {study.description}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
-        <div className="list-stack">
-          {filteredStudyPerformance.length === 0 ? (
-            <div className="list-row user-admin-row">
-              <div>
-                <strong>No study activity in range</strong>
-                <span>
-                  No billed tests or scans match the selected department.
-                </span>
-              </div>
-            </div>
-          ) : null}
-          {selectedAnalyticsStudyEntry ? (
-            <div
-              key={selectedAnalyticsStudyEntry.description}
-              className="stack-gap-md"
-            >
-              <div className="study-chip-row">
-                <span className="study-chip">
-                  {formatStudyDepartmentLabel(
-                    selectedAnalyticsStudyEntry.department,
-                  )}
-                </span>
-                <span className="study-chip">
-                  {formatStudyKindLabel(selectedAnalyticsStudyEntry.kind)}
-                </span>
-                <span
-                  className={`trend-pill ${
-                    selectedAnalyticsStudyEntry.growthRatePercent > 0
-                      ? "trend-up"
-                      : selectedAnalyticsStudyEntry.growthRatePercent < 0
-                        ? "trend-down"
-                        : "trend-flat"
-                  }`}
-                >
-                  Growth{" "}
-                  {formatPercent(selectedAnalyticsStudyEntry.growthRatePercent)}
-                </span>
-              </div>
-              <div className="metric-cluster">
-                <div className="metric-mini">
-                  <span>Study billed</span>
-                  <strong>
-                    {formatMoney(selectedAnalyticsStudyEntry.billedCents)}
-                  </strong>
-                </div>
-                <div className="metric-mini">
-                  <span>Collected</span>
-                  <strong>
-                    {formatMoney(selectedAnalyticsStudyEntry.collectedCents)}
-                  </strong>
-                </div>
-                <div className="metric-mini">
-                  <span>Outstanding</span>
-                  <strong>
-                    {formatMoney(selectedAnalyticsStudyEntry.outstandingCents)}
-                  </strong>
-                </div>
-                <div className="metric-mini">
-                  <span>Study count</span>
-                  <strong>{selectedAnalyticsStudyEntry.quantity}</strong>
-                </div>
-                <div className="metric-mini">
-                  <span>Invoices</span>
-                  <strong>{selectedAnalyticsStudyEntry.invoicesCount}</strong>
-                </div>
-                <div className="metric-mini">
-                  <span>Avg billed</span>
-                  <strong>
-                    {formatMoney(
-                      selectedAnalyticsStudyEntry.averageBilledCents,
-                    )}
-                  </strong>
-                </div>
-              </div>
-              <StudyPerformanceChart
-                points={selectedAnalyticsStudyEntry.trend}
-              />
-              <div className="list-stack compact-scroll">
-                {selectedAnalyticsStudyEntry.trend.map((month) => (
-                  <div
-                    key={`${selectedAnalyticsStudyEntry.description}-${month.label}`}
-                    className="list-row user-admin-row"
-                  >
-                    <div>
-                      <strong>{month.label}</strong>
-                      <span>
-                        Billed {formatMoney(month.billedCents)} · Collected{" "}
-                        {formatMoney(month.collectedCents)} · Outstanding{" "}
-                        {formatMoney(month.outstandingCents)}
-                      </span>
-                      <small>
-                        {month.quantity} study item(s) · {month.invoicesCount}{" "}
-                        invoice(s)
-                      </small>
-                    </div>
-                    <small>
-                      {month.billedCents > 0
-                        ? formatPercent(
-                            (month.collectedCents / month.billedCents) * 100,
-                          )
-                        : "0.0%"}
-                    </small>
-                  </div>
-                ))}
-              </div>
-              <p className="section-note">
-                Growth compares the latest half of the selected range against
-                the earliest half for this study.
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Study momentum</h2>
-            <p>
-              Rank studies by growth or decline percentage across the selected
-              reporting window.
-            </p>
-          </div>
-        </div>
+        <p className="section-note">Range: {analyticsRangeSummaryLabel}</p>
         <div className="list-stack compact-scroll">
-          {rankedStudyPerformance.length === 0 ? (
+          {financeAnalytics.topServices.length === 0 ? (
             <div className="list-row user-admin-row">
               <div>
-                <strong>No ranked studies yet</strong>
+                <strong>No services billed in range</strong>
                 <span>
-                  Study momentum will appear after billing activity lands in the
-                  selected department.
+                  Revenue by test or service will appear after invoices are
+                  posted in this period.
                 </span>
               </div>
             </div>
           ) : null}
-          {rankedStudyPerformance.map((study, index) => (
-            <div
-              key={`${study.description}-momentum`}
-              className="list-row user-admin-row"
-            >
+          {financeAnalytics.topServices.map((service) => (
+            <div key={service.description} className="list-row user-admin-row">
               <div>
-                <strong>
-                  {index + 1}. {study.description}
-                </strong>
+                <strong>{service.description}</strong>
                 <span>
-                  {formatStudyDepartmentLabel(study.department)} ·{" "}
-                  {formatStudyKindLabel(study.kind)} · Billed{" "}
-                  {formatMoney(study.billedCents)}
+                  {service.quantity} service item(s) · {service.invoicesCount} invoice(s)
                 </span>
-                <small>
-                  {study.quantity} study item(s) · {study.invoicesCount}{" "}
-                  invoice(s)
-                </small>
               </div>
-              <small
-                className={`trend-pill ${
-                  study.growthRatePercent > 0
-                    ? "trend-up"
-                    : study.growthRatePercent < 0
-                      ? "trend-down"
-                      : "trend-flat"
-                }`}
-              >
-                {formatPercent(study.growthRatePercent)}
-              </small>
+              <small>{formatMoney(service.revenueCents)}</small>
             </div>
           ))}
         </div>
@@ -7630,19 +9568,23 @@ export default function App() {
       <article className="surface-card">
         <div className="section-head">
           <div>
-            <h2>Staff performance</h2>
+            <h2>User performance</h2>
             <p>
-              Compare collections handled, expenses recorded, and inventory
-              activity by staff member in one place.
+              Amount generated by each user in the same reporting range,
+              alongside expense and activity impact.
             </p>
           </div>
         </div>
+        <p className="section-note">Range: {analyticsRangeSummaryLabel}</p>
         <div className="list-stack compact-scroll">
           {financeAnalytics.userPerformance.length === 0 ? (
             <div className="list-row user-admin-row">
               <div>
                 <strong>No user activity in range</strong>
-                <span>Awaiting payments, expenses, or inventory movement.</span>
+                <span>
+                  User performance will appear after collections, expenses, or
+                  inventory actions are recorded.
+                </span>
               </div>
             </div>
           ) : null}
@@ -7651,173 +9593,14 @@ export default function App() {
               <div>
                 <strong>{entry.actorName}</strong>
                 <span>
-                  Collections {formatMoney(entry.generatedCents)} · Expenses{" "}
-                  {formatMoney(entry.lossCents)} · Net{" "}
+                  Generated {formatMoney(entry.generatedCents)} · Net{" "}
                   {formatMoney(entry.netCents)}
                 </span>
                 <small>
-                  {entry.paymentsCount} payment(s) · {entry.expensesCount}{" "}
-                  expense entry(ies) · {entry.inventoryActions} inventory
-                  action(s) · Received {entry.stockReceivedQuantity.toFixed(1)}{" "}
-                  · Issued {entry.stockIssuedQuantity.toFixed(1)} · Expired{" "}
-                  {entry.stockExpiredQuantity.toFixed(1)}
+                  {entry.paymentsCount} payment(s) · {entry.expensesCount} expense entry(ies) · {entry.inventoryActions} inventory action(s)
                 </small>
               </div>
-              <small>{formatMoney(entry.netCents)}</small>
-            </div>
-          ))}
-        </div>
-        <p className="section-note">
-          Inventory movement comes from audit activity counts because stock
-          items do not currently store unit cost in the database.
-        </p>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Monthly billed vs collected</h2>
-            <p>Six-month trend of expected revenue against cash received.</p>
-          </div>
-        </div>
-        <div className="list-stack compact-scroll">
-          {financeAnalytics.monthlyCollections.map((month) => (
-            <div key={month.label} className="list-row user-admin-row">
-              <div>
-                <strong>{month.label}</strong>
-                <span>
-                  Billed {formatMoney(month.billedCents)} · Collected{" "}
-                  {formatMoney(month.collectedCents)}
-                </span>
-              </div>
-              <small>
-                {month.billedCents > 0
-                  ? formatPercent(
-                      (month.collectedCents / month.billedCents) * 100,
-                    )
-                  : "0.0%"}
-              </small>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Receivables aging</h2>
-            <p>Outstanding balances bucketed by invoice age.</p>
-          </div>
-        </div>
-        <div className="list-stack compact-scroll">
-          {financeAnalytics.agingBuckets.map((bucket) => (
-            <div key={bucket.label} className="list-row">
-              <div>
-                <strong>{bucket.label}</strong>
-                <span>{bucket.invoiceCount} invoice(s)</span>
-              </div>
-              <small>{formatMoney(bucket.balanceCents)}</small>
-            </div>
-          ))}
-        </div>
-        <div className="bordered-top">
-          <div className="section-head">
-            <div>
-              <h3>Invoice status mix</h3>
-              <p>Status distribution by due value and unresolved balance.</p>
-            </div>
-          </div>
-          <div className="list-stack compact-scroll">
-            {financeAnalytics.invoiceStatus.map((status) => (
-              <div key={status.status} className="list-row user-admin-row">
-                <div>
-                  <strong>{status.status}</strong>
-                  <span>{status.count} invoice(s)</span>
-                  <small>
-                    Due {formatMoney(status.totalDueCents)} · Outstanding{" "}
-                    {formatMoney(status.outstandingCents)}
-                  </small>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Payment method mix</h2>
-            <p>Collections split by method across the lab.</p>
-          </div>
-        </div>
-        <div className="list-stack compact-scroll">
-          {financeAnalytics.paymentMix.map((item) => (
-            <div key={item.method} className="list-row">
-              <div>
-                <strong>{item.method}</strong>
-                <span>{item.count} payment(s)</span>
-              </div>
-              <small>{formatMoney(item.totalCents)}</small>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Top studies by revenue</h2>
-            <p>Most valuable billed tests and scans based on invoice lines.</p>
-          </div>
-        </div>
-        <div className="list-stack compact-scroll">
-          {topStudiesByRevenue.map((service) => (
-            <div key={service.description} className="list-row user-admin-row">
-              <div>
-                <strong>{service.description}</strong>
-                <span>
-                  {formatStudyDepartmentLabel(service.department)} ·{" "}
-                  {service.quantity} unit(s) · {service.invoicesCount}{" "}
-                  invoice(s)
-                </span>
-                <small>Growth {formatPercent(service.growthRatePercent)}</small>
-              </div>
-              <small>{formatMoney(service.billedCents)}</small>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Top referrers</h2>
-            <p>Revenue and commission obligations by referral doctor.</p>
-          </div>
-        </div>
-        <div className="list-stack compact-scroll">
-          {financeAnalytics.topReferrers.length === 0 ? (
-            <div className="list-row">
-              <span>No referrer-linked invoices yet.</span>
-              <small>Awaiting referral activity</small>
-            </div>
-          ) : null}
-          {financeAnalytics.topReferrers.map((referrer) => (
-            <div key={referrer.doctorName} className="list-row user-admin-row">
-              <div>
-                <strong>{referrer.doctorName}</strong>
-                <span>
-                  {referrer.commissionPercent}% commission ·{" "}
-                  {referrer.invoicesCount} invoice(s)
-                </span>
-                <small>
-                  Billed {formatMoney(referrer.billedCents)} · Collected{" "}
-                  {formatMoney(referrer.collectedCents)} · Outstanding{" "}
-                  {formatMoney(referrer.outstandingCents)}
-                </small>
-              </div>
-              <small>{formatMoney(referrer.commissionDueCents)}</small>
+              <small>{formatMoney(entry.generatedCents)}</small>
             </div>
           ))}
         </div>
@@ -8181,7 +9964,19 @@ export default function App() {
                   {expense.notes ? ` · ${expense.notes}` : ""}
                 </small>
               </div>
-              <small>{formatMoney(expense.amountCents)}</small>
+              <div className="inline-actions">
+                <small>{formatMoney(expense.amountCents)}</small>
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() =>
+                    void handleDeleteExpense(expense.id, expense.description)
+                  }
+                  disabled={!canManageFinance}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -8190,139 +9985,293 @@ export default function App() {
   );
 
   const servicesSection = (
-    <section className="content-grid two-wide">
-      <article className="surface-card form-card">
-        <div className="section-head">
+    <section className="content-grid">
+      <article className="surface-card workspace-table-card">
+        <div className="section-head compact-head">
           <div>
-            <h2>Service catalog</h2>
-            <p>Check available services, prices, and turnaround times here.</p>
+            <h2>Services and tests</h2>
+            <p>
+              Review the catalog, filter services or tests, and open the editor only when you need to add or update one.
+            </p>
+          </div>
+          {canManageServices ? (
+            <div className="inline-actions">
+              <button type="button" onClick={startNewServiceEditor}>
+                Add new service or test
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {serviceEditorOpen ? (
+          <div className="bordered-top">
+            <div className="section-head stacked-head">
+              <div>
+                <h3>{selectedServiceId ? "Edit service or test" : "Add service or test"}</h3>
+                <p>
+                  Enter the code, type, pricing, and turnaround time, then save it to the live catalog.
+                </p>
+              </div>
+            </div>
+            <form className="form-grid" onSubmit={handleServiceSubmit}>
+              <label>
+                <span>Service code</span>
+                <input
+                  value={serviceForm.code}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      code: event.target.value,
+                    }))
+                  }
+                  disabled={!canManageServices}
+                  required
+                />
+              </label>
+              <label>
+                <span>Service name</span>
+                <input
+                  value={serviceForm.name}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  disabled={!canManageServices}
+                  required
+                />
+              </label>
+              <label>
+                <span>Type</span>
+                <select
+                  value={serviceForm.kind}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      kind: event.target.value as ServiceInput["kind"],
+                    }))
+                  }
+                  disabled={!canManageServices}
+                >
+                  <option value="TEST">Lab test</option>
+                  <option value="IMAGING">Sonograph / imaging</option>
+                </select>
+              </label>
+              <label>
+                <span>
+                  {serviceForm.kind === "IMAGING" ? "Modality" : "Specimen type"}
+                </span>
+                <input
+                  value={
+                    serviceForm.kind === "IMAGING"
+                      ? serviceForm.modality
+                      : serviceForm.specimenType
+                  }
+                  onChange={(event) =>
+                    setServiceForm((current) =>
+                      current.kind === "IMAGING"
+                        ? { ...current, modality: event.target.value }
+                        : { ...current, specimenType: event.target.value },
+                    )
+                  }
+                  disabled={!canManageServices}
+                />
+              </label>
+              <label>
+                <span>Price (pesewas)</span>
+                <input
+                  type="number"
+                  value={serviceForm.priceCents}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      priceCents: event.target.value,
+                    }))
+                  }
+                  disabled={!canManageServices}
+                  required
+                />
+              </label>
+              <label>
+                <span>Turnaround time (minutes)</span>
+                <input
+                  type="number"
+                  value={serviceForm.tatMinutes}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      tatMinutes: event.target.value,
+                    }))
+                  }
+                  disabled={!canManageServices}
+                  required
+                />
+              </label>
+              <label className="full-width inline-toggle">
+                <input
+                  type="checkbox"
+                  checked={serviceForm.isActive}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      isActive: event.target.checked,
+                    }))
+                  }
+                  disabled={!canManageServices}
+                />
+                <span>Active and available for ordering</span>
+              </label>
+              <div className="full-width action-row">
+                <button type="submit" disabled={!canManageServices}>
+                  {selectedServiceId ? "Update service" : "Save new service"}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action"
+                  onClick={resetServiceEditor}
+                  disabled={!canManageServices}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+        <div className="audit-log-toolbar">
+          <label className="audit-log-search">
+            <span>Search services</span>
+            <input
+              value={serviceSearchQuery}
+              onChange={(event) => setServiceSearchQuery(event.target.value)}
+              placeholder="Search code, service name, modality, or specimen"
+            />
+          </label>
+          <div className="study-filter-row audit-log-filter-row">
+            <div className="pill-filter-group">
+              {([
+                { key: "ALL", label: "All types" },
+                { key: "TEST", label: "Lab tests" },
+                { key: "IMAGING", label: "Imaging" },
+              ] as const).map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={`pill-filter${selectedServiceKind === option.key ? " active" : ""}`}
+                  onClick={() => setSelectedServiceKind(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="pill-filter-group">
+              {([
+                { key: "ALL", label: "All states" },
+                { key: "ACTIVE", label: "Active" },
+                { key: "ARCHIVED", label: "Archived" },
+              ] as const).map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={`pill-filter${selectedServiceState === option.key ? " active" : ""}`}
+                  onClick={() => setSelectedServiceState(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="audit-log-metrics">
+            <div className="metric-mini audit-log-metric">
+              <span>Visible services</span>
+              <strong>{filteredServiceRows.length}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Active services</span>
+              <strong>{activeServiceCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Imaging services</span>
+              <strong>{imagingServiceCount}</strong>
+            </div>
           </div>
         </div>
-        <form className="form-grid" onSubmit={handleServiceSubmit}>
-          <label>
-            <span>Service code</span>
-            <input
-              value={serviceForm.code}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  code: event.target.value,
-                }))
-              }
-              disabled={!canManageServices}
-              required
-            />
-          </label>
-          <label>
-            <span>Service name</span>
-            <input
-              value={serviceForm.name}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-              disabled={!canManageServices}
-              required
-            />
-          </label>
-          <label>
-            <span>Type</span>
-            <select
-              value={serviceForm.kind}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  kind: event.target.value as ServiceInput["kind"],
-                }))
-              }
-              disabled={!canManageServices}
-            >
-              <option value="TEST">Lab test</option>
-              <option value="IMAGING">Sonograph / imaging</option>
-            </select>
-          </label>
-          <label>
-            <span>
-              {serviceForm.kind === "IMAGING" ? "Modality" : "Specimen type"}
-            </span>
-            <input
-              value={
-                serviceForm.kind === "IMAGING"
-                  ? serviceForm.modality
-                  : serviceForm.specimenType
-              }
-              onChange={(event) =>
-                setServiceForm((current) =>
-                  current.kind === "IMAGING"
-                    ? { ...current, modality: event.target.value }
-                    : { ...current, specimenType: event.target.value },
-                )
-              }
-              disabled={!canManageServices}
-            />
-          </label>
-          <label>
-            <span>Price (pesewas)</span>
-            <input
-              type="number"
-              value={serviceForm.priceCents}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  priceCents: event.target.value,
-                }))
-              }
-              disabled={!canManageServices}
-              required
-            />
-          </label>
-          <label>
-            <span>Turnaround time (minutes)</span>
-            <input
-              type="number"
-              value={serviceForm.tatMinutes}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  tatMinutes: event.target.value,
-                }))
-              }
-              disabled={!canManageServices}
-              required
-            />
-          </label>
-          <label className="full-width inline-toggle">
-            <input
-              type="checkbox"
-              checked={serviceForm.isActive}
-              onChange={(event) =>
-                setServiceForm((current) => ({
-                  ...current,
-                  isActive: event.target.checked,
-                }))
-              }
-              disabled={!canManageServices}
-            />
-            <span>Active and available for ordering</span>
-          </label>
-          <div className="full-width action-row">
-            <button type="submit" disabled={!canManageServices}>
-              {selectedServiceId ? "Update service price" : "Add service"}
-            </button>
-            {selectedServiceId ? (
-              <button
-                type="button"
-                className="ghost-action"
-                onClick={resetServiceEditor}
-                disabled={!canManageServices}
-              >
-                New service
-              </button>
-            ) : null}
+        {filteredServiceRows.length === 0 ? (
+          <div className="chart-empty audit-log-empty-state">
+            No services match the current filters.
           </div>
-        </form>
+        ) : (
+          <div className="audit-log-table-shell compact-scroll admin-table-shell">
+            <table className="audit-log-table admin-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Code</th>
+                  <th>Type</th>
+                  <th>Price</th>
+                  <th>TAT</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredServiceRows.map((service) => (
+                  <tr key={service.id ?? service.code}>
+                    <td>
+                      <strong>{service.name}</strong>
+                      <div className="admin-table-subcopy">
+                        {service.kind === "IMAGING"
+                          ? service.modality ?? "Imaging"
+                          : service.specimenType ?? "Lab test"}
+                      </div>
+                    </td>
+                    <td>{service.code}</td>
+                    <td>{service.kind === "IMAGING" ? "Imaging" : "Lab test"}</td>
+                    <td>{formatMoney(service.priceCents)}</td>
+                    <td>{service.tatMinutes} min</td>
+                    <td>
+                      <span
+                        className={`tag ${service.isActive === false ? "tag-critical" : "tag-good"}`}
+                      >
+                        {service.isActive === false ? "Archived" : "Active"}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="inline-actions admin-table-actions">
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() =>
+                            service.id
+                              ? startEditServiceEditor(service.id)
+                              : setStatusText("This service cannot be edited yet.")
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => handleToggleServiceActive(service)}
+                          disabled={!canManageServices}
+                        >
+                          {service.isActive === false ? "Reactivate" : "Archive"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => void handleDeleteService(service)}
+                          disabled={!canManageServices}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="form-divider" />
         <form className="form-grid" onSubmit={handleBulkServiceSubmit}>
           <div className="section-head stacked-head full-width">
@@ -8491,85 +10440,6 @@ export default function App() {
             </div>
           ) : null}
         </form>
-      </article>
-
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Available services</h2>
-            <p>
-              Services are grouped for quick lookup. Archived services stay out
-              of intake and ordering.
-            </p>
-          </div>
-        </div>
-        <div className="service-groups compact-scroll">
-          {[
-            { title: "Lab tests", items: labServices },
-            { title: "Sonography and imaging", items: imagingServices },
-          ].map((group) => (
-            <section key={group.title} className="service-group">
-              <div className="section-head stacked-head">
-                <div>
-                  <h3>{group.title}</h3>
-                  <p>
-                    {
-                      group.items.filter(
-                        (service) => service.isActive !== false,
-                      ).length
-                    }{" "}
-                    active service(s)
-                  </p>
-                </div>
-              </div>
-              <div className="list-stack tight">
-                {group.items.map((service) => (
-                  <div
-                    key={service.id ?? service.code}
-                    className="list-row service-row"
-                  >
-                    <button
-                      type="button"
-                      className="button-row service-row-main"
-                      onClick={() => setSelectedServiceId(service.id ?? "")}
-                    >
-                      <div>
-                        <strong>{service.name}</strong>
-                        <span>
-                          {service.code} ·{" "}
-                          {service.kind === "IMAGING"
-                            ? (service.modality ?? "Imaging")
-                            : (service.specimenType ?? "Lab test")}
-                        </span>
-                        <small>
-                          {service.isActive === false
-                            ? "Archived from ordering"
-                            : "Active in Reception Intake and Orders & Requests"}
-                        </small>
-                      </div>
-                      <small>{formatMoney(service.priceCents)}</small>
-                    </button>
-                    <div className="inline-actions">
-                      <span
-                        className={`tag ${service.isActive === false ? "tag-critical" : "tag-good"}`}
-                      >
-                        {service.isActive === false ? "Archived" : "Active"}
-                      </span>
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() => handleToggleServiceActive(service)}
-                        disabled={!canManageServices}
-                      >
-                        {service.isActive === false ? "Reactivate" : "Archive"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
       </article>
     </section>
   );
@@ -8865,14 +10735,18 @@ export default function App() {
   const userManagementSection = (
     <SystemUserManagementSection
       canManageUsers={canManageUsers}
+      currentUsername={authSession?.user.username ?? ""}
       userForm={userForm}
       setUserForm={setUserForm}
       passwordVisibility={passwordVisibility}
       togglePasswordVisibility={togglePasswordVisibility}
       handleUserCreate={handleUserCreate}
-      pinRotation={pinRotation}
-      setPinRotation={setPinRotation}
-      handleRotatePin={handleRotatePin}
+      pinRecovery={pinRecovery}
+      setPinRecovery={setPinRecovery}
+      handleRecoverPin={handleRecoverPin}
+      selfPinChange={selfPinChange}
+      setSelfPinChange={setSelfPinChange}
+      handleChangeOwnPin={handleChangeOwnPin}
       users={users}
       formatDate={formatDate}
       handleToggleUser={handleToggleUser}
@@ -8907,11 +10781,16 @@ export default function App() {
       handleFacilitySave={handleFacilitySave}
       handleFacilityLogoChange={handleFacilityLogoChange}
       canManageUsers={canManageUsers}
+      canEditPrintSettings={canEditPrintSettings}
       logoSrc={logoSrc}
       fallbackFacilityName={bootstrap.facility.name}
       canManageBackups={canManageBackups}
       canManageIntegrations={canManageIntegrations}
       handleBackupCreate={handleBackupCreate}
+      handleBackupExport={handleBackupExport}
+      handleBackupImport={handleBackupImport}
+      handleBackupImportPrompt={handleBackupImportPrompt}
+      backupImportInputRef={backupImportInputRef}
       handleRestoreLatest={handleRestoreLatest}
       handleRunIntegrationDispatch={handleRunIntegrationDispatch}
       selectedBackupId={selectedBackupId}
@@ -8955,6 +10834,112 @@ export default function App() {
   }
 
   if (!authSession) {
+    if (setupStatus?.requiresSetup && showInitialSetupForm) {
+      return (
+        <div className="login-shell">
+          <div className="login-backdrop" aria-hidden="true">
+            <div className="login-dna login-dna-left" />
+            <div className="login-dna login-dna-right" />
+          </div>
+          <section
+            className="login-glass-card"
+            aria-label="Set up MediLab Nexus"
+          >
+            <div className="login-brand-heading">
+              <h1>MediLab</h1>
+              <p>First administrator setup</p>
+            </div>
+            <div className="inline-actions">
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={() => setShowInitialSetupForm(false)}
+              >
+                Back to sign in
+              </button>
+            </div>
+            <form className="login-glass-form" onSubmit={handleInitialSetup}>
+              <label className="login-field">
+                <span>Full name</span>
+                <input
+                  value={setupForm.admin.displayName}
+                  onChange={(event) =>
+                    setSetupForm((current) => ({
+                      ...current,
+                      admin: {
+                        ...current.admin,
+                        displayName: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="Administrator full name"
+                  required
+                />
+              </label>
+              <label className="login-field">
+                <span>Username</span>
+                <input
+                  value={setupForm.admin.username}
+                  onChange={(event) =>
+                    setSetupForm((current) => ({
+                      ...current,
+                      admin: {
+                        ...current.admin,
+                        username: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="Choose a username"
+                  required
+                />
+              </label>
+              <label className="login-field">
+                <span>PIN</span>
+                <div className="password-field">
+                  <input
+                    type={passwordVisibility.login ? "text" : "password"}
+                    inputMode="numeric"
+                    value={setupForm.admin.pin}
+                    onChange={(event) =>
+                      setSetupForm((current) => ({
+                        ...current,
+                        admin: {
+                          ...current.admin,
+                          pin: event.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Create a secure PIN"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="field-action-button"
+                    onClick={() => togglePasswordVisibility("login")}
+                  >
+                    {passwordVisibility.login ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </label>
+              <button
+                type="submit"
+                className="primary-action full-width login-submit"
+              >
+                Create administrator and open workspace
+              </button>
+            </form>
+            <p className="login-status glass-status">
+              This first registration creates the initial administrator account
+              and uses the configured facility defaults for the workspace.
+            </p>
+            {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+              <p className="login-status glass-status">{statusText}</p>
+            ) : null}
+          </section>
+        </div>
+      );
+    }
+
     return (
       <div className="login-shell">
         <div className="login-backdrop" aria-hidden="true">
@@ -9019,7 +11004,7 @@ export default function App() {
                 className="login-link-button"
                 onClick={() =>
                   setStatusText(
-                    "Use a demo profile below or contact your administrator.",
+                    "Contact your administrator to reset or rotate your PIN.",
                   )
                 }
               >
@@ -9032,29 +11017,33 @@ export default function App() {
             >
               Login
             </button>
+            <button
+              type="button"
+              className="ghost-action full-width"
+              onClick={() => {
+                if (setupStatus?.requiresSetup) {
+                  setShowInitialSetupForm(true);
+                  return;
+                }
+
+                if (!setupStatus) {
+                  setStatusText(
+                    "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
+                  );
+                  return;
+                }
+
+                setStatusText(
+                  "Initial administrator setup is already complete. Sign in as an administrator to create or manage user accounts.",
+                );
+              }}
+            >
+              Sign up
+            </button>
           </form>
           {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
             <p className="login-status glass-status">{statusText}</p>
           ) : null}
-          <PortalLoginSelector
-            profiles={loginPortalProfiles}
-            selectedKey={requestedPortalRoute?.role ?? null}
-            onSelect={(profile) => {
-              const role = profile.key as PrimaryPortalRole;
-              const nextHash = buildPortalHash(role, roleHome[role]);
-              window.history.replaceState(
-                null,
-                "",
-                `${window.location.pathname}${window.location.search}${nextHash}`,
-              );
-              setPortalHash(nextHash);
-              setLoginForm({
-                username: profile.demoUsername,
-                pin: profile.demoPin,
-              });
-              setStatusText(`Loaded ${profile.label} demo access.`);
-            }}
-          />
         </section>
       </div>
     );

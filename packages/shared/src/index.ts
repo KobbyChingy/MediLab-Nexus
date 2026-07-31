@@ -3,6 +3,16 @@ import { z } from "zod";
 export const catalogKinds = ["TEST", "IMAGING"] as const;
 export const departments = ["LAB", "IMAGING"] as const;
 export const priorities = ["ROUTINE", "URGENT", "STAT"] as const;
+export const payerTypes = ["SELF_PAY", "NHIS", "INSURANCE", "CORPORATE"] as const;
+export const sampleStatuses = [
+  "PENDING",
+  "COLLECTED",
+  "RECEIVED",
+  "PROCESSING",
+  "STORED",
+  "REJECTED",
+  "DISPOSED",
+] as const;
 export const appointmentStatuses = [
   "SCHEDULED",
   "ARRIVED",
@@ -11,12 +21,29 @@ export const appointmentStatuses = [
   "COMPLETED",
   "CANCELLED",
 ] as const;
+export const reportStatuses = [
+  "DRAFT",
+  "IN_REVIEW",
+  "APPROVED",
+  "RELEASED",
+  "AMENDED",
+] as const;
+export const claimStatuses = [
+  "NOT_APPLICABLE",
+  "PENDING",
+  "SUBMITTED",
+  "PARTIAL",
+  "SETTLED",
+  "REJECTED",
+] as const;
+export const paymentResponsibilities = ["PATIENT", "PAYER"] as const;
 export const paymentMethods = [
   "CASH",
   "MOBILE_MONEY_MTN",
   "MOBILE_MONEY_VODAFONE",
   "CARD",
   "NHIS",
+  "BANK_TRANSFER",
 ] as const;
 export const notificationChannels = [
   "SMS",
@@ -51,7 +78,15 @@ export const reportTemplateKinds = [
   "ULTRASOUND_OBSTETRIC",
   "ULTRASOUND_ECHOCARDIOGRAPHY",
 ] as const;
-export const analyticsRangeKeys = ["7D", "30D", "90D", "365D", "ALL"] as const;
+export const printFontSizes = ["SMALL", "MEDIUM", "LARGE"] as const;
+export const analyticsRangeKeys = [
+  "TODAY",
+  "YESTERDAY",
+  "7D",
+  "30D",
+  "CUSTOM",
+  "ALL",
+] as const;
 
 export const patientInputSchema = z.object({
   firstName: z.string().min(2),
@@ -69,6 +104,7 @@ export const patientInputSchema = z.object({
   dateOfBirth: z.string().optional(),
   gender: z.string().optional(),
   phone: z.string().min(6),
+  location: z.string().optional().default(""),
   nhisId: z.string().optional(),
   allergies: z.string().optional(),
   medicalHistory: z.string().optional(),
@@ -105,6 +141,11 @@ export const orderInputSchema = z.object({
   itemIds: z.array(z.string()).min(1),
   orderedBy: z.string().min(2),
   priority: z.enum(priorities).default("ROUTINE"),
+  payerType: z.enum(payerTypes).default("SELF_PAY"),
+  payerName: z.string().optional().default(""),
+  payerCoveragePercent: z.number().int().min(0).max(100).default(0),
+  payerMemberId: z.string().optional().default(""),
+  payerAuthorizationCode: z.string().optional().default(""),
   insuranceProvider: z.string().optional(),
   insuranceAuthorized: z.boolean().default(false),
   notes: z.string().optional(),
@@ -124,6 +165,13 @@ export const imagingStudyUpdateInputSchema = z.object({
   criticalFlag: z.boolean().default(false),
 });
 
+export const sampleUpdateInputSchema = z.object({
+  status: z.enum(sampleStatuses),
+  collectedBy: z.string().optional().default(""),
+  rejectionReason: z.string().optional().default(""),
+  note: z.string().optional().default(""),
+});
+
 export const reportInputSchema = z.object({
   patientId: z.string().min(1),
   orderId: z.string().min(1),
@@ -133,9 +181,15 @@ export const reportInputSchema = z.object({
   findings: z.string().min(3),
   impression: z.string().min(3),
   signedBy: z.string().min(3),
+  status: z.enum(reportStatuses).default("DRAFT"),
   templateKind: z.enum(reportTemplateKinds).default("LAB_STANDARD"),
   criticalFlag: z.boolean().default(false),
   imagePaths: z.array(z.string()).default([]),
+});
+
+export const reportStatusUpdateInputSchema = z.object({
+  status: z.enum(reportStatuses),
+  signedBy: z.string().optional().default(""),
 });
 
 export const qcEventInputSchema = z.object({
@@ -160,16 +214,24 @@ export const inventoryTransactionInputSchema = z.object({
   reason: z.string().optional(),
   traceCode: z.string().optional(),
   actor: z.string().min(2),
+  expiryDate: z.string().optional().default(""),
+  preferredVendor: z.string().optional().default(""),
+  storageLocation: z.string().optional().default(""),
 });
 
 export const paymentInputSchema = z.object({
   invoiceId: z.string().min(1),
   amountCents: z.number().int().positive(),
   method: z.enum(paymentMethods),
+  responsibility: z.enum(paymentResponsibilities).default("PATIENT"),
   reference: z.string().optional(),
   receivedBy: z.string().min(2),
   traceCode: z.string().optional(),
   notes: z.string().optional(),
+});
+
+export const claimStatusUpdateInputSchema = z.object({
+  claimStatus: z.enum(claimStatuses),
 });
 
 export const notificationInputSchema = z.object({
@@ -191,19 +253,45 @@ export const restoreBackupInputSchema = z.object({
   snapshotId: z.string().min(1),
 });
 
+export const importBackupInputSchema = z.object({
+  label: z.string().trim().min(1).max(120).optional(),
+  encryptedPayload: z.string().trim().min(32),
+});
+
 export const loginInputSchema = z.object({
-  username: z.string().min(3),
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(40)
+    .refine(
+      (value) => /^[a-z0-9._-]+$/iu.test(value),
+      "Username must use letters, numbers, dots, underscores, or hyphens.",
+    ),
   pin: z.string().min(4).max(12),
 });
 
 export const adminUserInputSchema = z.object({
-  username: z.string().min(3),
-  displayName: z.string().min(3),
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(40)
+    .refine(
+      (value) => /^[a-z0-9._-]+$/iu.test(value),
+      "Username must use letters, numbers, dots, underscores, or hyphens.",
+    ),
+  displayName: z.string().trim().min(3),
   role: z.enum(userRoles),
   pin: z.string().min(4).max(12),
 });
 
 export const rotatePinInputSchema = z.object({
+  newPin: z.string().min(4).max(12),
+});
+
+export const changeOwnPinInputSchema = z.object({
+  currentPin: z.string().min(4).max(12),
   newPin: z.string().min(4).max(12),
 });
 
@@ -218,6 +306,57 @@ export const facilitySettingsInputSchema = z.object({
   location: z.string().optional().default(""),
   logoDataUrl: z.string().optional().default(""),
   footerMessage: z.string().optional().default(""),
+  printFontSize: z.enum(printFontSizes).default("MEDIUM"),
+});
+
+export const initialSetupInputSchema = z.object({
+  admin: z.object({
+    displayName: z.string().min(3),
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(40)
+      .refine(
+        (value) => /^[a-z0-9._-]+$/iu.test(value),
+        "Username must use letters, numbers, dots, underscores, or hyphens.",
+      ),
+    pin: z.string().min(4).max(12),
+  }),
+});
+
+export const reportTemplateAssistInputSchema = z.object({
+  sonographerName: z.string().optional().default(""),
+  technique: z.string().optional().default(""),
+  measurementsText: z.string().optional().default(""),
+  recommendation: z.string().optional().default(""),
+  gestationalAge: z.string().optional().default(""),
+  fetalHeartRate: z.string().optional().default(""),
+  placentaLocation: z.string().optional().default(""),
+  amnioticFluid: z.string().optional().default(""),
+  liverSpan: z.string().optional().default(""),
+  gallbladder: z.string().optional().default(""),
+  biliaryTree: z.string().optional().default(""),
+  renalSurvey: z.string().optional().default(""),
+  uterineSize: z.string().optional().default(""),
+  endometriumThickness: z.string().optional().default(""),
+  rightAdnexa: z.string().optional().default(""),
+  leftAdnexa: z.string().optional().default(""),
+  ejectionFraction: z.string().optional().default(""),
+  chamberAssessment: z.string().optional().default(""),
+  valveAssessment: z.string().optional().default(""),
+  pericardium: z.string().optional().default(""),
+});
+
+export const reportTemplateInputSchema = z.object({
+  name: z.string().min(3),
+  templateKind: z.enum(reportTemplateKinds).default("LAB_STANDARD"),
+  title: z.string().min(3),
+  medicalHistory: z.string().optional().default(""),
+  summary: z.string().min(3),
+  findings: z.string().min(3),
+  impression: z.string().min(3),
+  assist: reportTemplateAssistInputSchema.default({}),
 });
 
 export const serviceInputSchema = z.object({
@@ -251,20 +390,34 @@ export type OrderInput = z.infer<typeof orderInputSchema>;
 export type ImagingStudyUpdateInput = z.infer<
   typeof imagingStudyUpdateInputSchema
 >;
+export type SampleUpdateInput = z.infer<typeof sampleUpdateInputSchema>;
 export type ReportInput = z.infer<typeof reportInputSchema>;
+export type ReportStatusUpdateInput = z.infer<
+  typeof reportStatusUpdateInputSchema
+>;
 export type QcEventInput = z.infer<typeof qcEventInputSchema>;
 export type InventoryTransactionInput = z.infer<
   typeof inventoryTransactionInputSchema
 >;
 export type PaymentInput = z.infer<typeof paymentInputSchema>;
+export type ClaimStatusUpdateInput = z.infer<
+  typeof claimStatusUpdateInputSchema
+>;
 export type NotificationInput = z.infer<typeof notificationInputSchema>;
 export type InternalAlertInput = z.infer<typeof internalAlertInputSchema>;
 export type RestoreBackupInput = z.infer<typeof restoreBackupInputSchema>;
+export type ImportBackupInput = z.infer<typeof importBackupInputSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type AdminUserInput = z.infer<typeof adminUserInputSchema>;
 export type RotatePinInput = z.infer<typeof rotatePinInputSchema>;
+export type ChangeOwnPinInput = z.infer<typeof changeOwnPinInputSchema>;
 export type UserStatusInput = z.infer<typeof userStatusInputSchema>;
 export type FacilitySettingsInput = z.infer<typeof facilitySettingsInputSchema>;
+export type InitialSetupInput = z.infer<typeof initialSetupInputSchema>;
+export type ReportTemplateAssistPayload = z.infer<
+  typeof reportTemplateAssistInputSchema
+>;
+export type ReportTemplateInput = z.infer<typeof reportTemplateInputSchema>;
 export type ServiceInput = z.infer<typeof serviceInputSchema>;
 export type BulkServiceInput = z.infer<typeof bulkServiceInputSchema>;
 export type BulkServiceImportMode = z.infer<
@@ -317,6 +470,24 @@ export type FacilityProfile = {
   location: string;
   logoDataUrl: string;
   footerMessage: string;
+  printFontSize: (typeof printFontSizes)[number];
+};
+
+export type ReportTemplatePayload = {
+  id: string;
+  facilityId: string;
+  name: string;
+  templateKind: (typeof reportTemplateKinds)[number];
+  title: string;
+  medicalHistory: string;
+  summary: string;
+  findings: string;
+  impression: string;
+  assist: ReportTemplateAssistPayload;
+  createdByName: string;
+  createdByRole: (typeof userRoles)[number];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CatalogSeedItem = {
@@ -672,10 +843,34 @@ export type WorkflowPayload = {
     patientId: string;
     patientTraceCode: string;
     patientName: string;
+    payerType: (typeof payerTypes)[number];
+    payerName: string | null;
+    payerCoveragePercent: number;
+    payerMemberId: string | null;
+    payerAuthorizationCode: string | null;
     createdAt: string;
     items: string[];
   }>;
-  samples: Array<Record<string, unknown>>;
+  samples: Array<{
+    id: string;
+    patientId: string;
+    orderId: string;
+    patientTraceCode: string;
+    patientName: string;
+    traceLabel: string;
+    specimenType: string;
+    status: (typeof sampleStatuses)[number];
+    collectedBy: string | null;
+    collectedAt: string | null;
+    rejectionReason: string | null;
+    chainOfCustody: Array<{
+      at: string;
+      action: string;
+      actor: string;
+      note: string;
+    }>;
+    createdAt: string;
+  }>;
   imaging: Array<{
     id: string;
     orderId: string;
@@ -697,8 +892,10 @@ export type WorkflowPayload = {
     id: string;
     patientId: string;
     orderId: string;
+    patientTraceCode: string;
+    patientName: string;
     title: string;
-    status: string;
+    status: (typeof reportStatuses)[number];
     signedBy: string | null;
     signedAt: string | null;
     pdfPath: string | null;
@@ -715,12 +912,25 @@ export type WorkflowPayload = {
     referralDoctorCommissionPercent: number | null;
     referralCommissionDueCents: number;
     referralCommissionOutstandingCents: number;
+    payerType: (typeof payerTypes)[number];
+    payerName: string | null;
+    payerCoveragePercent: number;
+    payerMemberId: string | null;
+    payerAuthorizationCode: string | null;
+    payerResponsibilityCents: number;
+    patientResponsibilityCents: number;
+    claimStatus: (typeof claimStatuses)[number];
     status: string;
     subtotalCents: number;
     discountCents: number;
     insuranceCoveredCents: number;
     amountDueCents: number;
     amountPaidCents: number;
+    patientPaidCents: number;
+    payerPaidCents: number;
+    totalDueCents: number;
+    patientBalanceCents: number;
+    payerBalanceCents: number;
     balanceCents: number;
     createdAt: string;
     paymentsCount: number;
@@ -733,6 +943,7 @@ export type WorkflowPayload = {
     accessionNumber: string;
     amountCents: number;
     method: string;
+    responsibility: (typeof paymentResponsibilities)[number];
     reference: string | null;
     receivedBy: string | null;
     notes: string | null;
@@ -950,6 +1161,8 @@ export type AdminOverviewPayload = {
 export type FinanceAnalyticsPayload = {
   generatedAt: string;
   range: (typeof analyticsRangeKeys)[number];
+  customStartDate: string | null;
+  customEndDate: string | null;
   summary: {
     grossBilledCents: number;
     netDueCents: number;
@@ -975,6 +1188,19 @@ export type FinanceAnalyticsPayload = {
     method: string;
     totalCents: number;
     count: number;
+  }>;
+  payerMix: Array<{
+    payerType: (typeof payerTypes)[number];
+    payerName: string;
+    invoicesCount: number;
+    coveredCents: number;
+    outstandingCents: number;
+  }>;
+  claimStatus: Array<{
+    claimStatus: (typeof claimStatuses)[number];
+    invoicesCount: number;
+    coveredCents: number;
+    outstandingCents: number;
   }>;
   agingBuckets: Array<{
     label: string;
@@ -1052,4 +1278,11 @@ export type AuthSessionPayload = {
     role: (typeof userRoles)[number];
     allowedActions: Capability[];
   };
+};
+
+export type SetupStatusPayload = {
+  requiresSetup: boolean;
+  hasUsers: boolean;
+  hasFacility: boolean;
+  facility: FacilityProfile;
 };

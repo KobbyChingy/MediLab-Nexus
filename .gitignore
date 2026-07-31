@@ -6,9 +6,12 @@ dist/
 .env
 packages/db/prisma/*.db
 packages/db/prisma/*.db-journal
+packages/db/prisma/**/*.db
+packages/db/prisma/**/*.db-journal
 coverage/
 dist-desktop/
 apps/api/storage/reports/
+apps/api/storage/backups/
 .tmp-*.txt
 .tmp-*.json
 desktop.ini

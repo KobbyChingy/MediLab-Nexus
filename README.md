@@ -7,12 +7,12 @@ MediLab Nexus is a web-based Medical Laboratory and Imaging Information System f
 - `apps/api`: Fastify API for patients, orders, imaging, reporting, billing, inventory, QC, and integration dispatch metadata.
 - `apps/web`: React + Vite operations console for secure browser-based access.
 - `packages/shared`: shared types, validation schemas, seeded catalog, and dashboard contracts.
-- `packages/db`: Prisma schema and seed script for local SQLite development and hosted PostgreSQL deployment.
+- `packages/db`: Prisma schema and seed script for PostgreSQL-first development and deployment, with a separate SQLite path retained for the desktop local runtime.
 
 ## Connected deployment model
 
 - Browser clients talk directly to the MediLab Nexus API over HTTP.
-- Local SQLite remains available for fast workstation development.
+- Local development targets PostgreSQL by default.
 - A hosted PostgreSQL deployment path is included for shared multi-user environments.
 - Outbound `SyncEvent` records act as an integration dispatch journal for external systems and retryable delivery.
 - Patient Trace Codes remain initials plus a sequence, with facility-bound sequence management.
@@ -33,14 +33,14 @@ MediLab Nexus is a web-based Medical Laboratory and Imaging Information System f
 ## Run locally
 
 ```bash
+docker compose up -d db
 npm install
 copy .env.example .env
 npm run db:push
-npm run db:seed
 npm run dev
 ```
 
-If the local development schema changes in a way that requires rebuilding the SQLite file, use:
+If you need a clean empty local PostgreSQL database, use:
 
 ```bash
 npm run db:reset
@@ -54,10 +54,7 @@ The web app reads `VITE_API_BASE`, and local Vite proxying reads `VITE_DEV_API_P
 
 ## Standalone desktop app
 
-MediLab Nexus includes a Windows desktop shell that can run in two modes:
-
-- Hosted client mode: the installed app opens the central hosted MediLab Nexus deployment so every workstation sees the same live data and web updates immediately.
-- Local runtime mode: if no hosted URL is configured, the installer falls back to the bundled API, worker, and web UI for standalone local operation.
+MediLab Nexus includes a Windows desktop shell that opens the hosted MediLab Nexus deployment so every workstation sees the same live data and web updates immediately.
 
 Build the desktop runtime and installer with:
 
@@ -70,16 +67,17 @@ The installer is generated at `dist-desktop/MediLab Nexus Setup 0.1.0.exe`.
 
 Desktop runtime notes:
 
-- To package the installer against a hosted deployment, set `hostedUrl` in `apps/desktop/desktop.config.json` before running `npm run desktop:dist`, or set `MEDILAB_DESKTOP_HOSTED_URL` when launching the desktop app.
-- In hosted client mode, the installed app loads the configured hosted URL directly and does not start the bundled local API, worker, or SQLite runtime.
-- In local runtime mode, the installed app serves the bundled web client from the local API on a loopback port.
-- SQLite data, generated PDFs, and encrypted backups are written under the signed-in user's application data directory only when running in local runtime mode.
-- On first launch in local runtime mode the desktop app runs `prisma db push` against its local SQLite file before opening the window.
+- Set `hostedUrl` in `apps/desktop/desktop.config.json` before running `npm run desktop:dist`, or set `MEDILAB_DESKTOP_HOSTED_URL` when launching the desktop app.
+- The installed app loads the configured hosted URL directly and does not start a bundled local API, worker, or SQLite database.
 - The unpacked desktop build is also available at `dist-desktop/win-unpacked/`.
 
 ## Deploy online
 
 For a shared web deployment, start from `.env.production.example` and point `DATABASE_URL` at a managed PostgreSQL instance.
+
+For Supabase, use the pooled connection string for `DATABASE_URL` and the direct connection string for `DIRECT_URL`. Prisma schema operations such as `npm run db:push` should run against the direct connection, while the app runtime can stay on the pooled connection.
+
+If you are on the Supabase free tier without the dedicated IPv4 add-on, the direct database endpoint may be unreachable from IPv4-only networks. In that case, use the shared pooler connection string for `DATABASE_URL` and apply [deploy/supabase.bootstrap.sql](deploy/supabase.bootstrap.sql) through the Supabase SQL Editor instead of running `npm run db:push` from your workstation.
 
 ```bash
 copy .env.production.example .env
@@ -90,7 +88,8 @@ npm run build
 
 Recommended production settings:
 
-- `DATABASE_URL`: managed PostgreSQL connection string.
+- `DATABASE_URL`: managed PostgreSQL runtime connection string. For Supabase, use the pooler URL.
+- `DIRECT_URL`: direct PostgreSQL connection string for Prisma schema push and other management operations. For Supabase, use the non-pooling direct URL.
 - `VITE_API_BASE`: browser-facing API path, typically `/api` when the web app and API share one origin through a reverse proxy.
 - `MEDILAB_INTEGRATION_ENDPOINT`: outbound integration receiver for HL7 or external workflow dispatch.
 - `MEDILAB_NOTIFICATION_WEBHOOK_URL`: notification gateway endpoint.
@@ -122,15 +121,11 @@ The web console signs in against application users stored in the database and is
 
 For browser deployments, the API sets an HTTP-only session cookie and expects browser requests to use that cookie-backed session.
 
-Seeded demo credentials for first-run development:
+Before opening the login screen against a fresh Supabase project, run `npm run db:push` with the Supabase env values in place so the required tables exist.
 
-- `admin` / `2468`
-- `qa.officer` / `1357`
-- `finance.desk` / `2244`
-- `frontdesk` / `1122`
-- `sono.tech` / `7788`
+If the database has no application users yet, the login screen switches into a first-run setup flow. That setup creates the initial administrator account from `username`, `pin`, and `full name`, then uses the configured facility defaults for the workspace.
 
-These should be rotated before real deployment.
+The seed script no longer creates demo users, starter catalogs, sample patients, expenses, or workflow records automatically. After a fresh database setup, complete the first-run administrator registration from the login screen to open the workspace.
 
 ## Integration dispatch configuration
 
@@ -144,11 +139,11 @@ The integration dispatch runner can be triggered from the admin console.
 
 ## Deployment notes
 
-- Local development defaults to SQLite through `packages/db/prisma/schema.prisma`.
-- Hosted deployments should generate Prisma Client with `packages/db/prisma/schema.postgres.prisma` before build or release.
-- Schema maintenance rule: when workflow fields change, update both `packages/db/prisma/schema.prisma` and `packages/db/prisma/schema.postgres.prisma` unless the change is intentionally environment-specific.
-- `npm run db:generate` and `npm run db:push` target the local SQLite schema.
-- `npm run db:generate:hosted` and `npm run db:push:hosted` target the hosted PostgreSQL schema.
+- Local development defaults to PostgreSQL through `packages/db/prisma/schema.postgres.prisma`.
+- The SQLite schema in `packages/db/prisma/schema.prisma` is now legacy-only and is not used by the packaged desktop app.
+- Schema maintenance rule: treat `packages/db/prisma/schema.postgres.prisma` as the active deployment schema; keep `packages/db/prisma/schema.prisma` only if a deliberate legacy path still requires it.
+- `npm run db:generate`, `npm run db:push`, and `npm run db:reset` target PostgreSQL.
+- `npm run db:generate:sqlite`, `npm run db:push:sqlite`, and `npm run db:reset:sqlite` target the desktop SQLite path.
 - Keep the API behind HTTPS and expose it to browsers through the same public origin as the web app when possible.
 - In production, configure `MEDILAB_ALLOWED_ORIGINS` explicitly; if it is left empty the API refuses browser cross-origin requests.
 - Use `/health` for liveness checks and `/ready` for database-backed readiness checks.
@@ -187,7 +182,7 @@ Or use the deploy scripts:
 
 For a zero-cost public test deployment, the simplest path is:
 
-- Neon Free for PostgreSQL, because the Free plan is permanent and scales to zero.
+- Supabase for PostgreSQL.
 - Render Free Web Service for the app, with the API serving the built web UI from the same origin.
 
 This repo now includes a root `render.yaml` for that setup.
@@ -204,16 +199,18 @@ Why this path:
 - Demo PDF files, backups, and other filesystem artifacts live on ephemeral service storage and can be cleared on redeploy or restart.
 - This is appropriate for product testing, not for live clinical use.
 
-### Deploy on Render with Neon
+### Deploy on Render with Supabase
 
-1. Create a free Neon project and copy its direct PostgreSQL connection string.
+1. Keep your Supabase project ready with both the pooled PostgreSQL connection string and the direct PostgreSQL connection string.
 2. Push this repository to GitHub.
 3. In Render, create a new Blueprint from the repo so it picks up `render.yaml`.
-4. When prompted for `DATABASE_URL`, paste the Neon connection string.
-5. Let Render complete the first deploy. The pre-deploy command will push the hosted schema and run the seed script.
-6. Open the generated `onrender.com` URL and sign in with the demo users.
+4. When prompted for `DATABASE_URL`, paste the Supabase pooled connection string.
+5. When prompted for `DIRECT_URL`, paste the Supabase direct connection string.
+6. Let Render complete the first deploy. The start command will generate Prisma client, push the hosted schema, and run the no-op seed script.
+7. If your Supabase direct endpoint is not reachable from Render, apply `deploy/supabase.bootstrap.sql` in the Supabase SQL Editor and temporarily remove the `npm run db:push:hosted &&` segment from the Render start command.
+8. Open the generated `onrender.com` URL and register the first administrator from the sign-up button.
 
-Use the direct Neon connection string for Prisma migrations and schema push. For this stack, do not start with a pooled connection string.
+Use the Supabase direct connection string for Prisma schema push and management operations, while the runtime `DATABASE_URL` can stay on the pooled connection string.
 
 ### Demo environment values already covered by `render.yaml`
 
@@ -226,4 +223,4 @@ Use the direct Neon connection string for Prisma migrations and schema push. For
 
 ### Optional alternative
 
-If you only need a short-lived throwaway demo, Render also advertises a free Postgres option. Based on its pricing page, that database tier has a 30-day limit, so Neon Free is the safer default for ongoing external testing.
+If you only need a short-lived throwaway demo, Render also advertises a free Postgres option. Based on its pricing page, that database tier has a 30-day limit, so Supabase remains the safer default for ongoing external testing.

@@ -11,14 +11,6 @@ type PortalSnapshotCard = {
   note: string;
 };
 
-type PortalLoginProfile = {
-  key: string;
-  label: string;
-  summary: string;
-  demoUsername: string;
-  demoPin: string;
-};
-
 export function PortalDashboardDeck(props: {
   label: string;
   spotlight: string;
@@ -29,7 +21,16 @@ export function PortalDashboardDeck(props: {
   steps: string[];
   snapshotCards: PortalSnapshotCard[];
 }) {
-  const { label, spotlight, highlights, items, activeKey, onSelect, steps, snapshotCards } = props;
+  const {
+    label,
+    spotlight,
+    highlights,
+    items,
+    activeKey,
+    onSelect,
+    steps,
+    snapshotCards,
+  } = props;
 
   return (
     <section className="portal-grid">
@@ -68,7 +69,10 @@ export function PortalDashboardDeck(props: {
         <div className="section-head">
           <div>
             <h3>Portal playbook</h3>
-            <p>Use these steps to move through the portal without losing operational context.</p>
+            <p>
+              Use these steps to move through the portal without losing
+              operational context.
+            </p>
           </div>
         </div>
         <div className="portal-step-list">
@@ -89,55 +93,6 @@ export function PortalDashboardDeck(props: {
         </div>
       </article>
     </section>
-  );
-}
-
-export function PortalLoginSelector(props: {
-  profiles: PortalLoginProfile[];
-  selectedKey: string | null;
-  onSelect: (profile: PortalLoginProfile) => void;
-}) {
-  const { profiles, selectedKey, onSelect } = props;
-
-  return (
-    <>
-      <div className="login-portal-selector">
-        <div className="section-head compact-head">
-          <div>
-            <h3>Choose a portal</h3>
-            <p>Load a demo role and continue refining the workspace role by role.</p>
-          </div>
-        </div>
-        <div className="login-portal-grid" aria-label="Portal demo access shortcuts">
-          {profiles.map((profile) => (
-            <button
-              key={profile.key}
-              type="button"
-              className={`login-portal-card ${selectedKey === profile.key ? "active" : ""}`}
-              onClick={() => onSelect(profile)}
-            >
-              <strong>{profile.label}</strong>
-              <span>{profile.summary}</span>
-              <small>
-                {profile.demoUsername} · PIN {profile.demoPin}
-              </small>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="login-demo-bar" aria-label="Demo access shortcuts">
-        {profiles.map((profile) => (
-          <button
-            key={profile.key}
-            type="button"
-            className="ghost-action small login-demo-pill"
-            onClick={() => onSelect(profile)}
-          >
-            {profile.label.replace(" portal", "")}
-          </button>
-        ))}
-      </div>
-    </>
   );
 }
 

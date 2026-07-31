@@ -17,10 +17,12 @@ export function buildInitials({ firstName, lastName, middleName }: NameParts) {
 
 export async function nextTraceCode(prisma: PrismaClient, names: NameParts) {
   return prisma.$transaction(async (tx) => {
-    const facility = await tx.facility.findFirstOrThrow({ orderBy: { createdAt: "asc" } });
+    const facility = await tx.facility.findFirstOrThrow({
+      orderBy: { createdAt: "asc" },
+    });
     const updated = await tx.facility.update({
       where: { id: facility.id },
-      data: { traceSequence: { increment: 1 } }
+      data: { traceSequence: { increment: 1 } },
     });
 
     const initials = buildInitials(names);
@@ -28,7 +30,7 @@ export async function nextTraceCode(prisma: PrismaClient, names: NameParts) {
       facilityId: facility.id,
       traceSequence: updated.traceSequence,
       traceCode: `${initials}${updated.traceSequence}`,
-      initials
+      initials,
     };
   });
 }
@@ -72,7 +74,9 @@ export async function resolvePatientTraceCode(
     });
 
     if (existing && existing.id !== currentPatientId) {
-      throw new Error(`Trace code ${normalizedManualTraceCode} already exists.`);
+      throw new Error(
+        `Trace code ${normalizedManualTraceCode} already exists.`,
+      );
     }
 
     if (traceSequence > facility.traceSequence) {

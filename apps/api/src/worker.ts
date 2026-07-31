@@ -1,3 +1,4 @@
+import "./load-env.js";
 import { prisma } from "@medilab/db";
 import { buildActorContext } from "./services/security.js";
 import {

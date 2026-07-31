@@ -27,12 +27,57 @@ export type LoginResult =
       status: "invalid";
     };
 
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+async function findUserForLogin(prisma: PrismaClient, username: string) {
+  const normalizedUsername = normalizeUsername(username);
+  const exactMatch = await prisma.appUser.findUnique({
+    where: { username: normalizedUsername },
+  });
+
+  if (exactMatch) {
+    return {
+      normalizedUsername,
+      user: exactMatch,
+      requiresNormalization: false,
+    };
+  }
+
+  const legacyMatches = await prisma.appUser.findMany({
+    where: {
+      username: {
+        equals: normalizedUsername,
+        mode: "insensitive",
+      },
+    },
+    orderBy: [{ createdAt: "asc" }],
+    take: 2,
+  });
+
+  if (legacyMatches.length !== 1) {
+    return {
+      normalizedUsername,
+      user: null,
+      requiresNormalization: false,
+    };
+  }
+
+  return {
+    normalizedUsername,
+    user: legacyMatches[0],
+    requiresNormalization: legacyMatches[0].username !== normalizedUsername,
+  };
+}
+
 export async function loginWithPin(
   prisma: PrismaClient,
   username: string,
   pin: string,
 ) {
-  const user = await prisma.appUser.findUnique({ where: { username } });
+  const { normalizedUsername, user, requiresNormalization } =
+    await findUserForLogin(prisma, username);
 
   if (!user || !user.isActive) {
     return { status: "invalid" } satisfies LoginResult;
@@ -91,6 +136,18 @@ export async function loginWithPin(
       lockedUntil: null,
     },
   });
+
+  if (requiresNormalization) {
+    try {
+      await prisma.appUser.update({
+        where: { id: user.id },
+        data: { username: normalizedUsername },
+      });
+      user.username = normalizedUsername;
+    } catch {
+      // Leave the legacy username in place if a conflicting normalized account exists.
+    }
+  }
 
   return {
     status: "success",
@@ -175,16 +232,18 @@ export async function createLocalUser(
     pin: string;
   },
 ) {
+  const normalizedUsername = normalizeUsername(input.username);
+  const displayName = input.displayName.trim();
   const { salt, hash } = hashPin(
     input.pin,
-    `${input.facilityId}-${input.username}-${Date.now()}`,
+    `${input.facilityId}-${normalizedUsername}-${Date.now()}`,
   );
 
   return prisma.appUser.create({
     data: {
       facilityId: input.facilityId,
-      username: input.username,
-      displayName: input.displayName,
+      username: normalizedUsername,
+      displayName,
       role: input.role,
       pinSalt: salt,
       pinHash: hash,
@@ -221,6 +280,23 @@ export async function rotateUserPin(
   });
 
   return prisma.appUser.findUniqueOrThrow({ where: { id: userId } });
+}
+
+export async function changeOwnPin(
+  prisma: PrismaClient,
+  userId: string,
+  currentPin: string,
+  newPin: string,
+) {
+  const user = await prisma.appUser.findUniqueOrThrow({
+    where: { id: userId },
+  });
+
+  if (!verifyPin(currentPin, user.pinSalt, user.pinHash)) {
+    throw new Error("Current PIN is incorrect.");
+  }
+
+  return rotateUserPin(prisma, userId, newPin);
 }
 
 export async function setUserActiveState(

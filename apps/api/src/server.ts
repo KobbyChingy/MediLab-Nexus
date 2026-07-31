@@ -1,14 +1,25 @@
+import "./load-env.js";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
-import { CatalogKind, Department, prisma } from "@medilab/db";
+import {
+  CatalogKind,
+  ClaimStatus,
+  Department,
+  InvoiceStatus,
+  PayerType,
+  PaymentResponsibility,
+  prisma,
+} from "@medilab/db";
 import {
   adminUserInputSchema,
   analyticsRangeKeys,
   bulkServiceInputSchema,
-  catalogSeed,
+  changeOwnPinInputSchema,
   expenseInputSchema,
   facilitySettingsInputSchema,
   imagingStudyUpdateInputSchema,
+  importBackupInputSchema,
+  initialSetupInputSchema,
   internalAlertInputSchema,
   inventoryTransactionInputSchema,
   loginInputSchema,
@@ -17,11 +28,15 @@ import {
   patientInputSchema,
   patientReferralUpdateInputSchema,
   paymentInputSchema,
+  claimStatusUpdateInputSchema,
   qcEventInputSchema,
   referralDoctorInputSchema,
+  reportTemplateInputSchema,
+  reportStatusUpdateInputSchema,
   rotatePinInputSchema,
   reportInputSchema,
   restoreBackupInputSchema,
+  sampleUpdateInputSchema,
   serviceInputSchema,
   userStatusInputSchema,
   type AdminOverviewPayload,
@@ -33,14 +48,19 @@ import {
   type ExpenseWorkspacePayload,
   type FacilityProfile,
   type FinanceAnalyticsPayload,
+  type ClaimStatusUpdateInput,
+  type InitialSetupInput,
   type InternalAlertPayload,
   type ImagingStudyUpdateInput,
   type UserDirectoryEntryPayload,
   type ReferralDoctorSummaryPayload,
   type PrintableAnalyticsPayload,
   type PrintableInvoicePayload,
+  type ReportInput,
   type PrintableReportPayload,
   type PrintableReceiptPayload,
+  type ReportTemplatePayload,
+  type SetupStatusPayload,
   type IntegrationDispatchRunPayload,
   type IntegrationDispatchStatusPayload,
   type NotificationInput,
@@ -48,9 +68,11 @@ import {
 } from "@medilab/shared";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { recordAudit } from "./services/audit.js";
 import {
+  changeOwnPin,
   createLocalUser,
   getSessionFromToken,
   listLocalUsers,
@@ -61,13 +83,18 @@ import {
   setUserActiveState,
   unlockUser,
 } from "./services/auth.js";
-import { createEncryptedBackup, restoreBackup } from "./services/backup.js";
+import {
+  createEncryptedBackup,
+  importEncryptedBackup,
+  restoreBackup,
+} from "./services/backup.js";
 import { buildLeveyJenningsSeries, evaluateWestgard } from "./services/qc.js";
 import {
   ensureReportPdf,
   renderPrintableFinanceAnalyticsHtml,
   renderPrintableInvoiceHtml,
   readReportPdf,
+  renderDraftPrintableReportHtml,
   renderPrintableReportHtml,
   renderPrintableReceiptHtml,
 } from "./services/reports.js";
@@ -227,10 +254,18 @@ function serializeFacility(
         location: string;
         logoDataUrl: string;
         footerMessage: string;
+        printFontSize?: string;
       }
     | null
     | undefined,
 ): FacilityProfile {
+  const printFontSize =
+    facility?.printFontSize === "SMALL" ||
+    facility?.printFontSize === "LARGE" ||
+    facility?.printFontSize === "MEDIUM"
+      ? facility.printFontSize
+      : "MEDIUM";
+
   return {
     name: facility?.name ?? "MediLab Nexus Diagnostic Centre",
     code: facility?.code ?? "MLN-ACC",
@@ -241,7 +276,125 @@ function serializeFacility(
     footerMessage:
       facility?.footerMessage ??
       "Thank you for choosing MediLab Nexus. Present your Trace Code whenever you contact the lab.",
+    printFontSize,
   };
+}
+
+function serializeReportTemplate(template: {
+  id: string;
+  facilityId: string;
+  name: string;
+  templateKind: string;
+  title: string;
+  medicalHistory: string;
+  summary: string;
+  findings: string;
+  impression: string;
+  assistJson: string;
+  createdByName: string;
+  createdByRole: ReportTemplatePayload["createdByRole"];
+  createdAt: Date;
+  updatedAt: Date;
+}): ReportTemplatePayload {
+  return {
+    id: template.id,
+    facilityId: template.facilityId,
+    name: template.name,
+    templateKind: template.templateKind as ReportTemplatePayload["templateKind"],
+    title: template.title,
+    medicalHistory: template.medicalHistory,
+    summary: template.summary,
+    findings: template.findings,
+    impression: template.impression,
+    assist: reportTemplateInputSchema.shape.assist.parse(
+      JSON.parse(template.assistJson || "{}"),
+    ),
+    createdByName: template.createdByName,
+    createdByRole: template.createdByRole,
+    createdAt: template.createdAt.toISOString(),
+    updatedAt: template.updatedAt.toISOString(),
+  };
+}
+
+async function resolveFacilityRecord(facilityId?: string | null) {
+  if (facilityId?.trim()) {
+    const actorFacility = await prisma.facility.findUnique({
+      where: { id: facilityId },
+    });
+    if (actorFacility) {
+      return actorFacility;
+    }
+  }
+
+  return prisma.facility.findFirst({
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+function buildSetupStatusPayload(
+  userCount: number,
+  facility:
+    | {
+        name: string;
+        code: string;
+        phone: string;
+        email: string;
+        location: string;
+        logoDataUrl: string;
+        footerMessage: string;
+        printFontSize?: string;
+      }
+    | null
+    | undefined,
+): SetupStatusPayload {
+  return {
+    requiresSetup: userCount === 0,
+    hasUsers: userCount > 0,
+    hasFacility: Boolean(facility),
+    facility: serializeFacility(facility),
+  };
+}
+
+async function resolveSetupStatus() {
+  const [userCount, facility] = await Promise.all([
+    prisma.appUser.count(),
+    resolveFacilityRecord(),
+  ]);
+
+  return buildSetupStatusPayload(userCount, facility);
+}
+
+function buildSessionPayload(session: {
+  sessionToken: string;
+  expiresAt: Date;
+  user: {
+    id: string;
+    facilityId: string;
+    username: string;
+    displayName: string;
+    role: ActorContext["role"];
+    allowedActions: Capability[];
+  };
+}) {
+  return {
+    sessionToken: session.sessionToken,
+    expiresAt: session.expiresAt.toISOString(),
+    user: {
+      id: session.user.id,
+      facilityId: session.user.facilityId,
+      username: session.user.username,
+      displayName: session.user.displayName,
+      role: session.user.role,
+      allowedActions: session.user.allowedActions,
+    },
+  };
+}
+
+function sendSetupDatabaseUnavailable(reply: FastifyReply) {
+  return reply.code(503).send({
+    message:
+      "Database setup is not ready. Confirm the PostgreSQL connection is valid and run the Prisma schema push for the configured database.",
+  });
 }
 
 function serializeCatalogItem(service: {
@@ -303,6 +456,7 @@ function serializePatient(patient: {
   dateOfBirth?: Date | null;
   gender?: string | null;
   phone: string;
+  location?: string | null;
   nhisId?: string | null;
   allergies?: string | null;
   medicalHistory?: string | null;
@@ -328,6 +482,7 @@ function serializePatient(patient: {
       : "",
     gender: patient.gender ?? "",
     phone: patient.phone,
+    location: patient.location ?? "",
     nhisId: patient.nhisId ?? "",
     allergies: patient.allergies ?? "",
     medicalHistory: patient.medicalHistory ?? "",
@@ -367,14 +522,124 @@ function serializeExpense(expense: {
   };
 }
 
-function getAnalyticsRangeStart(range: (typeof analyticsRangeKeys)[number]) {
-  if (range === "ALL") {
-    return null;
+function parseCustodyTrail(value: string) {
+  try {
+    const parsed = JSON.parse(value) as Array<{
+      at?: string;
+      action?: string;
+      actor?: string;
+      note?: string;
+    }>;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((entry) => typeof entry === "object" && entry !== null)
+      .map((entry) => ({
+        at: entry.at ?? new Date().toISOString(),
+        action: entry.action ?? "UPDATED",
+        actor: entry.actor ?? "Unknown",
+        note: entry.note ?? "",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function serializeSample(sample: {
+  id: string;
+  patientId: string;
+  orderId: string;
+  traceLabel: string;
+  specimenType: string;
+  status: WorkflowPayload["samples"][number]["status"];
+  collectedBy: string | null;
+  collectedAt: Date | null;
+  rejectionReason: string | null;
+  chainOfCustodyJson: string;
+  createdAt: Date;
+  patient: {
+    traceCode: string;
+    firstName: string;
+    lastName: string;
+  };
+}) {
+  return {
+    id: sample.id,
+    patientId: sample.patientId,
+    orderId: sample.orderId,
+    patientTraceCode: sample.patient.traceCode,
+    patientName: `${sample.patient.firstName} ${sample.patient.lastName}`,
+    traceLabel: sample.traceLabel,
+    specimenType: sample.specimenType,
+    status: sample.status,
+    collectedBy: sample.collectedBy,
+    collectedAt: sample.collectedAt?.toISOString() ?? null,
+    rejectionReason: sample.rejectionReason,
+    chainOfCustody: parseCustodyTrail(sample.chainOfCustodyJson),
+    createdAt: sample.createdAt.toISOString(),
+  } satisfies WorkflowPayload["samples"][number];
+}
+
+function resolveOrderStatusFromSamples(
+  statuses: string[],
+): "REGISTERED" | "COLLECTED" | "IN_PROGRESS" | "REJECTED" {
+  if (statuses.length > 0 && statuses.every((status) => status === "REJECTED")) {
+    return "REJECTED";
   }
 
-  const days =
-    range === "7D" ? 7 : range === "30D" ? 30 : range === "90D" ? 90 : 365;
-  return new Date(Date.now() - 1000 * 60 * 60 * 24 * days);
+  if (
+    statuses.some((status) =>
+      ["RECEIVED", "PROCESSING", "STORED", "DISPOSED"].includes(status),
+    )
+  ) {
+    return "IN_PROGRESS";
+  }
+
+  if (statuses.some((status) => ["COLLECTED", "RECEIVED"].includes(status))) {
+    return "COLLECTED";
+  }
+
+  return "REGISTERED";
+}
+
+function resolveReportLifecycle(status: ReportInput["status"], signedBy: string) {
+  const signableStatuses = new Set(["APPROVED", "RELEASED", "AMENDED"]);
+  return {
+    status,
+    signedBy: signableStatuses.has(status) ? signedBy : null,
+    signedAt: signableStatuses.has(status) ? new Date() : null,
+    requiresPdf: signableStatuses.has(status),
+    orderStatus:
+      status === "DRAFT"
+        ? ("IN_PROGRESS" as const)
+        : status === "IN_REVIEW"
+          ? ("READY_FOR_REVIEW" as const)
+          : ("VERIFIED" as const),
+    auditAction:
+      status === "DRAFT"
+        ? "REPORT_DRAFTED"
+        : status === "IN_REVIEW"
+          ? "REPORT_SUBMITTED"
+          : status === "RELEASED"
+            ? "REPORT_RELEASED"
+            : status === "AMENDED"
+              ? "REPORT_AMENDED"
+              : "REPORT_APPROVED",
+  };
+}
+
+function startOfDay(value: Date) {
+  const next = new Date(value);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfDay(value: Date) {
+  const next = new Date(value);
+  next.setHours(23, 59, 59, 999);
+  return next;
 }
 
 function resolveAnalyticsRange(query: {
@@ -388,6 +653,75 @@ function resolveAnalyticsRange(query: {
     : "30D";
 }
 
+function resolveAnalyticsWindow(query: {
+  range?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const range = resolveAnalyticsRange(query);
+  const today = new Date();
+
+  if (range === "ALL") {
+    return {
+      range,
+      start: null,
+      end: null,
+      customStartDate: null,
+      customEndDate: null,
+    };
+  }
+
+  if (range === "TODAY") {
+    return {
+      range,
+      start: startOfDay(today),
+      end: endOfDay(today),
+      customStartDate: null,
+      customEndDate: null,
+    };
+  }
+
+  if (range === "YESTERDAY") {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return {
+      range,
+      start: startOfDay(yesterday),
+      end: endOfDay(yesterday),
+      customStartDate: null,
+      customEndDate: null,
+    };
+  }
+
+  if (range === "CUSTOM") {
+    const rawStart = normalizeDateInput(query.startDate);
+    const rawEnd = normalizeDateInput(query.endDate);
+    const start = rawStart ? startOfDay(rawStart) : null;
+    const end = rawEnd ? endOfDay(rawEnd) : null;
+
+    return {
+      range,
+      start,
+      end,
+      customStartDate: start ? start.toISOString() : null,
+      customEndDate: end ? end.toISOString() : null,
+    };
+  }
+
+  const days = range === "7D" ? 7 : 30;
+  const start = startOfDay(
+    new Date(Date.now() - 1000 * 60 * 60 * 24 * (days - 1)),
+  );
+
+  return {
+    range,
+    start,
+    end: endOfDay(today),
+    customStartDate: null,
+    customEndDate: null,
+  };
+}
+
 function normalizeDateInput(value?: string) {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -396,6 +730,134 @@ function normalizeDateInput(value?: string) {
 
   const date = new Date(trimmed);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizePayerType(
+  payerType: string | undefined,
+  insuranceAuthorized: boolean,
+  insuranceProvider?: string,
+) {
+  if (payerType === "NHIS") {
+    return PayerType.NHIS;
+  }
+  if (payerType === "INSURANCE") {
+    return PayerType.INSURANCE;
+  }
+  if (payerType === "CORPORATE") {
+    return PayerType.CORPORATE;
+  }
+  if (insuranceAuthorized || insuranceProvider?.trim()) {
+    return PayerType.INSURANCE;
+  }
+  return PayerType.SELF_PAY;
+}
+
+function normalizeCoveragePercent(
+  payerType: PayerType,
+  coveragePercent: number,
+  insuranceAuthorized: boolean,
+) {
+  if (payerType === PayerType.SELF_PAY) {
+    return 0;
+  }
+
+  const fallback = insuranceAuthorized ? 40 : 0;
+  const resolved = Number.isFinite(coveragePercent) ? coveragePercent : fallback;
+  return Math.max(0, Math.min(100, Math.round(resolved)));
+}
+
+function summarizeInvoiceSettlement(invoice: {
+  status: InvoiceStatus;
+  patientResponsibilityCents: number;
+  payerResponsibilityCents: number;
+  subtotalCents?: number;
+  discountCents?: number;
+  insuranceCoveredCents?: number;
+  amountPaidCents?: number;
+  payments: Array<{
+    amountCents: number;
+    responsibility: PaymentResponsibility;
+  }>;
+}) {
+  const patientPaidCents = invoice.payments.reduce(
+    (sum, payment) =>
+      payment.responsibility === PaymentResponsibility.PATIENT
+        ? sum + payment.amountCents
+        : sum,
+    0,
+  );
+  const payerPaidCents = invoice.payments.reduce(
+    (sum, payment) =>
+      payment.responsibility === PaymentResponsibility.PAYER
+        ? sum + payment.amountCents
+        : sum,
+    0,
+  );
+  const declaredTotalDueCents =
+    invoice.patientResponsibilityCents + invoice.payerResponsibilityCents;
+  const legacyTotalDueCents = Math.max(
+    0,
+    (invoice.subtotalCents ?? 0) -
+      (invoice.discountCents ?? 0) -
+      (invoice.insuranceCoveredCents ?? 0),
+  );
+  const totalDueCents =
+    declaredTotalDueCents > 0 ? declaredTotalDueCents : legacyTotalDueCents;
+  const recordedTotalPaidCents = patientPaidCents + payerPaidCents;
+  const totalPaidCents = Math.max(
+    recordedTotalPaidCents,
+    invoice.amountPaidCents ?? 0,
+    invoice.status === InvoiceStatus.PAID && totalDueCents > 0 ? totalDueCents : 0,
+  );
+  const patientBalanceCents = Math.max(
+    0,
+    invoice.patientResponsibilityCents - patientPaidCents,
+  );
+  const payerBalanceCents = Math.max(
+    0,
+    invoice.payerResponsibilityCents - payerPaidCents,
+  );
+  const totalBalanceCents = Math.max(0, totalDueCents - totalPaidCents);
+  const status =
+    invoice.status === InvoiceStatus.VOID
+      ? InvoiceStatus.VOID
+      : totalBalanceCents === 0
+        ? InvoiceStatus.PAID
+        : totalPaidCents > 0
+          ? InvoiceStatus.PARTIAL
+          : InvoiceStatus.OPEN;
+
+  return {
+    patientPaidCents,
+    payerPaidCents,
+    totalDueCents,
+    totalPaidCents,
+    patientBalanceCents,
+    payerBalanceCents,
+    totalBalanceCents,
+    status,
+  };
+}
+
+function resolveClaimSettlementStatus(
+  currentStatus: ClaimStatus,
+  payerResponsibilityCents: number,
+  payerPaidCents: number,
+) {
+  if (payerResponsibilityCents === 0) {
+    return ClaimStatus.NOT_APPLICABLE;
+  }
+  if (payerPaidCents >= payerResponsibilityCents) {
+    return ClaimStatus.SETTLED;
+  }
+  if (
+    payerPaidCents > 0 &&
+    currentStatus !== ClaimStatus.REJECTED &&
+    currentStatus !== ClaimStatus.SETTLED
+  ) {
+    return ClaimStatus.PARTIAL;
+  }
+  return currentStatus;
 }
 
 async function buildExpenseWorkspace(
@@ -407,29 +869,36 @@ async function buildExpenseWorkspace(
     endDate?: string;
   },
 ): Promise<ExpenseWorkspacePayload> {
-  const range = resolveAnalyticsRange(query);
-  const rangeStart = getAnalyticsRangeStart(range);
+  const analyticsWindow = resolveAnalyticsWindow(query);
+  const { range } = analyticsWindow;
   const selectedCategory = query.category?.trim();
   const startDate = normalizeDateInput(query.startDate);
   const endDate = normalizeDateInput(query.endDate);
+  const startBoundary = startDate
+    ? startOfDay(startDate)
+    : analyticsWindow.start;
+  const endBoundary = endDate ? endOfDay(endDate) : analyticsWindow.end;
 
   const rangeExpenses = await prisma.expenseRecord.findMany({
     where: {
       facilityId: actor.facilityId,
-      ...(rangeStart ? { incurredAt: { gte: rangeStart } } : {}),
+      ...((startBoundary || endBoundary)
+        ? {
+            incurredAt: {
+              ...(startBoundary ? { gte: startBoundary } : {}),
+              ...(endBoundary ? { lte: endBoundary } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: [{ incurredAt: "desc" }, { createdAt: "desc" }],
   });
-
-  const endBoundary = endDate
-    ? new Date(endDate.getTime() + 1000 * 60 * 60 * 24 - 1)
-    : null;
   const filteredExpenses = rangeExpenses.filter((expense) => {
     const matchesCategory =
       !selectedCategory || selectedCategory === "ALL"
         ? true
         : expense.category === selectedCategory;
-    const matchesStart = !startDate || expense.incurredAt >= startDate;
+    const matchesStart = !startBoundary || expense.incurredAt >= startBoundary;
     const matchesEnd = !endBoundary || expense.incurredAt <= endBoundary;
     return matchesCategory && matchesStart && matchesEnd;
   });
@@ -531,6 +1000,22 @@ async function recordDispatchEvent(
       entityType,
       entityId,
       operation: "UPSERT",
+      payload: JSON.stringify(payload),
+      status: "PENDING_SYNC",
+    },
+  });
+}
+
+async function recordDeleteDispatchEvent(
+  entityType: string,
+  entityId: string,
+  payload: unknown,
+) {
+  await prisma.syncEvent.create({
+    data: {
+      entityType,
+      entityId,
+      operation: "DELETE",
       payload: JSON.stringify(payload),
       status: "PENDING_SYNC",
     },
@@ -868,9 +1353,13 @@ async function buildAdminOverview(
 
 async function buildFinanceAnalytics(
   actor: ActorContext,
-  range: (typeof analyticsRangeKeys)[number],
+  query: {
+    range?: string;
+    startDate?: string;
+    endDate?: string;
+  },
 ): Promise<FinanceAnalyticsPayload> {
-  const rangeStart = getAnalyticsRangeStart(range);
+  const analyticsWindow = resolveAnalyticsWindow(query);
   const catalogItems = await prisma.catalogItem.findMany({
     select: {
       name: true,
@@ -892,7 +1381,14 @@ async function buildFinanceAnalytics(
       patient: {
         facilityId: actor.facilityId,
       },
-      ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
+      ...((analyticsWindow.start || analyticsWindow.end)
+        ? {
+            createdAt: {
+              ...(analyticsWindow.start ? { gte: analyticsWindow.start } : {}),
+              ...(analyticsWindow.end ? { lte: analyticsWindow.end } : {}),
+            },
+          }
+        : {}),
     },
     include: {
       lines: true,
@@ -909,29 +1405,48 @@ async function buildFinanceAnalytics(
   const expenses = await prisma.expenseRecord.findMany({
     where: {
       facilityId: actor.facilityId,
-      ...(rangeStart ? { incurredAt: { gte: rangeStart } } : {}),
+      ...((analyticsWindow.start || analyticsWindow.end)
+        ? {
+            incurredAt: {
+              ...(analyticsWindow.start ? { gte: analyticsWindow.start } : {}),
+              ...(analyticsWindow.end ? { lte: analyticsWindow.end } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: { incurredAt: "desc" },
   });
   const inventoryAudits = await prisma.auditLog.findMany({
     where: {
       action: "INVENTORY_UPDATED",
-      ...(rangeStart ? { createdAt: { gte: rangeStart } } : {}),
+      ...((analyticsWindow.start || analyticsWindow.end)
+        ? {
+            createdAt: {
+              ...(analyticsWindow.start ? { gte: analyticsWindow.start } : {}),
+              ...(analyticsWindow.end ? { lte: analyticsWindow.end } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: { createdAt: "desc" },
   });
 
   const payments = invoices.flatMap((invoice) =>
     invoice.payments.filter((payment) =>
-      rangeStart ? payment.createdAt >= rangeStart : true,
+      (!analyticsWindow.start || payment.createdAt >= analyticsWindow.start) &&
+      (!analyticsWindow.end || payment.createdAt <= analyticsWindow.end),
     ),
+  );
+  const invoiceSettlementMap = new Map(
+    invoices.map((invoice) => [invoice.id, summarizeInvoiceSettlement(invoice)]),
   );
   const grossBilledCents = invoices.reduce(
     (sum, invoice) => sum + invoice.subtotalCents,
     0,
   );
   const netDueCents = invoices.reduce(
-    (sum, invoice) => sum + invoice.amountDueCents,
+    (sum, invoice) =>
+      sum + (invoiceSettlementMap.get(invoice.id)?.totalDueCents ?? 0),
     0,
   );
   const collectedCents = payments.reduce(
@@ -940,7 +1455,7 @@ async function buildFinanceAnalytics(
   );
   const outstandingCents = invoices.reduce(
     (sum, invoice) =>
-      sum + Math.max(0, invoice.amountDueCents - invoice.amountPaidCents),
+      sum + (invoiceSettlementMap.get(invoice.id)?.totalBalanceCents ?? 0),
     0,
   );
   const discountCents = invoices.reduce(
@@ -970,7 +1485,13 @@ async function buildFinanceAnalytics(
     if (commissionPercent == null) {
       return sum;
     }
-    return sum + Math.round(invoice.amountDueCents * (commissionPercent / 100));
+    return (
+      sum +
+      Math.round(
+        (invoiceSettlementMap.get(invoice.id)?.totalDueCents ?? 0) *
+          (commissionPercent / 100),
+      )
+    );
   }, 0);
   const referralCommissionOutstandingCents = invoices.reduce((sum, invoice) => {
     const commissionPercent = invoice.patient.referralDoctor?.commissionPercent;
@@ -980,7 +1501,7 @@ async function buildFinanceAnalytics(
     return (
       sum +
       Math.round(
-        Math.max(0, invoice.amountDueCents - invoice.amountPaidCents) *
+        (invoiceSettlementMap.get(invoice.id)?.totalBalanceCents ?? 0) *
           (commissionPercent / 100),
       )
     );
@@ -996,6 +1517,7 @@ async function buildFinanceAnalytics(
     }
   >();
   for (const invoice of invoices) {
+    const settlement = invoiceSettlementMap.get(invoice.id);
     const current = invoiceStatusMap.get(invoice.status) ?? {
       status: invoice.status,
       count: 0,
@@ -1003,17 +1525,22 @@ async function buildFinanceAnalytics(
       outstandingCents: 0,
     };
     current.count += 1;
-    current.totalDueCents += invoice.amountDueCents;
-    current.outstandingCents += Math.max(
-      0,
-      invoice.amountDueCents - invoice.amountPaidCents,
-    );
+    current.totalDueCents += settlement?.totalDueCents ?? 0;
+    current.outstandingCents += settlement?.totalBalanceCents ?? 0;
     invoiceStatusMap.set(invoice.status, current);
   }
 
   const paymentMixMap = new Map<
     string,
     { method: string; totalCents: number; count: number }
+  >();
+  const payerMixMap = new Map<
+    string,
+    FinanceAnalyticsPayload["payerMix"][number]
+  >();
+  const claimStatusMap = new Map<
+    FinanceAnalyticsPayload["claimStatus"][number]["claimStatus"],
+    FinanceAnalyticsPayload["claimStatus"][number]
   >();
   for (const payment of payments) {
     const current = paymentMixMap.get(payment.method) ?? {
@@ -1024,6 +1551,33 @@ async function buildFinanceAnalytics(
     current.totalCents += payment.amountCents;
     current.count += 1;
     paymentMixMap.set(payment.method, current);
+  }
+
+  for (const invoice of invoices) {
+    const settlement = invoiceSettlementMap.get(invoice.id);
+    const payerKey = `${invoice.payerType}:${invoice.payerName ?? "Unassigned"}`;
+    const payerEntry = payerMixMap.get(payerKey) ?? {
+      payerType: invoice.payerType,
+      payerName: invoice.payerName ?? "Unassigned",
+      invoicesCount: 0,
+      coveredCents: 0,
+      outstandingCents: 0,
+    };
+    payerEntry.invoicesCount += 1;
+    payerEntry.coveredCents += invoice.payerResponsibilityCents;
+    payerEntry.outstandingCents += settlement?.payerBalanceCents ?? 0;
+    payerMixMap.set(payerKey, payerEntry);
+
+    const claimEntry = claimStatusMap.get(invoice.claimStatus) ?? {
+      claimStatus: invoice.claimStatus,
+      invoicesCount: 0,
+      coveredCents: 0,
+      outstandingCents: 0,
+    };
+    claimEntry.invoicesCount += 1;
+    claimEntry.coveredCents += invoice.payerResponsibilityCents;
+    claimEntry.outstandingCents += settlement?.payerBalanceCents ?? 0;
+    claimStatusMap.set(invoice.claimStatus, claimEntry);
   }
 
   const agingBuckets = [
@@ -1038,10 +1592,8 @@ async function buildFinanceAnalytics(
     balanceCents: 0,
   }));
   for (const invoice of invoices) {
-    const balanceCents = Math.max(
-      0,
-      invoice.amountDueCents - invoice.amountPaidCents,
-    );
+    const balanceCents =
+      invoiceSettlementMap.get(invoice.id)?.totalBalanceCents ?? 0;
     if (balanceCents === 0) {
       continue;
     }
@@ -1094,7 +1646,7 @@ async function buildFinanceAnalytics(
     const key = `${invoice.createdAt.getFullYear()}-${invoice.createdAt.getMonth()}`;
     const month = monthlyCollectionsMap.get(key);
     if (month) {
-      month.billedCents += invoice.amountDueCents;
+      month.billedCents += invoiceSettlementMap.get(invoice.id)?.totalDueCents ?? 0;
     }
   }
   for (const payment of payments) {
@@ -1178,9 +1730,10 @@ async function buildFinanceAnalytics(
     return next;
   };
   for (const invoice of invoices) {
+    const settlement = invoiceSettlementMap.get(invoice.id);
     const subtotalCents = Math.max(invoice.subtotalCents, 0);
-    const amountDueCents = Math.max(invoice.amountDueCents, 0);
-    const amountPaidCents = Math.max(invoice.amountPaidCents, 0);
+    const amountDueCents = Math.max(settlement?.totalDueCents ?? 0, 0);
+    const amountPaidCents = Math.max(settlement?.totalPaidCents ?? 0, 0);
     const invoiceMonthKey = `${invoice.createdAt.getFullYear()}-${invoice.createdAt.getMonth()}`;
 
     for (const line of invoice.lines) {
@@ -1282,6 +1835,7 @@ async function buildFinanceAnalytics(
     if (!doctor) {
       continue;
     }
+    const settlement = invoiceSettlementMap.get(invoice.id);
     const current = referrerMap.get(doctor.id) ?? {
       doctorName: doctor.fullName,
       commissionPercent: doctor.commissionPercent,
@@ -1292,14 +1846,11 @@ async function buildFinanceAnalytics(
       commissionDueCents: 0,
     };
     current.invoicesCount += 1;
-    current.billedCents += invoice.amountDueCents;
-    current.collectedCents += invoice.amountPaidCents;
-    current.outstandingCents += Math.max(
-      0,
-      invoice.amountDueCents - invoice.amountPaidCents,
-    );
+    current.billedCents += settlement?.totalDueCents ?? 0;
+    current.collectedCents += settlement?.totalPaidCents ?? 0;
+    current.outstandingCents += settlement?.totalBalanceCents ?? 0;
     current.commissionDueCents += Math.round(
-      invoice.amountDueCents * (doctor.commissionPercent / 100),
+      (settlement?.totalDueCents ?? 0) * (doctor.commissionPercent / 100),
     );
     referrerMap.set(doctor.id, current);
   }
@@ -1408,7 +1959,9 @@ async function buildFinanceAnalytics(
 
   return {
     generatedAt: new Date().toISOString(),
-    range,
+    range: analyticsWindow.range,
+    customStartDate: analyticsWindow.customStartDate,
+    customEndDate: analyticsWindow.customEndDate,
     summary: {
       grossBilledCents,
       netDueCents,
@@ -1429,6 +1982,12 @@ async function buildFinanceAnalytics(
     ),
     paymentMix: [...paymentMixMap.values()].sort(
       (left, right) => right.totalCents - left.totalCents,
+    ),
+    payerMix: [...payerMixMap.values()].sort(
+      (left, right) => right.coveredCents - left.coveredCents,
+    ),
+    claimStatus: [...claimStatusMap.values()].sort(
+      (left, right) => right.coveredCents - left.coveredCents,
     ),
     agingBuckets,
     monthlyCollections: [...monthlyCollectionsMap.values()]
@@ -1477,6 +2036,109 @@ app.get("/ready", async (request, reply) => {
   }
 });
 
+app.get("/api/setup/status", async (_request, reply) => {
+  try {
+    return await resolveSetupStatus();
+  } catch {
+    return sendSetupDatabaseUnavailable(reply);
+  }
+});
+
+app.post("/api/setup/initialize", async (request, reply) => {
+  let currentStatus: SetupStatusPayload;
+  try {
+    currentStatus = await resolveSetupStatus();
+  } catch {
+    return sendSetupDatabaseUnavailable(reply);
+  }
+  if (!currentStatus.requiresSetup) {
+    return reply.code(409).send({
+      message: "Initial setup has already been completed.",
+    });
+  }
+
+  const payload: InitialSetupInput = initialSetupInputSchema.parse(request.body);
+  const normalizedUsername = payload.admin.username.trim().toLowerCase();
+
+  const refreshedUserCount = await prisma.appUser.count();
+  if (refreshedUserCount > 0) {
+    return reply.code(409).send({
+      message: "Initial setup has already been completed.",
+    });
+  }
+
+  const facilityDefaults = serializeFacility(null);
+  const facilityRecord = await resolveFacilityRecord();
+  const facility = facilityRecord
+    ? await prisma.facility.update({
+        where: { id: facilityRecord.id },
+        data: {
+          code: facilityRecord.code || facilityDefaults.code,
+          name: facilityRecord.name || facilityDefaults.name,
+          phone: facilityRecord.phone || facilityDefaults.phone,
+          email: facilityRecord.email || facilityDefaults.email,
+          location: facilityRecord.location || facilityDefaults.location,
+          logoDataUrl: facilityRecord.logoDataUrl || facilityDefaults.logoDataUrl,
+          footerMessage: facilityRecord.footerMessage || facilityDefaults.footerMessage,
+          printFontSize: facilityRecord.printFontSize || facilityDefaults.printFontSize,
+        },
+      })
+    : await prisma.facility.create({
+        data: {
+          code: process.env.MEDILAB_FACILITY_CODE ?? facilityDefaults.code,
+          name: process.env.MEDILAB_FACILITY_NAME ?? facilityDefaults.name,
+          phone: facilityDefaults.phone,
+          email: facilityDefaults.email,
+          location: facilityDefaults.location,
+          logoDataUrl: facilityDefaults.logoDataUrl,
+          footerMessage: facilityDefaults.footerMessage,
+          printFontSize: facilityDefaults.printFontSize,
+        },
+      });
+
+  const { salt, hash } = hashPin(
+    payload.admin.pin,
+    `${facility.code}-${normalizedUsername}-${Date.now()}`,
+  );
+
+  await prisma.appUser.create({
+    data: {
+      facilityId: facility.id,
+      username: normalizedUsername,
+      displayName: payload.admin.displayName.trim(),
+      role: "ADMIN",
+      pinSalt: salt,
+      pinHash: hash,
+      pinChangedAt: new Date(),
+    },
+  });
+
+  const session = await loginWithPin(prisma, normalizedUsername, payload.admin.pin);
+  if (session.status !== "success") {
+    return reply.code(500).send({
+      message: "Initial setup completed, but the new admin session could not be created.",
+    });
+  }
+
+  await recordAudit(prisma, session.user, {
+    action: "INITIAL_SETUP_COMPLETED",
+    entityType: "Facility",
+    entityId: facility.id,
+    summary: `${session.user.displayName} completed first-run setup`,
+    payload: {
+      facilityCode: facility.code,
+      facilityName: facility.name,
+    },
+  });
+
+  reply.header(
+    "set-cookie",
+    serializeSessionCookie(session.sessionToken, session.expiresAt),
+  );
+
+  return reply.code(201).send(buildSessionPayload(session));
+});
+
 app.post("/api/auth/login", async (request, reply) => {
   const payload = loginInputSchema.parse(request.body);
   const session = await loginWithPin(prisma, payload.username, payload.pin);
@@ -1503,18 +2165,7 @@ app.post("/api/auth/login", async (request, reply) => {
     serializeSessionCookie(session.sessionToken, session.expiresAt),
   );
 
-  return reply.code(200).send({
-    sessionToken: session.sessionToken,
-    expiresAt: session.expiresAt.toISOString(),
-    user: {
-      id: session.user.id,
-      facilityId: session.user.facilityId,
-      username: session.user.username,
-      displayName: session.user.displayName,
-      role: session.user.role,
-      allowedActions: session.user.allowedActions,
-    },
-  });
+  return reply.code(200).send(buildSessionPayload(session));
 });
 
 app.get("/api/auth/session", async (request, reply) => {
@@ -1566,10 +2217,43 @@ app.post("/api/auth/logout", async (request, reply) => {
   return reply.code(204).send();
 });
 
-app.get("/api/bootstrap", async (): Promise<BootstrapPayload> => {
-  const facility = await prisma.facility.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
+app.post("/api/auth/change-pin", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const payload = changeOwnPinInputSchema.parse(request.body);
+
+  try {
+    const user = await changeOwnPin(
+      prisma,
+      request.actor.id,
+      payload.currentPin,
+      payload.newPin,
+    );
+
+    await recordAudit(prisma, request.actor, {
+      action: "PIN_CHANGED",
+      entityType: "AppUser",
+      entityId: user.id,
+      summary: `${user.username} changed their own PIN`,
+    });
+
+    return reply.code(200).send({
+      id: user.id,
+      username: user.username,
+      pinChangedAt: user.pinChangedAt.toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Current PIN is incorrect.") {
+      return reply.code(400).send({ message: error.message });
+    }
+    throw error;
+  }
+});
+
+app.get("/api/bootstrap", async (request): Promise<BootstrapPayload> => {
+  const facility = await resolveFacilityRecord(request.actor.facilityId);
   const [
     patientsToday,
     openOrders,
@@ -1715,8 +2399,10 @@ app.get("/api/analytics/finance", async (request, reply) => {
     return deny(reply, "finance:manage");
   }
 
-  const range = resolveAnalyticsRange(request.query as { range?: string });
-  return buildFinanceAnalytics(request.actor, range);
+  return buildFinanceAnalytics(
+    request.actor,
+    request.query as { range?: string; startDate?: string; endDate?: string },
+  );
 });
 
 app.get(
@@ -1729,8 +2415,10 @@ app.get(
       return deny(reply, "finance:manage");
     }
 
-    const range = resolveAnalyticsRange(request.query as { range?: string });
-    const analytics = await buildFinanceAnalytics(request.actor, range);
+    const analytics = await buildFinanceAnalytics(
+      request.actor,
+      request.query as { range?: string; startDate?: string; endDate?: string },
+    );
     return renderPrintableFinanceAnalyticsHtml(
       prisma,
       request.actor,
@@ -1791,6 +2479,39 @@ app.post("/api/finance/expenses", async (request, reply) => {
   return reply.code(201).send(serializeExpense(created));
 });
 
+app.delete("/api/finance/expenses/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "finance:manage")) {
+    return deny(reply, "finance:manage");
+  }
+
+  const { id } = request.params as { id: string };
+  const existing = await prisma.expenseRecord.findFirst({
+    where: {
+      id,
+      facilityId: request.actor.facilityId,
+    },
+  });
+
+  if (!existing) {
+    return reply.code(404).send({ message: "Expense entry not found." });
+  }
+
+  await prisma.expenseRecord.delete({ where: { id: existing.id } });
+  await recordAudit(prisma, request.actor, {
+    action: "EXPENSE_DELETED",
+    entityType: "ExpenseRecord",
+    entityId: existing.id,
+    summary: `${existing.category} expense deleted`,
+    payload: serializeExpense(existing),
+  });
+  await recordDeleteDispatchEvent("ExpenseRecord", existing.id, existing);
+
+  return reply.code(204).send();
+});
+
 app.get("/api/admin/facility", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
@@ -1799,9 +2520,7 @@ app.get("/api/admin/facility", async (request, reply) => {
     return deny(reply, "user:manage");
   }
 
-  const facility = await prisma.facility.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
+  const facility = await resolveFacilityRecord(request.actor.facilityId);
   return serializeFacility(facility);
 });
 
@@ -1809,27 +2528,35 @@ app.put("/api/admin/facility", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
   }
-  if (!hasCapability(request.actor, "user:manage")) {
-    return deny(reply, "user:manage");
+  if (
+    !hasCapability(request.actor, "user:manage") &&
+    !hasCapability(request.actor, "report:write")
+  ) {
+    return deny(reply, "report:write");
   }
 
   const payload = facilitySettingsInputSchema.parse(request.body);
-  const facility = await prisma.facility.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
+  const facility = await resolveFacilityRecord(request.actor.facilityId);
   if (!facility) {
     return reply.code(500).send({ message: "Facility not initialized." });
   }
 
+  const canManageFacilityProfile = hasCapability(request.actor, "user:manage");
+
   const updated = await prisma.facility.update({
     where: { id: facility.id },
     data: {
-      name: payload.name,
-      phone: payload.phone,
-      email: payload.email,
-      location: payload.location,
-      logoDataUrl: payload.logoDataUrl,
-      footerMessage: payload.footerMessage,
+      ...(canManageFacilityProfile
+        ? {
+            name: payload.name,
+            phone: payload.phone,
+            email: payload.email,
+            location: payload.location,
+            logoDataUrl: payload.logoDataUrl,
+            footerMessage: payload.footerMessage,
+          }
+        : {}),
+      printFontSize: payload.printFontSize,
     },
   });
 
@@ -1837,18 +2564,121 @@ app.put("/api/admin/facility", async (request, reply) => {
     action: "FACILITY_UPDATED",
     entityType: "Facility",
     entityId: updated.id,
-    summary: `Facility profile updated for ${updated.code}`,
+    summary: canManageFacilityProfile
+      ? `Facility profile updated for ${updated.code}`
+      : `Printable font size updated for ${updated.code}`,
     payload: {
-      name: payload.name,
-      phone: payload.phone,
-      email: payload.email,
-      location: payload.location,
-      footerMessage: payload.footerMessage,
-      logoUpdated: Boolean(payload.logoDataUrl),
+      ...(canManageFacilityProfile
+        ? {
+            name: payload.name,
+            phone: payload.phone,
+            email: payload.email,
+            location: payload.location,
+            footerMessage: payload.footerMessage,
+          }
+        : {}),
+      printFontSize: payload.printFontSize,
+      logoUpdated: canManageFacilityProfile && Boolean(payload.logoDataUrl),
     },
   });
 
   return serializeFacility(updated);
+});
+
+app.get("/api/report-templates", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:write")) {
+    return deny(reply, "report:write");
+  }
+
+  const templates = await prisma.reportTemplate.findMany({
+    where: { facilityId: request.actor.facilityId },
+    orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+  });
+  return templates.map(serializeReportTemplate);
+});
+
+app.post("/api/report-templates", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:write")) {
+    return deny(reply, "report:write");
+  }
+
+  const payload = reportTemplateInputSchema.parse(request.body);
+  const saved = await prisma.reportTemplate.upsert({
+    where: {
+      facilityId_name: {
+        facilityId: request.actor.facilityId,
+        name: payload.name,
+      },
+    },
+    update: {
+      templateKind: payload.templateKind,
+      title: payload.title,
+      medicalHistory: payload.medicalHistory,
+      summary: payload.summary,
+      findings: payload.findings,
+      impression: payload.impression,
+      assistJson: JSON.stringify(payload.assist),
+      createdByName: request.actor.displayName,
+      createdByRole: request.actor.role,
+    },
+    create: {
+      facilityId: request.actor.facilityId,
+      name: payload.name,
+      templateKind: payload.templateKind,
+      title: payload.title,
+      medicalHistory: payload.medicalHistory,
+      summary: payload.summary,
+      findings: payload.findings,
+      impression: payload.impression,
+      assistJson: JSON.stringify(payload.assist),
+      createdByName: request.actor.displayName,
+      createdByRole: request.actor.role,
+    },
+  });
+
+  await recordAudit(prisma, request.actor, {
+    action: "REPORT_TEMPLATE_SAVED",
+    entityType: "ReportTemplate",
+    entityId: saved.id,
+    summary: `Report template ${saved.name} saved`,
+    payload,
+  });
+
+  return reply.code(201).send(serializeReportTemplate(saved));
+});
+
+app.delete("/api/report-templates/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:write")) {
+    return deny(reply, "report:write");
+  }
+
+  const { id } = request.params as { id: string };
+  const existing = await prisma.reportTemplate.findFirst({
+    where: { id, facilityId: request.actor.facilityId },
+  });
+  if (!existing) {
+    return reply.code(404).send({ message: "Report template not found." });
+  }
+
+  await prisma.reportTemplate.delete({ where: { id: existing.id } });
+  await recordAudit(prisma, request.actor, {
+    action: "REPORT_TEMPLATE_DELETED",
+    entityType: "ReportTemplate",
+    entityId: existing.id,
+    summary: `Report template ${existing.name} deleted`,
+    payload: { name: existing.name },
+  });
+
+  return reply.code(204).send();
 });
 
 app.get(
@@ -2147,6 +2977,46 @@ app.put("/api/admin/services/:id", async (request, reply) => {
   return serializeCatalogItem(updated);
 });
 
+app.delete("/api/admin/services/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "service:manage")) {
+    return deny(reply, "service:manage");
+  }
+
+  const { id } = request.params as { id: string };
+  const existing = await prisma.catalogItem.findUnique({
+    where: { id },
+  });
+
+  if (!existing) {
+    return reply.code(404).send({ message: "Service not found." });
+  }
+
+  const linkedOrderItems = await prisma.orderItem.count({
+    where: { catalogItemId: existing.id },
+  });
+  if (linkedOrderItems > 0) {
+    return reply.code(409).send({
+      message:
+        "This service is already linked to workflow records. Archive it instead of deleting it.",
+    });
+  }
+
+  await prisma.catalogItem.delete({ where: { id: existing.id } });
+  await recordAudit(prisma, request.actor, {
+    action: "SERVICE_DELETED",
+    entityType: "CatalogItem",
+    entityId: existing.id,
+    summary: `Service ${existing.code} deleted`,
+    payload: serializeCatalogItem(existing),
+  });
+  await recordDeleteDispatchEvent("CatalogItem", existing.id, existing);
+
+  return reply.code(204).send();
+});
+
 app.get("/api/patients", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
@@ -2333,6 +3203,7 @@ app.put("/api/patients/:id", async (request, reply) => {
       dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
       gender: payload.gender,
       phone: payload.phone,
+      location: payload.location?.trim() || null,
       nhisId: payload.nhisId,
       allergies: payload.allergies,
       medicalHistory: payload.medicalHistory,
@@ -2361,6 +3232,63 @@ app.put("/api/patients/:id", async (request, reply) => {
   });
 
   return reply.send(serializePatient(updated));
+});
+
+app.delete("/api/patients/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "patient:write")) {
+    return deny(reply, "patient:write");
+  }
+
+  const { id } = request.params as { id: string };
+  const existing = await prisma.patient.findFirst({
+    where: {
+      id,
+      facilityId: request.actor.facilityId,
+    },
+    include: {
+      referralDoctor: {
+        select: {
+          fullName: true,
+          commissionPercent: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    return reply.code(404).send({ message: "Patient not found." });
+  }
+
+  const [orderCount, sampleCount, reportCount, invoiceCount] =
+    await Promise.all([
+      prisma.diagnosticOrder.count({ where: { patientId: existing.id } }),
+      prisma.sample.count({ where: { patientId: existing.id } }),
+      prisma.report.count({ where: { patientId: existing.id } }),
+      prisma.invoice.count({ where: { patientId: existing.id } }),
+    ]);
+
+  if (orderCount + sampleCount + reportCount + invoiceCount > 0) {
+    return reply.code(409).send({
+      message:
+        "This patient already has workflow records and cannot be deleted. Remove the dependent orders, reports, and billing records first.",
+    });
+  }
+
+  await prisma.patient.delete({ where: { id: existing.id } });
+  await recordAudit(prisma, request.actor, {
+    action: "PATIENT_DELETED",
+    entityType: "Patient",
+    entityId: existing.id,
+    traceCode: existing.traceCode,
+    summary: `Patient ${existing.traceCode} deleted`,
+    payload: serializePatient(existing),
+  });
+  await recordDeleteDispatchEvent("Patient", existing.id, existing);
+
+  return reply.code(204).send();
 });
 
 app.post("/api/patients", async (request, reply) => {
@@ -2414,6 +3342,7 @@ app.post("/api/patients", async (request, reply) => {
       dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
       gender: payload.gender,
       phone: payload.phone,
+      location: payload.location?.trim() || null,
       nhisId: payload.nhisId,
       allergies: payload.allergies,
       medicalHistory: payload.medicalHistory,
@@ -2470,6 +3399,18 @@ app.post("/api/orders", async (request, reply) => {
     (sum, item) => sum + item.priceCents,
     0,
   );
+  const payerType = normalizePayerType(
+    payload.payerType,
+    payload.insuranceAuthorized,
+    payload.insuranceProvider,
+  );
+  const payerName =
+    payload.payerName.trim() || payload.insuranceProvider?.trim() || null;
+  const payerCoveragePercent = normalizeCoveragePercent(
+    payerType,
+    payload.payerCoveragePercent,
+    payload.insuranceAuthorized,
+  );
   const createdOrder = await prisma.$transaction(async (tx) => {
     const order = await tx.diagnosticOrder.create({
       data: {
@@ -2477,6 +3418,11 @@ app.post("/api/orders", async (request, reply) => {
         accessionNumber: buildAccessionNumber(),
         orderedBy: payload.orderedBy,
         priority: payload.priority,
+        payerType,
+        payerName,
+        payerCoveragePercent,
+        payerMemberId: payload.payerMemberId.trim() || null,
+        payerAuthorizationCode: payload.payerAuthorizationCode.trim() || null,
         insuranceProvider: payload.insuranceProvider,
         insuranceAuthorized: payload.insuranceAuthorized,
         notes: payload.notes,
@@ -2528,17 +3474,29 @@ app.post("/api/orders", async (request, reply) => {
       }
     }
 
-    const insuranceCoveredCents = payload.insuranceAuthorized
-      ? Math.round(totalAmountCents * 0.4)
-      : 0;
+    const insuranceCoveredCents = Math.round(
+      totalAmountCents * (payerCoveragePercent / 100),
+    );
+    const patientResponsibilityCents =
+      totalAmountCents - insuranceCoveredCents;
     const invoice = await tx.invoice.create({
       data: {
         patientId: payload.patientId,
         orderId: order.id,
+        payerType,
+        payerName,
+        payerCoveragePercent,
+        payerMemberId: payload.payerMemberId.trim() || null,
+        payerAuthorizationCode: payload.payerAuthorizationCode.trim() || null,
+        payerResponsibilityCents: insuranceCoveredCents,
+        patientResponsibilityCents,
+        claimStatus:
+          payerType === PayerType.SELF_PAY
+            ? ClaimStatus.NOT_APPLICABLE
+            : ClaimStatus.PENDING,
         subtotalCents: totalAmountCents,
         insuranceCoveredCents,
-        amountDueCents: totalAmountCents - insuranceCoveredCents,
-        payerName: payload.insuranceProvider,
+        amountDueCents: patientResponsibilityCents,
         lines: {
           create: catalogItems.map((item) => ({
             description: item.name,
@@ -2593,7 +3551,11 @@ app.get("/api/workflow", async (request, reply) => {
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
-    prisma.sample.findMany({ orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.sample.findMany({
+      include: { patient: true },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    }),
     prisma.imagingStudy.findMany({
       include: {
         orderItem: {
@@ -2648,10 +3610,15 @@ app.get("/api/workflow", async (request, reply) => {
       patientId: order.patientId,
       patientTraceCode: order.patient.traceCode,
       patientName: `${order.patient.firstName} ${order.patient.lastName}`,
+      payerType: order.payerType,
+      payerName: order.payerName,
+      payerCoveragePercent: order.payerCoveragePercent,
+      payerMemberId: order.payerMemberId,
+      payerAuthorizationCode: order.payerAuthorizationCode,
       createdAt: order.createdAt.toISOString(),
       items: order.items.map((item) => item.catalogItem.name),
     })),
-    samples,
+    samples: samples.map(serializeSample),
     imaging: imaging.map((study) => ({
       id: study.id,
       orderId: study.orderItem.orderId,
@@ -2673,6 +3640,11 @@ app.get("/api/workflow", async (request, reply) => {
       id: report.id,
       patientId: report.patientId,
       orderId: report.orderId,
+      patientTraceCode: orders.find((order) => order.id === report.orderId)?.patient.traceCode ?? "",
+      patientName:
+        orders.find((order) => order.id === report.orderId)
+          ? `${orders.find((order) => order.id === report.orderId)!.patient.firstName} ${orders.find((order) => order.id === report.orderId)!.patient.lastName}`
+          : "",
       title: report.title,
       status: report.status,
       signedBy: report.signedBy,
@@ -2681,40 +3653,55 @@ app.get("/api/workflow", async (request, reply) => {
       criticalFlag: report.criticalFlag,
       createdAt: report.createdAt.toISOString(),
     })),
-    invoices: invoices.map((invoice) => ({
-      id: invoice.id,
-      patientId: invoice.patientId,
-      orderId: invoice.orderId,
-      traceCode: invoice.patient.traceCode,
-      accessionNumber: invoice.order.accessionNumber,
-      referralDoctorName: invoice.patient.referralDoctor?.fullName ?? null,
-      referralDoctorCommissionPercent:
-        invoice.patient.referralDoctor?.commissionPercent ?? null,
-      referralCommissionDueCents: invoice.patient.referralDoctor
-        ? Math.round(
-            invoice.amountDueCents *
-              (invoice.patient.referralDoctor.commissionPercent / 100),
-          )
-        : 0,
-      referralCommissionOutstandingCents: invoice.patient.referralDoctor
-        ? Math.round(
-            Math.max(0, invoice.amountDueCents - invoice.amountPaidCents) *
-              (invoice.patient.referralDoctor.commissionPercent / 100),
-          )
-        : 0,
-      status: invoice.status,
-      subtotalCents: invoice.subtotalCents,
-      discountCents: invoice.discountCents,
-      insuranceCoveredCents: invoice.insuranceCoveredCents,
-      amountDueCents: invoice.amountDueCents,
-      amountPaidCents: invoice.amountPaidCents,
-      balanceCents: Math.max(
-        0,
-        invoice.amountDueCents - invoice.amountPaidCents,
-      ),
-      createdAt: invoice.createdAt.toISOString(),
-      paymentsCount: invoice.payments.length,
-    })),
+    invoices: invoices.map((invoice) => {
+      const settlement = summarizeInvoiceSettlement(invoice);
+      const commissionPercent =
+        invoice.patient.referralDoctor?.commissionPercent ?? null;
+
+      return {
+        id: invoice.id,
+        patientId: invoice.patientId,
+        orderId: invoice.orderId,
+        traceCode: invoice.patient.traceCode,
+        accessionNumber: invoice.order.accessionNumber,
+        referralDoctorName: invoice.patient.referralDoctor?.fullName ?? null,
+        referralDoctorCommissionPercent: commissionPercent,
+        referralCommissionDueCents: commissionPercent
+          ? Math.round(settlement.totalDueCents * (commissionPercent / 100))
+          : 0,
+        referralCommissionOutstandingCents: commissionPercent
+          ? Math.round(
+              settlement.totalBalanceCents * (commissionPercent / 100),
+            )
+          : 0,
+        payerType: invoice.payerType,
+        payerName: invoice.payerName,
+        payerCoveragePercent: invoice.payerCoveragePercent,
+        payerMemberId: invoice.payerMemberId,
+        payerAuthorizationCode: invoice.payerAuthorizationCode,
+        payerResponsibilityCents: invoice.payerResponsibilityCents,
+        patientResponsibilityCents: invoice.patientResponsibilityCents,
+        claimStatus: resolveClaimSettlementStatus(
+          invoice.claimStatus,
+          invoice.payerResponsibilityCents,
+          settlement.payerPaidCents,
+        ),
+        status: settlement.status,
+        subtotalCents: invoice.subtotalCents,
+        discountCents: invoice.discountCents,
+        insuranceCoveredCents: invoice.insuranceCoveredCents,
+        amountDueCents: invoice.amountDueCents,
+        amountPaidCents: settlement.totalPaidCents,
+        patientPaidCents: settlement.patientPaidCents,
+        payerPaidCents: settlement.payerPaidCents,
+        totalDueCents: settlement.totalDueCents,
+        patientBalanceCents: settlement.patientBalanceCents,
+        payerBalanceCents: settlement.payerBalanceCents,
+        balanceCents: settlement.totalBalanceCents,
+        createdAt: invoice.createdAt.toISOString(),
+        paymentsCount: invoice.payments.length,
+      };
+    }),
     payments: payments.map((payment) => ({
       id: payment.id,
       invoiceId: payment.invoiceId,
@@ -2723,6 +3710,7 @@ app.get("/api/workflow", async (request, reply) => {
       accessionNumber: payment.invoice.order.accessionNumber,
       amountCents: payment.amountCents,
       method: payment.method,
+      responsibility: payment.responsibility,
       reference: payment.reference,
       receivedBy: payment.receivedBy,
       notes: payment.notes,
@@ -2731,6 +3719,99 @@ app.get("/api/workflow", async (request, reply) => {
     maintenance,
     notifications,
   } satisfies WorkflowPayload;
+});
+
+app.patch("/api/samples/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "order:write")) {
+    return deny(reply, "order:write");
+  }
+
+  const { id } = request.params as { id: string };
+  const payload = sampleUpdateInputSchema.parse(request.body);
+  const sample = await prisma.sample.findUnique({
+    where: { id },
+    include: {
+      patient: true,
+      order: {
+        include: {
+          samples: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!sample) {
+    return reply.code(404).send({ message: "Sample not found." });
+  }
+
+  if (payload.status === "REJECTED" && !payload.rejectionReason.trim()) {
+    return reply.code(400).send({
+      message: "A rejection reason is required when rejecting a specimen.",
+    });
+  }
+
+  const custodyTrail = parseCustodyTrail(sample.chainOfCustodyJson);
+  const eventActor = payload.collectedBy.trim() || request.actor.displayName;
+  const eventNote = payload.note.trim() || payload.rejectionReason.trim();
+  custodyTrail.unshift({
+    at: new Date().toISOString(),
+    action: payload.status,
+    actor: eventActor,
+    note: eventNote,
+  });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const savedSample = await tx.sample.update({
+      where: { id: sample.id },
+      data: {
+        status: payload.status,
+        collectedBy:
+          payload.status === "COLLECTED" || sample.collectedBy
+            ? eventActor
+            : null,
+        collectedAt:
+          payload.status === "COLLECTED"
+            ? sample.collectedAt ?? new Date()
+            : sample.collectedAt,
+        rejectionReason:
+          payload.status === "REJECTED"
+            ? payload.rejectionReason.trim()
+            : null,
+        chainOfCustodyJson: JSON.stringify(custodyTrail.slice(0, 24)),
+      },
+      include: { patient: true },
+    });
+
+    const otherStatuses = sample.order.samples.map((entry) =>
+      entry.id === sample.id ? payload.status : entry.status,
+    );
+    await tx.diagnosticOrder.update({
+      where: { id: sample.orderId },
+      data: { status: resolveOrderStatusFromSamples(otherStatuses) },
+    });
+
+    await recordAudit(tx, request.actor, {
+      action: "SAMPLE_UPDATED",
+      entityType: "Sample",
+      entityId: savedSample.id,
+      traceCode: savedSample.patient.traceCode,
+      summary: `${savedSample.traceLabel} moved to ${payload.status}`,
+      payload,
+    });
+
+    return savedSample;
+  });
+
+  await recordDispatchEvent("Sample", updated.id, updated);
+  return reply.send(serializeSample(updated));
 });
 
 app.patch("/api/imaging/:id", async (request, reply) => {
@@ -2849,6 +3930,7 @@ app.post("/api/reports", async (request, reply) => {
   }
 
   const payload = reportInputSchema.parse(request.body);
+  const reportLifecycle = resolveReportLifecycle(payload.status, payload.signedBy);
   const report = await prisma.report.create({
     data: {
       patientId: payload.patientId,
@@ -2858,33 +3940,109 @@ app.post("/api/reports", async (request, reply) => {
       summary: payload.summary,
       findings: payload.findings,
       impression: payload.impression,
-      signedBy: payload.signedBy,
-      signedAt: new Date(),
-      status: "APPROVED",
+      signedBy: reportLifecycle.signedBy,
+      signedAt: reportLifecycle.signedAt,
+      status: reportLifecycle.status,
       criticalFlag: payload.criticalFlag,
       imagePathsJson: JSON.stringify(payload.imagePaths),
     },
   });
 
-  await ensureReportPdf(prisma, report.id);
+  if (reportLifecycle.requiresPdf) {
+    await ensureReportPdf(prisma, report.id);
+  }
 
   const order = await prisma.diagnosticOrder.update({
     where: { id: payload.orderId },
-    data: { status: payload.criticalFlag ? "READY_FOR_REVIEW" : "VERIFIED" },
+    data: {
+      status: payload.criticalFlag
+        ? "READY_FOR_REVIEW"
+        : reportLifecycle.orderStatus,
+    },
     include: { patient: true },
   });
   await recordDispatchEvent("Report", report.id, report);
   await recordAudit(prisma, request.actor, {
-    action: "REPORT_APPROVED",
+    action: reportLifecycle.auditAction,
     entityType: "Report",
     entityId: report.id,
     traceCode: order.patient.traceCode,
-    summary: `Report ${report.title} approved for ${order.patient.traceCode}`,
+    summary: `Report ${report.title} ${reportLifecycle.status.toLowerCase().replace(/_/gu, " ")} for ${order.patient.traceCode}`,
     payload,
   });
   return reply
     .code(201)
     .send(await prisma.report.findUniqueOrThrow({ where: { id: report.id } }));
+});
+
+app.post(
+  "/api/reports/preview",
+  async (request, reply): Promise<PrintableReportPayload | unknown> => {
+    if (!request.actor.authenticated) {
+      return unauthorized(reply);
+    }
+    if (!hasCapability(request.actor, "report:write")) {
+      return deny(reply, "report:write");
+    }
+
+    const payload = reportInputSchema.parse(request.body);
+    return renderDraftPrintableReportHtml(prisma, payload);
+  },
+);
+
+app.patch("/api/reports/:id/status", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:write")) {
+    return deny(reply, "report:write");
+  }
+
+  const { id } = request.params as { id: string };
+  const payload = reportStatusUpdateInputSchema.parse(request.body);
+  const existing = await prisma.report.findUnique({
+    where: { id },
+    include: {
+      patient: true,
+    },
+  });
+
+  if (!existing) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+
+  const reportLifecycle = resolveReportLifecycle(
+    payload.status,
+    payload.signedBy.trim() || request.actor.displayName,
+  );
+  const updated = await prisma.report.update({
+    where: { id: existing.id },
+    data: {
+      status: reportLifecycle.status,
+      signedBy: reportLifecycle.signedBy,
+      signedAt: reportLifecycle.signedAt,
+    },
+  });
+
+  if (reportLifecycle.requiresPdf) {
+    await ensureReportPdf(prisma, updated.id);
+  }
+
+  await prisma.diagnosticOrder.update({
+    where: { id: existing.orderId },
+    data: { status: reportLifecycle.orderStatus },
+  });
+  await recordDispatchEvent("Report", updated.id, updated);
+  await recordAudit(prisma, request.actor, {
+    action: reportLifecycle.auditAction,
+    entityType: "Report",
+    entityId: updated.id,
+    traceCode: existing.patient.traceCode,
+    summary: `Report ${existing.title} ${reportLifecycle.status.toLowerCase().replace(/_/gu, " ")} for ${existing.patient.traceCode}`,
+    payload,
+  });
+
+  return reply.send(updated);
 });
 
 app.get(
@@ -3004,6 +4162,18 @@ app.post("/api/inventory/transactions", async (request, reply) => {
       where: { id: item.id },
       data: {
         quantityOnHand,
+        expiryDate:
+          payload.expiryDate.trim().length > 0
+            ? normalizeDateInput(payload.expiryDate)
+            : item.expiryDate,
+        preferredVendor:
+          payload.preferredVendor.trim().length > 0
+            ? payload.preferredVendor.trim()
+            : item.preferredVendor,
+        storageLocation:
+          payload.storageLocation.trim().length > 0
+            ? payload.storageLocation.trim()
+            : item.storageLocation,
         lastRestockedAt:
           payload.type === "RECEIPT" ? new Date() : item.lastRestockedAt,
       },
@@ -3038,10 +4208,29 @@ app.post("/api/billing/payments", async (request, reply) => {
   const payload = paymentInputSchema.parse(request.body);
   const invoice = await prisma.invoice.findUnique({
     where: { id: payload.invoiceId },
-    include: { patient: true },
+    include: { patient: true, payments: true },
   });
   if (!invoice) {
     return reply.code(404).send({ message: "Invoice not found." });
+  }
+
+  const settlement = summarizeInvoiceSettlement(invoice);
+  const targetBalanceCents =
+    payload.responsibility === "PAYER"
+      ? settlement.payerBalanceCents
+      : settlement.patientBalanceCents;
+  if (targetBalanceCents <= 0) {
+    return reply.code(400).send({
+      message:
+        payload.responsibility === "PAYER"
+          ? "No payer balance remains on this invoice."
+          : "No patient balance remains on this invoice.",
+    });
+  }
+  if (payload.amountCents > targetBalanceCents) {
+    return reply.code(400).send({
+      message: `Payment exceeds the remaining ${payload.responsibility.toLowerCase()} balance.`,
+    });
   }
 
   const response = await prisma.$transaction(async (tx) => {
@@ -3049,6 +4238,7 @@ app.post("/api/billing/payments", async (request, reply) => {
       data: {
         invoiceId: invoice.id,
         method: payload.method,
+        responsibility: payload.responsibility,
         amountCents: payload.amountCents,
         reference: payload.reference,
         receivedBy: payload.receivedBy,
@@ -3056,19 +4246,34 @@ app.post("/api/billing/payments", async (request, reply) => {
         notes: payload.notes,
       },
     });
-    const amountPaidCents = invoice.amountPaidCents + payload.amountCents;
-    const status =
-      amountPaidCents >= invoice.amountDueCents ? "PAID" : "PARTIAL";
+    const nextPayments = [
+      ...invoice.payments,
+      { amountCents: payload.amountCents, responsibility: payload.responsibility },
+    ];
+    const nextSettlement = summarizeInvoiceSettlement({
+      status: invoice.status,
+      patientResponsibilityCents: invoice.patientResponsibilityCents,
+      payerResponsibilityCents: invoice.payerResponsibilityCents,
+      payments: nextPayments,
+    });
     const updatedInvoice = await tx.invoice.update({
       where: { id: invoice.id },
-      data: { amountPaidCents, status },
+      data: {
+        amountPaidCents: nextSettlement.totalPaidCents,
+        status: nextSettlement.status,
+        claimStatus: resolveClaimSettlementStatus(
+          invoice.claimStatus,
+          invoice.payerResponsibilityCents,
+          nextSettlement.payerPaidCents,
+        ),
+      },
     });
     await recordAudit(tx, request.actor, {
       action: "PAYMENT_RECORDED",
       entityType: "Invoice",
       entityId: updatedInvoice.id,
       traceCode: invoice.patient.traceCode,
-      summary: `${payload.method} payment recorded for ${invoice.patient.traceCode}`,
+      summary: `${payload.responsibility} ${payload.method} payment recorded for ${invoice.patient.traceCode}`,
       payload,
     });
     return { payment, updatedInvoice };
@@ -3111,6 +4316,42 @@ app.get(
     return renderPrintableInvoiceHtml(prisma, id);
   },
 );
+
+app.patch("/api/billing/invoices/:id/claim", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "finance:manage")) {
+    return deny(reply, "finance:manage");
+  }
+
+  const { id } = request.params as { id: string };
+  const payload = claimStatusUpdateInputSchema.parse(
+    request.body,
+  ) as ClaimStatusUpdateInput;
+  const invoice = await prisma.invoice.findUnique({
+    where: { id },
+    include: { patient: true },
+  });
+  if (!invoice) {
+    return reply.code(404).send({ message: "Invoice not found." });
+  }
+
+  const updated = await prisma.invoice.update({
+    where: { id: invoice.id },
+    data: { claimStatus: payload.claimStatus },
+  });
+  await recordAudit(prisma, request.actor, {
+    action: "CLAIM_STATUS_UPDATED",
+    entityType: "Invoice",
+    entityId: updated.id,
+    traceCode: invoice.patient.traceCode,
+    summary: `Claim status moved to ${payload.claimStatus} for ${invoice.patient.traceCode}`,
+    payload,
+  });
+
+  return reply.send(updated);
+});
 
 app.post("/api/notifications", async (request, reply) => {
   if (!request.actor.authenticated) {
@@ -3283,6 +4524,43 @@ app.post("/api/admin/backups", async (request, reply) => {
 
   const snapshot = await createEncryptedBackup(prisma, request.actor);
   return reply.code(201).send(snapshot);
+});
+
+app.post("/api/admin/backups/import", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "backup:manage")) {
+    return deny(reply, "backup:manage");
+  }
+
+  const payload = importBackupInputSchema.parse(request.body);
+  const snapshot = await importEncryptedBackup(prisma, request.actor, payload);
+  return reply.code(201).send(snapshot);
+});
+
+app.get("/api/admin/backups/:id/download", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "backup:manage")) {
+    return deny(reply, "backup:manage");
+  }
+
+  const { id } = request.params as { id: string };
+  const snapshot = await prisma.backupSnapshot.findUniqueOrThrow({
+    where: { id },
+  });
+  const encryptedPayload = await readFile(snapshot.filePath, "utf8");
+  const safeFileName = `${snapshot.label.replace(/"/gu, "")}.enc`;
+
+  reply.header("content-type", "application/octet-stream");
+  reply.header(
+    "content-disposition",
+    `attachment; filename="${safeFileName}"`,
+  );
+
+  return reply.send(encryptedPayload);
 });
 
 app.post("/api/admin/restore", async (request, reply) => {
@@ -3479,9 +4757,9 @@ const bootstrap = async () => {
   const facilityName =
     process.env.MEDILAB_FACILITY_NAME ?? "MediLab Nexus Diagnostic Centre";
   await purgeExpiredSessions(prisma);
-  const facility = await prisma.facility.upsert({
+  await prisma.facility.upsert({
     where: { code: facilityCode },
-    update: { name: facilityName },
+    update: {},
     create: {
       code: facilityCode,
       name: facilityName,
@@ -3492,65 +4770,6 @@ const bootstrap = async () => {
         "Thank you for choosing MediLab Nexus. Present your Trace Code whenever you contact the lab.",
     },
   });
-
-  if ((await prisma.catalogItem.count()) === 0) {
-    await prisma.catalogItem.createMany({ data: catalogSeed });
-  }
-
-  if ((await prisma.appUser.count()) === 0) {
-    const defaultUsers = [
-      {
-        username: "admin",
-        displayName: "Local Administrator",
-        role: "ADMIN",
-        pin: "2468",
-      },
-      {
-        username: "qa.officer",
-        displayName: "Quality Officer",
-        role: "QA",
-        pin: "1357",
-      },
-      {
-        username: "finance.desk",
-        displayName: "Finance Desk",
-        role: "FINANCE",
-        pin: "2244",
-      },
-      {
-        username: "frontdesk",
-        displayName: "Front Desk",
-        role: "RECEPTION",
-        pin: "1122",
-      },
-      {
-        username: "sono.tech",
-        displayName: "Sonography Tech",
-        role: "SONOGRAPHER",
-        pin: "7788",
-      },
-      {
-        username: "doctor.sono",
-        displayName: "Sonography Doctor",
-        role: "DOCTOR",
-        pin: "8899",
-      },
-    ] as const;
-
-    await prisma.appUser.createMany({
-      data: defaultUsers.map((user) => {
-        const salt = `${facility.code}-${user.username}`;
-        return {
-          facilityId: facility.id,
-          username: user.username,
-          displayName: user.displayName,
-          role: user.role,
-          pinSalt: salt,
-          pinHash: hashPin(user.pin, salt).hash,
-        };
-      }),
-    });
-  }
 };
 
 bootstrap()

@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum CatalogKind {
@@ -92,6 +93,28 @@ enum PaymentMethod {
   MOBILE_MONEY_VODAFONE
   CARD
   NHIS
+  BANK_TRANSFER
+}
+
+enum PaymentResponsibility {
+  PATIENT
+  PAYER
+}
+
+enum PayerType {
+  SELF_PAY
+  NHIS
+  INSURANCE
+  CORPORATE
+}
+
+enum ClaimStatus {
+  NOT_APPLICABLE
+  PENDING
+  SUBMITTED
+  PARTIAL
+  SETTLED
+  REJECTED
 }
 
 enum NotificationChannel {
@@ -144,6 +167,7 @@ model Facility {
   location      String   @default("")
   logoDataUrl   String   @default("")
   footerMessage String   @default("")
+  printFontSize String   @default("MEDIUM")
   traceSequence Int      @default(1200)
   cloudMode     Boolean  @default(false)
   createdAt     DateTime @default(now())
@@ -151,6 +175,7 @@ model Facility {
   patients      Patient[]
   referralDoctors ReferralDoctor[]
   expenses      ExpenseRecord[]
+  reportTemplates ReportTemplate[]
   users         AppUser[]
 }
 
@@ -236,6 +261,7 @@ model Patient {
   dateOfBirth      DateTime?
   gender           String?
   phone            String
+  location         String?
   nhisId           String?           @unique
   allergies        String?
   medicalHistory   String?
@@ -281,6 +307,11 @@ model DiagnosticOrder {
   status              OrderStatus  @default(REGISTERED)
   priority            Priority     @default(ROUTINE)
   orderedBy           String
+  payerType           PayerType    @default(SELF_PAY)
+  payerName           String?
+  payerCoveragePercent Int         @default(0)
+  payerMemberId       String?
+  payerAuthorizationCode String?
   referringClinic     String?
   insuranceProvider   String?
   insuranceAuthorized Boolean      @default(false)
@@ -378,17 +409,45 @@ model Report {
   @@index([status])
 }
 
+model ReportTemplate {
+  id            String   @id @default(cuid())
+  facilityId    String
+  name          String
+  templateKind  String
+  title         String
+  medicalHistory String  @default("")
+  summary       String
+  findings      String
+  impression    String
+  assistJson    String   @default("{}")
+  createdByName String
+  createdByRole UserRole
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  facility      Facility @relation(fields: [facilityId], references: [id])
+
+  @@unique([facilityId, name])
+  @@index([facilityId, templateKind])
+}
+
 model Invoice {
   id                    String        @id @default(cuid())
   patientId             String
   orderId               String        @unique
   status                InvoiceStatus @default(OPEN)
+  payerType             PayerType     @default(SELF_PAY)
+  payerName             String?
+  payerCoveragePercent  Int           @default(0)
+  payerMemberId         String?
+  payerAuthorizationCode String?
+  payerResponsibilityCents Int        @default(0)
+  patientResponsibilityCents Int      @default(0)
+  claimStatus           ClaimStatus   @default(NOT_APPLICABLE)
   subtotalCents         Int
   discountCents         Int           @default(0)
   insuranceCoveredCents Int           @default(0)
   amountDueCents        Int
   amountPaidCents       Int           @default(0)
-  payerName             String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   patient               Patient       @relation(fields: [patientId], references: [id])
@@ -477,6 +536,7 @@ model PaymentRecord {
   id          String        @id @default(cuid())
   invoiceId    String
   method      PaymentMethod
+  responsibility PaymentResponsibility @default(PATIENT)
   amountCents Int
   reference   String?
   receivedBy  String
