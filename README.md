@@ -2,6 +2,18 @@
 
 MediLab Nexus is a web-based Medical Laboratory and Imaging Information System for diagnostic centers running laboratory and sonography workflows through a connected API, with outbound integration dispatch for notifications and external systems.
 
+End-user documentation is available in [USER_MANUAL.md](USER_MANUAL.md).
+
+Additional user documentation:
+
+- [QUICK_START.md](QUICK_START.md)
+- [ROLE_GUIDE_RECEPTION.md](ROLE_GUIDE_RECEPTION.md)
+- [ROLE_GUIDE_SONOGRAPHER.md](ROLE_GUIDE_SONOGRAPHER.md)
+- [ROLE_GUIDE_DOCTOR.md](ROLE_GUIDE_DOCTOR.md)
+- [ROLE_GUIDE_MANAGER.md](ROLE_GUIDE_MANAGER.md)
+- [ROLE_GUIDE_ADMIN.md](ROLE_GUIDE_ADMIN.md)
+- [SCREENSHOT_CHECKLIST.md](SCREENSHOT_CHECKLIST.md)
+
 ## Architecture
 
 - `apps/api`: Fastify API for patients, orders, imaging, reporting, billing, inventory, QC, and integration dispatch metadata.
