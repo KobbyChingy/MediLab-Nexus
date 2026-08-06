@@ -1009,8 +1009,8 @@ export function SystemSettingsSection(props: {
   );
 
   return (
-    <section className="content-grid admin-workspace-layout">
-      <article className="surface-card form-card workspace-form-card">
+    <section className="content-grid admin-workspace-layout settings-workspace-layout">
+      <article className="surface-card form-card workspace-form-card settings-profile-card">
         <div className="section-head">
           <div>
             <h2>Facility profile</h2>
@@ -1189,7 +1189,7 @@ export function SystemSettingsSection(props: {
         </form>
       </article>
 
-      <article className="surface-card workspace-table-card">
+      <article className="surface-card workspace-table-card settings-operations-card">
         <div className="section-head compact-head">
           <div>
             <h2>System operations</h2>
@@ -1259,8 +1259,8 @@ export function SystemSettingsSection(props: {
             Run dispatch
           </button>
         </div>
-        <div className="admin-split-panels">
-          <div className="surface-subpanel">
+        <div className="admin-split-panels settings-split-panels">
+          <div className="surface-subpanel settings-subpanel">
             <div className="section-head compact-head">
               <div>
                 <h3>Backup library</h3>
@@ -1323,14 +1323,14 @@ export function SystemSettingsSection(props: {
               </div>
             )}
           </div>
-          <div className="surface-subpanel">
+          <div className="surface-subpanel settings-subpanel settings-runtime-panel">
             <div className="section-head compact-head">
               <div>
                 <h3>Runtime status</h3>
                 <p>Integration throughput, worker cadence, and dispatch health.</p>
               </div>
             </div>
-            <div className="mini-status-grid">
+            <div className="mini-status-grid settings-runtime-grid">
               <div className="mini-status">
                 <span>Integration mode</span>
                 <strong>{syncStatus.mode}</strong>

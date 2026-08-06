@@ -602,7 +602,7 @@ body.sidebar-drawer-open {
 
 .workspace {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 320px;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -866,6 +866,7 @@ body.sidebar-drawer-open {
 .main-content {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .page-head,
@@ -1146,6 +1147,7 @@ body.sidebar-drawer-open {
 .trace-badge {
   display: block;
   font-size: 1.6rem;
+  overflow-wrap: anywhere;
 }
 
 .alert-banner {
@@ -1250,8 +1252,12 @@ body.sidebar-drawer-open {
 }
 
 .admin-workspace-layout {
-  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.45fr);
+  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.6fr);
   align-items: start;
+}
+
+.settings-workspace-layout {
+  grid-template-columns: minmax(360px, 1fr) minmax(0, 1.95fr);
 }
 
 .workspace-form-card,
@@ -1263,6 +1269,11 @@ body.sidebar-drawer-open {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 1rem;
+  min-width: 0;
+}
+
+.settings-operations-card {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
 .admin-table-shell {
@@ -1281,9 +1292,14 @@ body.sidebar-drawer-open {
 
 .admin-split-panels {
   display: grid;
-  grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.22fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   min-height: 0;
+  align-items: stretch;
+}
+
+.settings-split-panels {
+  grid-template-columns: 1fr;
 }
 
 .surface-subpanel {
@@ -1294,6 +1310,16 @@ body.sidebar-drawer-open {
   border: 1px solid var(--border);
   background: var(--surface-muted);
   min-height: 0;
+  min-width: 0;
+  align-content: start;
+}
+
+.settings-subpanel {
+  height: 100%;
+}
+
+.settings-runtime-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .surface-card,
