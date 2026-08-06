@@ -1258,6 +1258,12 @@ body.sidebar-drawer-open {
 
 .settings-workspace-layout {
   grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.settings-profile-card,
+.settings-operations-card {
+  min-height: auto;
 }
 
 .workspace-form-card,
@@ -1300,6 +1306,7 @@ body.sidebar-drawer-open {
 
 .settings-split-panels {
   grid-template-columns: 1fr;
+  gap: 0.85rem;
 }
 
 .surface-subpanel {
@@ -1315,7 +1322,7 @@ body.sidebar-drawer-open {
 }
 
 .settings-subpanel {
-  height: 100%;
+  height: auto;
 }
 
 .settings-runtime-grid {
