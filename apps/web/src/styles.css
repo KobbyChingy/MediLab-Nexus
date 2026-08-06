@@ -1257,7 +1257,7 @@ body.sidebar-drawer-open {
 }
 
 .settings-workspace-layout {
-  grid-template-columns: minmax(360px, 1fr) minmax(0, 1.95fr);
+  grid-template-columns: 1fr;
 }
 
 .workspace-form-card,
