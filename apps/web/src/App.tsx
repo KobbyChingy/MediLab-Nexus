@@ -4051,6 +4051,57 @@ export default function App() {
     }
   }
 
+  async function handleDeleteAllPatients() {
+    if (patients.length === 0) {
+      setStatusText("There are no patient records to delete");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete all ${patients.length} patient record(s)? This removes related orders, reports, samples, invoices, and receipts for the current facility.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const result = await requestJson<{ deletedPatients: number }>(
+        "/patients",
+        {
+          method: "DELETE",
+        },
+      );
+      setPatients([]);
+      setSelectedPatientId("");
+      setPatientRecordDraft(buildPatientDraft(null));
+      setIsEditingPatientRecord(false);
+      setRefundPatientId("");
+      setPatientRecordsQuery("");
+      setOrderForm((current) => ({
+        ...current,
+        patientId: "",
+      }));
+      setNotificationForm((current) => ({
+        ...current,
+        patientId: "",
+        traceCode: "",
+      }));
+      setReportForm((current) => ({
+        ...current,
+        patientId: "",
+        orderId: "",
+        traceCode: "",
+      }));
+      await loadOperationalData();
+      setStatusText(`Deleted ${result.deletedPatients} patient record(s)`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "Bulk patient deletion failed",
+      );
+    }
+  }
+
   async function handleLogout() {
     try {
       if (authSession) {
@@ -6242,6 +6293,37 @@ export default function App() {
     }
   }
 
+  async function handleDeleteUser(userId: string) {
+    const user = users.find((entry) => entry.id === userId);
+    if (!user) {
+      setStatusText("Choose a valid user to delete");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete user ${user.displayName} (${user.username})? This revokes active sessions for that account.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await requestJson(`/admin/users/${userId}`, {
+        method: "DELETE",
+      });
+      if (pinRecovery.userId === userId) {
+        setPinRecovery({ userId: "", newPin: "" });
+      }
+      await loadOperationalData();
+      setStatusText(`Deleted user ${user.username}`);
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "User deletion failed",
+      );
+    }
+  }
+
   async function handleRunIntegrationDispatch() {
     try {
       const result = await requestJson<IntegrationDispatchRunPayload>(
@@ -6444,6 +6526,18 @@ export default function App() {
             scan history.
           </p>
         </div>
+        {canEditPatientRecords ? (
+          <div className="inline-actions">
+            <button
+              type="button"
+              className="ghost-action small"
+              onClick={() => void handleDeleteAllPatients()}
+              disabled={patients.length === 0}
+            >
+              Delete all patients
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="form-grid">
         <label className="full-width">
@@ -10776,6 +10870,7 @@ export default function App() {
       formatDate={formatDate}
       handleToggleUser={handleToggleUser}
       handleUnlockUser={handleUnlockUser}
+      handleDeleteUser={handleDeleteUser}
     />
   );
 

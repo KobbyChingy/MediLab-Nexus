@@ -239,6 +239,7 @@ export function SystemUserManagementSection(props: {
   formatDate: (value?: string | null) => string;
   handleToggleUser: (userId: string, isActive: boolean) => void;
   handleUnlockUser: (userId: string) => void;
+  handleDeleteUser: (userId: string) => void;
 }) {
   const {
     canManageUsers,
@@ -258,6 +259,7 @@ export function SystemUserManagementSection(props: {
     formatDate,
     handleToggleUser,
     handleUnlockUser,
+    handleDeleteUser,
   } = props;
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
   const [showChangeOwnPinForm, setShowChangeOwnPinForm] = useState(false);
@@ -634,6 +636,14 @@ export function SystemUserManagementSection(props: {
                         disabled={!canManageUsers || !user.lockedUntil}
                       >
                         Unlock
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() => handleDeleteUser(user.id)}
+                        disabled={!canManageUsers || user.username === currentUsername}
+                      >
+                        Delete user
                       </button>
                     </div>
                   </td>

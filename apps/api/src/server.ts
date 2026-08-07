@@ -74,6 +74,7 @@ import { recordAudit } from "./services/audit.js";
 import {
   changeOwnPin,
   createLocalUser,
+  deleteLocalUser,
   getSessionFromToken,
   listLocalUsers,
   loginWithPin,
@@ -3291,6 +3292,120 @@ app.delete("/api/patients/:id", async (request, reply) => {
   return reply.code(204).send();
 });
 
+app.delete("/api/patients", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "patient:write")) {
+    return deny(reply, "patient:write");
+  }
+
+  const patientsToDelete = await prisma.patient.findMany({
+    where: { facilityId: request.actor.facilityId },
+    select: {
+      id: true,
+      traceCode: true,
+      firstName: true,
+      middleName: true,
+      lastName: true,
+      phone: true,
+      gender: true,
+      location: true,
+      dateOfBirth: true,
+      nhisId: true,
+      allergies: true,
+      medicalHistory: true,
+      consentAccepted: true,
+      referralName: true,
+      referralCommissionPercent: true,
+      photoPath: true,
+      syncStatus: true,
+      traceSequence: true,
+      initials: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (patientsToDelete.length === 0) {
+    return reply.code(200).send({ deletedPatients: 0 });
+  }
+
+  const patientIds = patientsToDelete.map((patient) => patient.id);
+  const orderIds = (
+    await prisma.diagnosticOrder.findMany({
+      where: { patientId: { in: patientIds } },
+      select: { id: true },
+    })
+  ).map((order) => order.id);
+  const invoiceIds = (
+    await prisma.invoice.findMany({
+      where: { patientId: { in: patientIds } },
+      select: { id: true },
+    })
+  ).map((invoice) => invoice.id);
+  const orderItemIds = orderIds.length
+    ? (
+        await prisma.orderItem.findMany({
+          where: { orderId: { in: orderIds } },
+          select: { id: true },
+        })
+      ).map((orderItem) => orderItem.id)
+    : [];
+
+  await prisma.$transaction(async (tx) => {
+    if (invoiceIds.length > 0) {
+      await tx.paymentRecord.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+      await tx.invoiceLine.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+    }
+
+    if (orderItemIds.length > 0) {
+      await tx.imagingStudy.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      });
+    }
+
+    await tx.report.deleteMany({ where: { patientId: { in: patientIds } } });
+    await tx.sample.deleteMany({ where: { patientId: { in: patientIds } } });
+    await tx.notificationQueue.deleteMany({
+      where: { patientId: { in: patientIds } },
+    });
+
+    if (invoiceIds.length > 0) {
+      await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+    }
+
+    if (orderIds.length > 0) {
+      await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.diagnosticOrder.deleteMany({
+        where: { id: { in: orderIds } },
+      });
+    }
+
+    await tx.patient.deleteMany({ where: { id: { in: patientIds } } });
+  });
+
+  await recordAudit(prisma, request.actor, {
+    action: "PATIENTS_PURGED",
+    entityType: "Patient",
+    entityId: request.actor.facilityId,
+    summary: `Deleted ${patientsToDelete.length} patient record(s) from the facility workspace`,
+    payload: { traceCodes: patientsToDelete.map((patient) => patient.traceCode) },
+  });
+
+  await Promise.all(
+    patientsToDelete.map((patient) =>
+      recordDeleteDispatchEvent("Patient", patient.id, patient),
+    ),
+  );
+
+  return reply.code(200).send({ deletedPatients: patientsToDelete.length });
+});
+
 app.post("/api/patients", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
@@ -4697,6 +4812,38 @@ app.post("/api/admin/users/:id/unlock", async (request, reply) => {
   return reply
     .code(200)
     .send({ id: user.id, lockedUntil: null, failedLoginCount: 0 });
+});
+
+app.delete("/api/admin/users/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "user:manage")) {
+    return deny(reply, "user:manage");
+  }
+
+  const id = (request.params as { id: string }).id;
+
+  try {
+    const user = await deleteLocalUser(prisma, {
+      actorUserId: request.actor.id,
+      actorFacilityId: request.actor.facilityId,
+      userId: id,
+    });
+    await recordAudit(prisma, request.actor, {
+      action: "USER_DELETED",
+      entityType: "AppUser",
+      entityId: user.id,
+      summary: `${user.username} deleted from user management`,
+    });
+
+    return reply.code(204).send();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "User deletion failed.";
+    const statusCode = message === "User not found." ? 404 : 409;
+    return reply.code(statusCode).send({ message });
+  }
 });
 
 const getIntegrationStatus = async (

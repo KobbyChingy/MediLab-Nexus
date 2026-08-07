@@ -338,3 +338,48 @@ export async function unlockUser(prisma: PrismaClient, userId: string) {
     },
   });
 }
+
+export async function deleteLocalUser(
+  prisma: PrismaClient,
+  input: {
+    actorUserId: string;
+    actorFacilityId: string;
+    userId: string;
+  },
+) {
+  const user = await prisma.appUser.findFirst({
+    where: {
+      id: input.userId,
+      facilityId: input.actorFacilityId,
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
+  if (user.id === input.actorUserId) {
+    throw new Error("You cannot delete the account you are currently using.");
+  }
+
+  if (user.role === "ADMIN" && user.isActive) {
+    const activeAdminCount = await prisma.appUser.count({
+      where: {
+        facilityId: input.actorFacilityId,
+        role: "ADMIN",
+        isActive: true,
+      },
+    });
+
+    if (activeAdminCount <= 1) {
+      throw new Error("You must keep at least one active administrator account.");
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.appSession.deleteMany({ where: { userId: user.id } });
+    await tx.appUser.delete({ where: { id: user.id } });
+  });
+
+  return user;
+}

@@ -17,6 +17,7 @@
     "db:bootstrap:supabase": "node scripts/generate-supabase-bootstrap.mjs",
     "db:generate": "node scripts/prisma-safe.mjs generate --schema packages/db/prisma/schema.postgres.prisma",
     "db:generate:hosted": "npm run db:generate",
+    "db:purge:patients": "node scripts/purge-patients.mjs",
     "db:generate:sqlite": "node scripts/prisma-safe.mjs generate --schema packages/db/prisma/sqlite/schema.prisma",
     "db:push": "node scripts/prisma-safe.mjs db push --schema packages/db/prisma/schema.postgres.prisma --skip-generate",
     "db:push:hosted": "npm run db:push",

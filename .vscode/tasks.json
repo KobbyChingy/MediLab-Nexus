@@ -10,6 +10,14 @@
       "group": "build"
     },
     {
+      "label": "db-purge-patients",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "db:purge:patients"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
       "label": "web-build-validate",
       "type": "shell",
       "command": "npm",
