@@ -54,7 +54,7 @@ import {
   reportTemplateKinds,
   userRoles,
 } from "@medilab/shared";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import logoSrc from "./assets/medilab-nexus-logo.svg";
 import omniWeaveMarkSrc from "./assets/omniweave-mark.svg";
 import {
@@ -69,7 +69,25 @@ import {
   SystemSettingsSection,
   SystemUserManagementSection,
 } from "./components/system-sections";
-import { RichTextEditor } from "./components/rich-text-editor";
+const RichTextEditor = lazy(async () => {
+  const module = await import("./components/rich-text-editor");
+  return { default: module.RichTextEditor };
+});
+
+function RichTextEditorFallback({ label }: { label: string }) {
+  return (
+    <div className="field-shell full-width">
+      <div className="field-label-row">
+        <span>{label}</span>
+      </div>
+      <div className="rich-text-editor is-disabled">
+        <div className="rich-text-editor__viewport">
+          <div className="rich-text-editor__content">Loading editor...</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type NavKey =
   | "dashboard"
@@ -2266,64 +2284,65 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
-    fetch(`${apiBase}/auth/session`, {
-      credentials: "include",
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Session expired");
+
+    void (async () => {
+      try {
+        const sessionResponse = await fetch(`${apiBase}/auth/session`, {
+          credentials: "include",
+        });
+
+        if (sessionResponse.ok) {
+          const session =
+            (await sessionResponse.json()) as AuthSessionPayload;
+
+          if (!mounted) {
+            return;
+          }
+
+          setAuthSession(session);
+          setSetupStatus(null);
+          setActiveNav(resolvePortalNavForRole(session.user.role));
+          setReportForm((current) => ({
+            ...current,
+            signedBy: session.user.displayName,
+          }));
+          return;
         }
 
-        return (await response.json()) as AuthSessionPayload;
-      })
-      .then((session) => {
+        const statusResponse = await fetch(`${apiBase}/setup/status`, {
+          credentials: "include",
+        });
+
+        if (!statusResponse.ok) {
+          throw new Error("Setup status unavailable");
+        }
+
+        const status = (await statusResponse.json()) as SetupStatusPayload;
         if (!mounted) {
           return;
         }
 
-        setAuthSession(session);
+        setSetupStatus(status);
+        if (status.requiresSetup) {
+          setStatusText(
+            "Complete the first administrator setup to open MediLab Nexus.",
+          );
+        }
+      } catch {
+        if (!mounted) {
+          return;
+        }
+
         setSetupStatus(null);
-        setActiveNav(resolvePortalNavForRole(session.user.role));
-        setReportForm((current) => ({
-          ...current,
-          signedBy: session.user.displayName,
-        }));
-        setAuthReady(true);
-      })
-      .catch(() => {
-        fetch(`${apiBase}/setup/status`, {
-          credentials: "include",
-        })
-          .then(async (response) => {
-            if (!response.ok) {
-              throw new Error("Setup status unavailable");
-            }
-
-            return (await response.json()) as SetupStatusPayload;
-          })
-          .then((status) => {
-            if (!mounted) {
-              return;
-            }
-
-            setSetupStatus(status);
-            if (status.requiresSetup) {
-              setStatusText(
-                "Complete the first administrator setup to open MediLab Nexus.",
-              );
-            }
-            setAuthReady(true);
-          })
-          .catch(() => {
-            if (mounted) {
-              setSetupStatus(null);
-              setStatusText(
-                "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
-              );
-              setAuthReady(true);
-            }
-          });
-      });
+        setStatusText(
+          "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
+        );
+      } finally {
+        if (mounted) {
+          setAuthReady(true);
+        }
+      }
+    })();
 
     return () => {
       mounted = false;
@@ -8523,31 +8542,35 @@ export default function App() {
                 </label>
               </>
             ) : null}
-            <RichTextEditor
-              label="History"
-              value={ensureRichTextHtml(reportForm.medicalHistory)}
-              onChange={(value) =>
-                setReportForm((current) => ({
-                  ...current,
-                  medicalHistory: value,
-                }))
-              }
-              placeholder="Type the clinical history for this scan report"
-              disabled={!canWriteReports}
-            />
-            <RichTextEditor
-              label="Description"
-              value={ensureRichTextHtml(reportForm.findings)}
-              onChange={(value) =>
-                setReportForm((current) => ({
-                  ...current,
-                  findings: value,
-                }))
-              }
-              placeholder="Type or paste the report description here, then format it as needed"
-              disabled={!canWriteReports}
-              documentMode
-            />
+            <Suspense fallback={<RichTextEditorFallback label="History" />}>
+              <RichTextEditor
+                label="History"
+                value={ensureRichTextHtml(reportForm.medicalHistory)}
+                onChange={(value) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    medicalHistory: value,
+                  }))
+                }
+                placeholder="Type the clinical history for this scan report"
+                disabled={!canWriteReports}
+              />
+            </Suspense>
+            <Suspense fallback={<RichTextEditorFallback label="Description" />}>
+              <RichTextEditor
+                label="Description"
+                value={ensureRichTextHtml(reportForm.findings)}
+                onChange={(value) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    findings: value,
+                  }))
+                }
+                placeholder="Type or paste the report description here, then format it as needed"
+                disabled={!canWriteReports}
+                documentMode
+              />
+            </Suspense>
             {isUltrasoundTemplate(reportForm.templateKind) ? (
               <label className="full-width">
                 <span>Measurements</span>
@@ -8587,18 +8610,20 @@ export default function App() {
                 ))}
               </div>
             ) : null}
-            <RichTextEditor
-              label="Impression"
-              value={ensureRichTextHtml(reportForm.impression)}
-              onChange={(value) =>
-                setReportForm((current) => ({
-                  ...current,
-                  impression: value,
-                }))
-              }
-              placeholder="Summarize the report impression"
-              disabled={!canWriteReports}
-            />
+            <Suspense fallback={<RichTextEditorFallback label="Impression" />}>
+              <RichTextEditor
+                label="Impression"
+                value={ensureRichTextHtml(reportForm.impression)}
+                onChange={(value) =>
+                  setReportForm((current) => ({
+                    ...current,
+                    impression: value,
+                  }))
+                }
+                placeholder="Summarize the report impression"
+                disabled={!canWriteReports}
+              />
+            </Suspense>
             {isUltrasoundTemplate(reportForm.templateKind) ? (
               <label className="full-width">
                 <span>Recommendation</span>
@@ -11056,6 +11081,9 @@ export default function App() {
           <button
             type="button"
             className="nav-toggle"
+            aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={sidebarOpen}
+            aria-controls="portal-sidebar"
             onClick={() => setSidebarOpen((current) => !current)}
           >
             Menu
@@ -11076,6 +11104,7 @@ export default function App() {
               ref={searchInputRef}
               value={globalQuery}
               onChange={(event) => setGlobalQuery(event.target.value)}
+              aria-label="Search patients, trace codes, or phone numbers"
               placeholder="Search by Trace Code, name, or phone"
             />
             <kbd>Ctrl K</kbd>
@@ -11087,6 +11116,10 @@ export default function App() {
             <button
               type="button"
               className="icon-button bell-button"
+              aria-label={bellOpen ? "Close alerts panel" : "Open alerts panel"}
+              aria-expanded={bellOpen}
+              aria-controls="alerts-panel"
+              aria-haspopup="dialog"
               onClick={() => setBellOpen((current) => !current)}
             >
               Bell
@@ -11096,6 +11129,7 @@ export default function App() {
             </button>
             {bellOpen ? (
               <InternalBellPanel
+                panelId="alerts-panel"
                 bellForm={bellForm}
                 setBellForm={setBellForm}
                 bellRecipientOptions={bellRecipientOptions}
@@ -11109,6 +11143,7 @@ export default function App() {
           <button
             type="button"
             className="icon-button"
+            aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
             onClick={() =>
               setTheme((current) => (current === "light" ? "dark" : "light"))
             }
@@ -11142,7 +11177,7 @@ export default function App() {
       ) : null}
 
       <div className={`workspace ${sidebarOpen ? "sidebar-visible" : ""}`}>
-        <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+        <aside id="portal-sidebar" className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-portal-card">
             <p className="eyebrow">{portalProfile?.label ?? "Workspace"}</p>
             <strong>{roleCopy[currentRole].title}</strong>
@@ -11157,6 +11192,7 @@ export default function App() {
                       key={item.key}
                       type="button"
                       className={`nav-item ${activeNav === item.key ? "active" : ""}`}
+                      aria-current={activeNav === item.key ? "page" : undefined}
                       onClick={() => {
                         setActiveNav(item.key);
                         setSidebarOpen(false);

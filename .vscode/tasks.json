@@ -1,289 +1,155 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "db-seed-refresh",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"db:seed"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "db-seed-refresh",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"db:seed"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "web-build-validate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"build",
-				"-w",
-				"@medilab/web"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-db-push",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"db:push"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-dns-check",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Resolve-DnsName db.bmqagutwvkygrurulfdd.supabase.co | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-bootstrap-sql",
-			"type": "shell",
-			"command": "npx",
-			"args": [
-				"prisma",
-				"migrate",
-				"diff",
-				"--from-empty",
-				"--to-schema-datamodel",
-				"packages/db/prisma/schema.postgres.prisma",
-				"--script"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-pooler-check",
-			"type": "shell",
-			"command": "node",
-			"args": [
-				"-e",
-				"const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.$queryRawUnsafe('select 1').then((rows) => { console.log(JSON.stringify(rows)); return prisma.$disconnect(); }).catch(async (error) => { console.error(error); await prisma.$disconnect(); process.exit(1); });"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-pooler-prisma-check",
-			"type": "shell",
-			"command": "npx",
-			"args": [
-				"prisma",
-				"db",
-				"pull",
-				"--print",
-				"--schema",
-				"packages/db/prisma/schema.postgres.prisma"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-pooler-prisma-check-2",
-			"type": "shell",
-			"command": "npx",
-			"args": [
-				"prisma",
-				"db",
-				"pull",
-				"--print",
-				"--schema",
-				"packages/db/prisma/schema.postgres.prisma"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "local-port-check",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-db-generate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"db:generate"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "supabase-db-package-build",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"build",
-				"-w",
-				"@medilab/db"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "local-port-check-2",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "setup-status-check",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Invoke-WebRequest -UseBasicParsing http://localhost:4000/api/setup/status | Select-Object -ExpandProperty Content"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "shared-package-build",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"build",
-				"-w",
-				"@medilab/shared"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "local-port-check-after-stop",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "kill-dev-processes",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Stop-Process -Id 23112,32152 -Force; Get-NetTCPConnection -LocalPort 4000,5173 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "local-port-check-after-kill",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Get-NetTCPConnection -LocalPort 4000,5173 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort,OwningProcess | Out-String"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "setup-status-check-2",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-NoProfile",
-				"-Command",
-				"Invoke-WebRequest -UseBasicParsing http://localhost:4000/api/setup/status | Select-Object -ExpandProperty Content"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "api-build-validate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"build",
-				"-w",
-				"@medilab/api"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "desktop-build-validate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"build",
-				"-w",
-				"@medilab/desktop"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "desktop-full-build-validate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"desktop:build"
-			],
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "desktop-dist-validate",
-			"type": "shell",
-			"command": "npm",
-			"args": [
-				"run",
-				"desktop:dist"
-			],
-			"isBackground": false,
-			"group": "build"
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "db-seed-refresh",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "db:seed"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "web-build-validate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build", "-w", "@medilab/web"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-db-push",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "db:push"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-dns-check",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Resolve-DnsName db.bmqagutwvkygrurulfdd.supabase.co | Out-String"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-bootstrap-sql",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "db:bootstrap:supabase"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-pooler-check",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "-e",
+        "const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.$queryRawUnsafe('select 1').then((rows) => { console.log(JSON.stringify(rows)); return prisma.$disconnect(); }).catch(async (error) => { console.error(error); await prisma.$disconnect(); process.exit(1); });"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-pooler-prisma-check",
+      "type": "shell",
+      "command": "npx",
+      "args": [
+        "prisma",
+        "db",
+        "pull",
+        "--print",
+        "--schema",
+        "packages/db/prisma/schema.postgres.prisma"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "local-port-check",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-db-generate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "db:generate"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "supabase-db-package-build",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build", "-w", "@medilab/db"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "setup-status-check",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Invoke-WebRequest -UseBasicParsing http://localhost:4000/api/setup/status | Select-Object -ExpandProperty Content"
+      ],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "shared-package-build",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build", "-w", "@medilab/shared"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "api-build-validate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build", "-w", "@medilab/api"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "desktop-build-validate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "build", "-w", "@medilab/desktop"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "desktop-full-build-validate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "desktop:build"],
+      "isBackground": false,
+      "group": "build"
+    },
+    {
+      "label": "desktop-dist-validate",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "desktop:dist"],
+      "isBackground": false,
+      "group": "build"
+    }
+  ]
 }

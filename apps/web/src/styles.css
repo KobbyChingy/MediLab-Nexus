@@ -74,6 +74,7 @@
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100%;
 }
 
@@ -82,6 +83,7 @@ body {
   min-width: 320px;
   color: var(--text);
   background: transparent;
+  overflow-x: hidden;
 }
 
 button,
@@ -94,6 +96,14 @@ textarea {
 button {
   border: 0;
   cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 input,
@@ -216,6 +226,7 @@ label span {
 .topbar-left,
 .topbar-right {
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .topbar-right {
@@ -225,6 +236,16 @@ label span {
 .brand-lockup strong,
 .user-pill strong {
   display: block;
+}
+
+.brand-lockup,
+.user-pill {
+  min-width: 0;
+}
+
+.brand-lockup > div,
+.user-pill > div:last-child {
+  min-width: 0;
 }
 
 .brand-lockup span,
@@ -412,8 +433,9 @@ label span {
 }
 
 .search-shell {
-  min-width: min(100%, 28rem);
-  flex: 1;
+  min-width: min(100%, 16rem);
+  max-width: 100%;
+  flex: 1 1 18rem;
   padding: 0.35rem 0.45rem 0.35rem 0.9rem;
   border-radius: 18px;
   background: var(--surface-strong);
@@ -421,6 +443,7 @@ label span {
 }
 
 .search-shell input {
+  min-width: 0;
   border: 0;
   padding: 0.35rem 0;
   background: transparent;
@@ -434,6 +457,7 @@ label span {
   border: 1px solid var(--border);
   font-size: 0.75rem;
   color: var(--muted);
+  flex: 0 0 auto;
 }
 
 .nav-toggle,
@@ -1211,10 +1235,13 @@ body.sidebar-drawer-open {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface-muted);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .audit-log-table {
   width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
 }
 
@@ -1468,6 +1495,7 @@ body.sidebar-drawer-open {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
   padding: 0.9rem 1rem;
   border-radius: 18px;
   background: var(--surface-muted);
@@ -1546,6 +1574,7 @@ body.sidebar-drawer-open {
 .patient-summary {
   display: grid;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .tight {
@@ -2343,12 +2372,15 @@ body.sidebar-drawer-open {
 }
 
 .login-shell {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 1.5rem;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
   isolation: isolate;
   background:
     radial-gradient(
@@ -2362,6 +2394,10 @@ body.sidebar-drawer-open {
       transparent 26%
     ),
     linear-gradient(180deg, #c7dbeb 0%, #b8d2e7 100%);
+}
+
+.login-shell::-webkit-scrollbar {
+  display: none;
 }
 
 .login-backdrop {
@@ -2541,7 +2577,7 @@ body.sidebar-drawer-open {
 
 .login-stage {
   width: min(100%, 1060px);
-  max-height: calc(100vh - 3rem);
+  max-height: calc(100dvh - 3rem);
   border-radius: 34px;
   border: 1px solid rgba(255, 255, 255, 0.52);
   background: rgba(255, 255, 255, 0.4);
@@ -2734,7 +2770,7 @@ body.sidebar-drawer-open {
 
 @media (max-height: 760px) {
   .login-shell {
-    padding: 1rem;
+    padding: 0.7rem;
   }
 
   .login-dna {
@@ -2743,31 +2779,49 @@ body.sidebar-drawer-open {
   }
 
   .login-glass-card {
-    padding: 1.55rem 1.45rem;
+    width: min(100%, 480px);
+    padding: 1.15rem 1rem;
   }
 
   .login-brand-heading {
-    margin-bottom: 1.15rem;
+    margin-bottom: 0.7rem;
   }
 
   .login-brand-heading h1 {
-    font-size: clamp(2.3rem, 5vw, 3rem);
+    font-size: clamp(2.1rem, 4.4vw, 2.7rem);
   }
 
   .login-brand-heading p {
-    font-size: 1rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.38em;
+  }
+
+  .login-glass-form {
+    gap: 0.75rem;
+  }
+
+  .login-field {
+    gap: 0.42rem;
   }
 
   .login-field input {
-    padding: 0.9rem 1rem;
+    padding: 0.78rem 0.95rem;
+  }
+
+  .password-field {
+    gap: 0.55rem;
+  }
+
+  .login-glass-meta {
+    gap: 0.65rem;
   }
 
   .login-submit {
-    min-height: 3.15rem;
+    min-height: 2.95rem;
   }
 
   .login-stage {
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
   }
 
   .login-window-chrome {
@@ -3122,6 +3176,15 @@ body.sidebar-drawer-open {
     grid-template-columns: 1fr;
   }
 
+  .settings-runtime-grid,
+  .audit-log-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-log-card {
+    min-height: auto;
+  }
+
   .workspace-form-card,
   .workspace-table-card,
   .surface-subpanel {
@@ -3130,6 +3193,34 @@ body.sidebar-drawer-open {
 
   .topbar {
     padding: 0.9rem;
+    align-items: stretch;
+  }
+
+  .search-shell {
+    flex-wrap: wrap;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .search-shell kbd {
+    margin-left: auto;
+  }
+
+  .topbar-left,
+  .topbar-right,
+  .brand-lockup,
+  .user-pill {
+    width: 100%;
+  }
+
+  .brand-lockup,
+  .user-pill {
+    align-items: flex-start;
+  }
+
+  .brand-lockup > div,
+  .user-pill > div:last-child {
+    overflow-wrap: anywhere;
   }
 
   .intake-progress,

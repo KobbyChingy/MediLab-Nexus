@@ -1,103 +1,290 @@
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
-CREATE OR REPLACE FUNCTION public.medilab_create_type_if_not_exists(
-    p_type_name TEXT,
-    p_ddl TEXT
-) RETURNS void
-LANGUAGE plpgsql
-AS $$
+-- CreateEnum
+DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM pg_type type_info
         JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
-        WHERE type_info.typname = p_type_name
+        WHERE type_info.typname = 'CatalogKind'
           AND namespace_info.nspname = 'public'
     ) THEN
-        EXECUTE p_ddl;
+        CREATE TYPE "CatalogKind" AS ENUM ('TEST', 'IMAGING');
     END IF;
 END
 $$;
 
-CREATE OR REPLACE FUNCTION public.medilab_add_constraint_if_not_exists(
-    p_table_name TEXT,
-    p_constraint_name TEXT,
-    p_ddl TEXT
-) RETURNS void
-LANGUAGE plpgsql
-AS $$
+-- CreateEnum
+DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1
-        FROM pg_constraint constraint_info
-        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
-        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
-        WHERE constraint_info.conname = p_constraint_name
-          AND table_info.relname = p_table_name
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'Department'
           AND namespace_info.nspname = 'public'
     ) THEN
-        EXECUTE p_ddl;
+        CREATE TYPE "Department" AS ENUM ('LAB', 'IMAGING');
     END IF;
 END
 $$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('CatalogKind', 'CREATE TYPE "CatalogKind" AS ENUM (''TEST'', ''IMAGING'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'OrderStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "OrderStatus" AS ENUM ('DRAFT', 'REGISTERED', 'COLLECTED', 'IN_PROGRESS', 'READY_FOR_REVIEW', 'VERIFIED', 'RELEASED', 'REJECTED', 'CANCELLED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('Department', 'CREATE TYPE "Department" AS ENUM (''LAB'', ''IMAGING'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'Priority'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "Priority" AS ENUM ('ROUTINE', 'URGENT', 'STAT');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('OrderStatus', 'CREATE TYPE "OrderStatus" AS ENUM (''DRAFT'', ''REGISTERED'', ''COLLECTED'', ''IN_PROGRESS'', ''READY_FOR_REVIEW'', ''VERIFIED'', ''RELEASED'', ''REJECTED'', ''CANCELLED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'SampleStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "SampleStatus" AS ENUM ('PENDING', 'COLLECTED', 'RECEIVED', 'PROCESSING', 'STORED', 'REJECTED', 'DISPOSED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('Priority', 'CREATE TYPE "Priority" AS ENUM (''ROUTINE'', ''URGENT'', ''STAT'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'AppointmentStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "AppointmentStatus" AS ENUM ('SCHEDULED', 'ARRIVED', 'SCANNING', 'REPORTED', 'COMPLETED', 'CANCELLED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('SampleStatus', 'CREATE TYPE "SampleStatus" AS ENUM (''PENDING'', ''COLLECTED'', ''RECEIVED'', ''PROCESSING'', ''STORED'', ''REJECTED'', ''DISPOSED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'ReportStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "ReportStatus" AS ENUM ('DRAFT', 'IN_REVIEW', 'APPROVED', 'RELEASED', 'AMENDED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('AppointmentStatus', 'CREATE TYPE "AppointmentStatus" AS ENUM (''SCHEDULED'', ''ARRIVED'', ''SCANNING'', ''REPORTED'', ''COMPLETED'', ''CANCELLED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'InvoiceStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'OPEN', 'PARTIAL', 'PAID', 'VOID');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('ReportStatus', 'CREATE TYPE "ReportStatus" AS ENUM (''DRAFT'', ''IN_REVIEW'', ''APPROVED'', ''RELEASED'', ''AMENDED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'SyncStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "SyncStatus" AS ENUM ('LOCAL_ONLY', 'PENDING_SYNC', 'SYNCED', 'CONFLICT', 'FAILED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('InvoiceStatus', 'CREATE TYPE "InvoiceStatus" AS ENUM (''DRAFT'', ''OPEN'', ''PARTIAL'', ''PAID'', ''VOID'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'InventoryTxnType'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "InventoryTxnType" AS ENUM ('RECEIPT', 'ISSUE', 'ADJUSTMENT', 'EXPIRY', 'RETURN');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('SyncStatus', 'CREATE TYPE "SyncStatus" AS ENUM (''LOCAL_ONLY'', ''PENDING_SYNC'', ''SYNCED'', ''CONFLICT'', ''FAILED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'PaymentMethod'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'MOBILE_MONEY_MTN', 'MOBILE_MONEY_VODAFONE', 'CARD', 'NHIS', 'BANK_TRANSFER');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('InventoryTxnType', 'CREATE TYPE "InventoryTxnType" AS ENUM (''RECEIPT'', ''ISSUE'', ''ADJUSTMENT'', ''EXPIRY'', ''RETURN'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'PaymentResponsibility'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "PaymentResponsibility" AS ENUM ('PATIENT', 'PAYER');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('PaymentMethod', 'CREATE TYPE "PaymentMethod" AS ENUM (''CASH'', ''MOBILE_MONEY_MTN'', ''MOBILE_MONEY_VODAFONE'', ''CARD'', ''NHIS'', ''BANK_TRANSFER'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'PayerType'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "PayerType" AS ENUM ('SELF_PAY', 'NHIS', 'INSURANCE', 'CORPORATE');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('PaymentResponsibility', 'CREATE TYPE "PaymentResponsibility" AS ENUM (''PATIENT'', ''PAYER'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'ClaimStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "ClaimStatus" AS ENUM ('NOT_APPLICABLE', 'PENDING', 'SUBMITTED', 'PARTIAL', 'SETTLED', 'REJECTED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('PayerType', 'CREATE TYPE "PayerType" AS ENUM (''SELF_PAY'', ''NHIS'', ''INSURANCE'', ''CORPORATE'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'NotificationChannel'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "NotificationChannel" AS ENUM ('SMS', 'EMAIL', 'WHATSAPP', 'INTERNAL');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('ClaimStatus', 'CREATE TYPE "ClaimStatus" AS ENUM (''NOT_APPLICABLE'', ''PENDING'', ''SUBMITTED'', ''PARTIAL'', ''SETTLED'', ''REJECTED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'NotificationStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "NotificationStatus" AS ENUM ('QUEUED', 'SENT', 'FAILED', 'CANCELLED');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('NotificationChannel', 'CREATE TYPE "NotificationChannel" AS ENUM (''SMS'', ''EMAIL'', ''WHATSAPP'', ''INTERNAL'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'UserRole'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "UserRole" AS ENUM ('RECEPTION', 'PHLEBOTOMIST', 'SONOGRAPHER', 'DOCTOR', 'LAB_TECH', 'RADIOLOGIST', 'MANAGER', 'FINANCE', 'QA', 'ADMIN');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('NotificationStatus', 'CREATE TYPE "NotificationStatus" AS ENUM (''QUEUED'', ''SENT'', ''FAILED'', ''CANCELLED'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'MaintenanceStatus'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "MaintenanceStatus" AS ENUM ('SCHEDULED', 'DUE', 'COMPLETED', 'OVERDUE');
+    END IF;
+END
+$$;
 
 -- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('UserRole', 'CREATE TYPE "UserRole" AS ENUM (''RECEPTION'', ''PHLEBOTOMIST'', ''SONOGRAPHER'', ''DOCTOR'', ''LAB_TECH'', ''RADIOLOGIST'', ''MANAGER'', ''FINANCE'', ''QA'', ''ADMIN'')');
-
--- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('MaintenanceStatus', 'CREATE TYPE "MaintenanceStatus" AS ENUM (''SCHEDULED'', ''DUE'', ''COMPLETED'', ''OVERDUE'')');
-
--- CreateEnum
-SELECT public.medilab_create_type_if_not_exists('InstrumentCategory', 'CREATE TYPE "InstrumentCategory" AS ENUM (''ANALYZER'', ''ULTRASOUND'', ''PRINTER'', ''SERVER'')');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type type_info
+        JOIN pg_namespace namespace_info ON namespace_info.oid = type_info.typnamespace
+        WHERE type_info.typname = 'InstrumentCategory'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        CREATE TYPE "InstrumentCategory" AS ENUM ('ANALYZER', 'ULTRASOUND', 'PRINTER', 'SERVER');
+    END IF;
+END
+$$;
 
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "Facility" (
@@ -669,67 +856,393 @@ CREATE INDEX IF NOT EXISTS "AuditLog_traceCode_createdAt_idx" ON "AuditLog"("tra
 CREATE INDEX IF NOT EXISTS "AuditLog_actorRole_createdAt_idx" ON "AuditLog"("actorRole", "createdAt");
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('ExpenseRecord', 'ExpenseRecord_facilityId_fkey', 'ALTER TABLE "ExpenseRecord" ADD CONSTRAINT "ExpenseRecord_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'ExpenseRecord_facilityId_fkey'
+          AND table_info.relname = 'ExpenseRecord'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "ExpenseRecord" ADD CONSTRAINT "ExpenseRecord_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('ReferralDoctor', 'ReferralDoctor_facilityId_fkey', 'ALTER TABLE "ReferralDoctor" ADD CONSTRAINT "ReferralDoctor_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'ReferralDoctor_facilityId_fkey'
+          AND table_info.relname = 'ReferralDoctor'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "ReferralDoctor" ADD CONSTRAINT "ReferralDoctor_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('AppUser', 'AppUser_facilityId_fkey', 'ALTER TABLE "AppUser" ADD CONSTRAINT "AppUser_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'AppUser_facilityId_fkey'
+          AND table_info.relname = 'AppUser'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "AppUser" ADD CONSTRAINT "AppUser_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('AppSession', 'AppSession_userId_fkey', 'ALTER TABLE "AppSession" ADD CONSTRAINT "AppSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AppUser"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'AppSession_userId_fkey'
+          AND table_info.relname = 'AppSession'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "AppSession" ADD CONSTRAINT "AppSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AppUser"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Patient', 'Patient_facilityId_fkey', 'ALTER TABLE "Patient" ADD CONSTRAINT "Patient_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Patient_facilityId_fkey'
+          AND table_info.relname = 'Patient'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Patient" ADD CONSTRAINT "Patient_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Patient', 'Patient_referralDoctorId_fkey', 'ALTER TABLE "Patient" ADD CONSTRAINT "Patient_referralDoctorId_fkey" FOREIGN KEY ("referralDoctorId") REFERENCES "ReferralDoctor"("id") ON DELETE SET NULL ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Patient_referralDoctorId_fkey'
+          AND table_info.relname = 'Patient'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Patient" ADD CONSTRAINT "Patient_referralDoctorId_fkey" FOREIGN KEY ("referralDoctorId") REFERENCES "ReferralDoctor"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('DiagnosticOrder', 'DiagnosticOrder_patientId_fkey', 'ALTER TABLE "DiagnosticOrder" ADD CONSTRAINT "DiagnosticOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'DiagnosticOrder_patientId_fkey'
+          AND table_info.relname = 'DiagnosticOrder'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "DiagnosticOrder" ADD CONSTRAINT "DiagnosticOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('OrderItem', 'OrderItem_orderId_fkey', 'ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'OrderItem_orderId_fkey'
+          AND table_info.relname = 'OrderItem'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('OrderItem', 'OrderItem_catalogItemId_fkey', 'ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_catalogItemId_fkey" FOREIGN KEY ("catalogItemId") REFERENCES "CatalogItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'OrderItem_catalogItemId_fkey'
+          AND table_info.relname = 'OrderItem'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_catalogItemId_fkey" FOREIGN KEY ("catalogItemId") REFERENCES "CatalogItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Sample', 'Sample_patientId_fkey', 'ALTER TABLE "Sample" ADD CONSTRAINT "Sample_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Sample_patientId_fkey'
+          AND table_info.relname = 'Sample'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Sample" ADD CONSTRAINT "Sample_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Sample', 'Sample_orderId_fkey', 'ALTER TABLE "Sample" ADD CONSTRAINT "Sample_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Sample_orderId_fkey'
+          AND table_info.relname = 'Sample'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Sample" ADD CONSTRAINT "Sample_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('ImagingStudy', 'ImagingStudy_orderItemId_fkey', 'ALTER TABLE "ImagingStudy" ADD CONSTRAINT "ImagingStudy_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'ImagingStudy_orderItemId_fkey'
+          AND table_info.relname = 'ImagingStudy'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "ImagingStudy" ADD CONSTRAINT "ImagingStudy_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Report', 'Report_patientId_fkey', 'ALTER TABLE "Report" ADD CONSTRAINT "Report_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Report_patientId_fkey'
+          AND table_info.relname = 'Report'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Report" ADD CONSTRAINT "Report_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Report', 'Report_orderId_fkey', 'ALTER TABLE "Report" ADD CONSTRAINT "Report_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Report_orderId_fkey'
+          AND table_info.relname = 'Report'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Report" ADD CONSTRAINT "Report_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('ReportTemplate', 'ReportTemplate_facilityId_fkey', 'ALTER TABLE "ReportTemplate" ADD CONSTRAINT "ReportTemplate_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'ReportTemplate_facilityId_fkey'
+          AND table_info.relname = 'ReportTemplate'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "ReportTemplate" ADD CONSTRAINT "ReportTemplate_facilityId_fkey" FOREIGN KEY ("facilityId") REFERENCES "Facility"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Invoice', 'Invoice_patientId_fkey', 'ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Invoice_patientId_fkey'
+          AND table_info.relname = 'Invoice'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('Invoice', 'Invoice_orderId_fkey', 'ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'Invoice_orderId_fkey'
+          AND table_info.relname = 'Invoice'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "DiagnosticOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('InvoiceLine', 'InvoiceLine_invoiceId_fkey', 'ALTER TABLE "InvoiceLine" ADD CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'InvoiceLine_invoiceId_fkey'
+          AND table_info.relname = 'InvoiceLine'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "InvoiceLine" ADD CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('InventoryTransaction', 'InventoryTransaction_itemId_fkey', 'ALTER TABLE "InventoryTransaction" ADD CONSTRAINT "InventoryTransaction_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'InventoryTransaction_itemId_fkey'
+          AND table_info.relname = 'InventoryTransaction'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "InventoryTransaction" ADD CONSTRAINT "InventoryTransaction_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('PaymentRecord', 'PaymentRecord_invoiceId_fkey', 'ALTER TABLE "PaymentRecord" ADD CONSTRAINT "PaymentRecord_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'PaymentRecord_invoiceId_fkey'
+          AND table_info.relname = 'PaymentRecord'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "PaymentRecord" ADD CONSTRAINT "PaymentRecord_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
 -- AddForeignKey
-SELECT public.medilab_add_constraint_if_not_exists('MaintenanceEvent', 'MaintenanceEvent_instrumentId_fkey', 'ALTER TABLE "MaintenanceEvent" ADD CONSTRAINT "MaintenanceEvent_instrumentId_fkey" FOREIGN KEY ("instrumentId") REFERENCES "Instrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE');
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_info
+        JOIN pg_class table_info ON table_info.oid = constraint_info.conrelid
+        JOIN pg_namespace namespace_info ON namespace_info.oid = table_info.relnamespace
+        WHERE constraint_info.conname = 'MaintenanceEvent_instrumentId_fkey'
+          AND table_info.relname = 'MaintenanceEvent'
+          AND namespace_info.nspname = 'public'
+    ) THEN
+        ALTER TABLE "MaintenanceEvent" ADD CONSTRAINT "MaintenanceEvent_instrumentId_fkey" FOREIGN KEY ("instrumentId") REFERENCES "Instrument"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+END
+$$;
 
-DROP FUNCTION IF EXISTS public.medilab_add_constraint_if_not_exists(TEXT, TEXT, TEXT);
-DROP FUNCTION IF EXISTS public.medilab_create_type_if_not_exists(TEXT, TEXT);
+DO $$
+DECLARE
+    table_record RECORD;
+BEGIN
+    FOR table_record IN
+    SELECT format('%I.%I', table_schema, table_name) AS qualified_table_name
+       , table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_type = 'BASE TABLE'
+    LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = table_record.table_name
+        AND policyname = 'medilab_block_all_api_access'
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY medilab_block_all_api_access ON %s AS RESTRICTIVE FOR ALL TO anon, authenticated USING (false) WITH CHECK (false)',
+        table_record.qualified_table_name
+      );
+    END IF;
+    END LOOP;
+END
+$$;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;

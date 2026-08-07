@@ -1,0 +1,507 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("SQLITE_DATABASE_URL")
+}
+
+enum CatalogKind {
+  TEST
+  IMAGING
+}
+
+enum Department {
+  LAB
+  IMAGING
+}
+
+enum OrderStatus {
+  DRAFT
+  REGISTERED
+  COLLECTED
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  VERIFIED
+  RELEASED
+  REJECTED
+  CANCELLED
+}
+
+enum Priority {
+  ROUTINE
+  URGENT
+  STAT
+}
+
+enum SampleStatus {
+  PENDING
+  COLLECTED
+  IN_ANALYSIS
+  COMPLETED
+  REJECTED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CHECKED_IN
+  SCANNING
+  REPORTED
+  CANCELLED
+  NO_SHOW
+}
+
+enum ReportStatus {
+  DRAFT
+  PRELIMINARY
+  FINAL
+  AMENDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOIDED
+}
+
+enum SyncStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  FAILED
+}
+
+enum InventoryTxnType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+  TRANSFER
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  MOBILE_MONEY
+  INSURANCE
+}
+
+enum PaymentResponsibility {
+  PATIENT
+  INSURANCE
+}
+
+enum PayerType {
+  CASH
+  INSURANCE
+  CORPORATE
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  ACKNOWLEDGED
+  PARTIALLY_PAID
+  PAID
+  REJECTED
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  WEBHOOK
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  DOCTOR
+  RECEPTION
+  SONOGRAPHER
+  LAB_TECH
+  CASHIER
+  QA
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InstrumentCategory {
+  LAB
+  IMAGING
+  GENERAL
+}
+
+model Facility {
+  id                 String   @id @default(cuid())
+  name               String
+  code               String   @unique
+  registrationNumber String?
+  taxId              String?
+  address            String?
+  phone              String?
+  email              String?
+  website            String?
+  timezone           String   @default("Africa/Accra")
+  currency           String   @default("GHS")
+  accreditationBody  String?
+  accreditationId    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users              AppUser[]
+}
+
+model ExpenseRecord {
+  id          String   @id @default(cuid())
+  category    String
+  description String
+  amountCents Int
+  incurredAt  DateTime
+  recordedBy  String
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ReferralDoctor {
+  id                String   @id @default(cuid())
+  fullName          String
+  phone             String?
+  email             String?
+  commissionPercent Float?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  patients          Patient[]
+}
+
+model AppUser {
+  id            String   @id @default(cuid())
+  fullName      String
+  username      String   @unique
+  pinHash       String
+  role          UserRole
+  capabilities  String[]
+  active        Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  facilityId    String?
+
+  facility      Facility? @relation(fields: [facilityId], references: [id])
+  sessions      AppSession[]
+}
+
+model AppSession {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  user        AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Patient {
+  id                              String   @id @default(cuid())
+  traceCode                       String   @unique
+  firstName                       String
+  lastName                        String
+  middleName                      String?
+  gender                          String?
+  dateOfBirth                     String?
+  phone                           String
+  location                        String?
+  nhisId                          String?
+  allergies                       String?
+  medicalHistory                  String?
+  consentAccepted                 Boolean  @default(false)
+  photoPath                       String?
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+  referralDoctorId                String?
+  referralName                    String?
+
+  referralDoctor                  ReferralDoctor? @relation(fields: [referralDoctorId], references: [id])
+  orders                          DiagnosticOrder[]
+}
+
+model CatalogItem {
+  id            String      @id @default(cuid())
+  code          String      @unique
+  name          String
+  kind          CatalogKind
+  department    Department
+  specimenType  String?
+  modality      String?
+  tatMinutes    Int
+  priceCents    Int
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  orderItems    OrderItem[]
+}
+
+model DiagnosticOrder {
+  id                       String       @id @default(cuid())
+  orderNumber              String       @unique
+  patientId                String
+  orderedBy                String
+  status                   OrderStatus  @default(DRAFT)
+  priority                 Priority     @default(ROUTINE)
+  payerType                PayerType    @default(CASH)
+  payerName                String?
+  payerCoveragePercent     Int?
+  payerMemberId            String?
+  payerAuthorizationCode   String?
+  insuranceProvider        String?
+  insuranceAuthorized      Boolean      @default(false)
+  clinicalNotes            String?
+  scheduledFor             DateTime?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  patient                  Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  items                    OrderItem[]
+  invoice                  Invoice?
+}
+
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  catalogItemId   String
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  order           DiagnosticOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  catalogItem     CatalogItem     @relation(fields: [catalogItemId], references: [id])
+  samples         Sample[]
+  imagingStudies  ImagingStudy[]
+}
+
+model Sample {
+  id             String       @id @default(cuid())
+  orderItemId    String
+  accessionCode  String       @unique
+  status         SampleStatus @default(PENDING)
+  collectedAt    DateTime?
+  receivedAt     DateTime?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  orderItem      OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+model ImagingStudy {
+  id                String       @id @default(cuid())
+  orderItemId       String
+  modality          String
+  bodySite          String?
+  sonographerName   String?
+  room              String?
+  appointmentStatus AppointmentStatus @default(SCHEDULED)
+  scheduledAt       DateTime?
+  performedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  orderItem         OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  reports           Report[]
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  studyId        String
+  templateKind   String
+  status         ReportStatus @default(DRAFT)
+  title          String
+  medicalHistory String?
+  findings       String
+  impression     String
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  study          ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+}
+
+model ReportTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  kind        String
+  title       String
+  content     String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  orderId        String        @unique
+  invoiceNumber  String        @unique
+  status         InvoiceStatus @default(DRAFT)
+  subtotalCents  Int
+  discountCents  Int           @default(0)
+  totalCents     Int
+  amountPaidCents Int          @default(0)
+  balanceCents   Int
+  responsibility PaymentResponsibility @default(PATIENT)
+  claimStatus    ClaimStatus?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  order          DiagnosticOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lines          InvoiceLine[]
+  payments       PaymentRecord[]
+}
+
+model InvoiceLine {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  description  String
+  amountCents  Int
+
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model InventoryItem {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  unit           String
+  quantityOnHand Int      @default(0)
+  reorderLevel   Int      @default(0)
+  batchNumber    String?
+  expiryDate     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions   InventoryTransaction[]
+}
+
+model InventoryTransaction {
+  id              String           @id @default(cuid())
+  itemId          String
+  type            InventoryTxnType
+  quantity        Int
+  note            String?
+  createdAt       DateTime         @default(now())
+
+  item            InventoryItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model QualityControlEvent {
+  id                String   @id @default(cuid())
+  department        Department
+  title             String
+  details           String?
+  severity          String
+  occurredAt        DateTime
+  resolvedAt        DateTime?
+  correctiveAction  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SyncEvent {
+  id             String     @id @default(cuid())
+  entityType     String
+  entityId       String
+  operation      String
+  payload        String
+  status         SyncStatus @default(PENDING)
+  attempts       Int        @default(0)
+  lastError      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model PaymentRecord {
+  id             String        @id @default(cuid())
+  invoiceId      String
+  amountCents    Int
+  method         PaymentMethod
+  reference      String?
+  receivedAt     DateTime
+  createdAt      DateTime      @default(now())
+
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Instrument {
+  id             String             @id @default(cuid())
+  name           String
+  category       InstrumentCategory
+  serialNumber   String?
+  location       String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  maintenance    MaintenanceEvent[]
+}
+
+model MaintenanceEvent {
+  id             String            @id @default(cuid())
+  instrumentId   String
+  status         MaintenanceStatus @default(SCHEDULED)
+  summary        String
+  performedBy    String?
+  scheduledFor   DateTime?
+  completedAt    DateTime?
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  instrument     Instrument        @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+}
+
+model NotificationQueue {
+  id          String              @id @default(cuid())
+  channel     NotificationChannel
+  recipient   String
+  payload     String
+  status      NotificationStatus  @default(QUEUED)
+  attempts    Int                 @default(0)
+  lastError   String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actor       String
+  action      String
+  entityType  String
+  entityId    String?
+  detail      String?
+  createdAt   DateTime @default(now())
+}
+
+model BackupSnapshot {
+  id            String   @id @default(cuid())
+  label         String
+  storagePath   String
+  encrypted     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  restoredAt    DateTime?
+}

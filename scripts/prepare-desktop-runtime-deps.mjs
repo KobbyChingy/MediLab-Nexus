@@ -8,7 +8,7 @@ const repoRoot = path.resolve(__dirname, "..");
 const sourceNodeModulesRoot = path.join(repoRoot, "node_modules");
 const stagingNodeModulesRoot = path.join(
   repoRoot,
-  "dist-desktop",
+  ".desktop-staging",
   "runtime-node_modules",
 );
 

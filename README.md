@@ -75,13 +75,13 @@ npm run desktop:build
 npm run desktop:dist
 ```
 
-The installer is generated at `dist-desktop/MediLab Nexus Setup 0.1.0.exe`.
+The installer is generated at `dist-desktop/installer/MediLab Nexus Setup 0.1.0.exe`.
 
 Desktop runtime notes:
 
 - Set `hostedUrl` in `apps/desktop/desktop.config.json` before running `npm run desktop:dist`, or set `MEDILAB_DESKTOP_HOSTED_URL` when launching the desktop app.
 - The installed app loads the configured hosted URL directly and does not start a bundled local API, worker, or SQLite database.
-- The unpacked desktop build is also available at `dist-desktop/win-unpacked/`.
+- The unpacked desktop build is also available at `dist-desktop/installer/win-unpacked/`.
 
 ## Deploy online
 
@@ -90,6 +90,10 @@ For a shared web deployment, start from `.env.production.example` and point `DAT
 For Supabase, use the pooled connection string for `DATABASE_URL` and the direct connection string for `DIRECT_URL`. Prisma schema operations such as `npm run db:push` should run against the direct connection, while the app runtime can stay on the pooled connection.
 
 If you are on the Supabase free tier without the dedicated IPv4 add-on, the direct database endpoint may be unreachable from IPv4-only networks. In that case, use the shared pooler connection string for `DATABASE_URL` and apply [deploy/supabase.bootstrap.sql](deploy/supabase.bootstrap.sql) through the Supabase SQL Editor instead of running `npm run db:push` from your workstation.
+
+If Supabase flags `rls_disabled_in_public`, refresh the checked-in bootstrap with `npm run db:bootstrap:supabase` and reapply [deploy/supabase.bootstrap.sql](deploy/supabase.bootstrap.sql) in the SQL Editor so every public application table has Row Level Security enabled.
+
+Because this workspace talks to PostgreSQL through the MediLab API and Prisma rather than Supabase Data APIs, the bootstrap also revokes default table, sequence, and function access from `anon`, `authenticated`, and `PUBLIC`, and creates an explicit deny-all RLS policy on each public table. If you later decide to expose specific tables or RPCs through Supabase APIs, replace those deny-all policies with explicit grants and table-specific RLS policies only for the objects you intend to expose.
 
 ```bash
 copy .env.production.example .env
@@ -133,7 +137,7 @@ The web console signs in against application users stored in the database and is
 
 For browser deployments, the API sets an HTTP-only session cookie and expects browser requests to use that cookie-backed session.
 
-Before opening the login screen against a fresh Supabase project, run `npm run db:push` with the Supabase env values in place so the required tables exist.
+Before opening the login screen against a fresh Supabase project, run `npm run db:push` with the Supabase env values in place so the required tables exist. If you used the SQL Editor bootstrap path instead, apply the current [deploy/supabase.bootstrap.sql](deploy/supabase.bootstrap.sql) file before signing in.
 
 If the database has no application users yet, the login screen switches into a first-run setup flow. That setup creates the initial administrator account from `username`, `pin`, and `full name`, then uses the configured facility defaults for the workspace.
 
@@ -152,8 +156,9 @@ The integration dispatch runner can be triggered from the admin console.
 ## Deployment notes
 
 - Local development defaults to PostgreSQL through `packages/db/prisma/schema.postgres.prisma`.
-- The SQLite schema in `packages/db/prisma/schema.prisma` is now legacy-only and is not used by the packaged desktop app.
-- Schema maintenance rule: treat `packages/db/prisma/schema.postgres.prisma` as the active deployment schema; keep `packages/db/prisma/schema.prisma` only if a deliberate legacy path still requires it.
+- The legacy SQLite schema now lives at `packages/db/prisma/sqlite/schema.prisma` and is not used by the packaged desktop app.
+- Schema maintenance rule: treat `packages/db/prisma/schema.postgres.prisma` as the active deployment schema; keep `packages/db/prisma/sqlite/schema.prisma` only if a deliberate legacy path still requires it.
+- The legacy SQLite schema now uses `SQLITE_DATABASE_URL` from `packages/db/prisma/sqlite/.env`, so it no longer collides with the root PostgreSQL `DATABASE_URL`.
 - `npm run db:generate`, `npm run db:push`, and `npm run db:reset` target PostgreSQL.
 - `npm run db:generate:sqlite`, `npm run db:push:sqlite`, and `npm run db:reset:sqlite` target the desktop SQLite path.
 - Keep the API behind HTTPS and expose it to browsers through the same public origin as the web app when possible.
@@ -219,7 +224,7 @@ Why this path:
 4. When prompted for `DATABASE_URL`, paste the Supabase pooled connection string.
 5. When prompted for `DIRECT_URL`, paste the Supabase direct connection string.
 6. Let Render complete the first deploy. The start command will generate Prisma client, push the hosted schema, and run the no-op seed script.
-7. If your Supabase direct endpoint is not reachable from Render, apply `deploy/supabase.bootstrap.sql` in the Supabase SQL Editor and temporarily remove the `npm run db:push:hosted &&` segment from the Render start command.
+7. If your Supabase direct endpoint is not reachable from Render, run `npm run db:bootstrap:supabase`, apply [deploy/supabase.bootstrap.sql](deploy/supabase.bootstrap.sql) in the Supabase SQL Editor, and temporarily remove the `npm run db:push:hosted &&` segment from the Render start command.
 8. Open the generated `onrender.com` URL and register the first administrator from the sign-up button.
 
 Use the Supabase direct connection string for Prisma schema push and management operations, while the runtime `DATABASE_URL` can stay on the pooled connection string.

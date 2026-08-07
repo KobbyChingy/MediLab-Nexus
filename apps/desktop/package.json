@@ -14,8 +14,9 @@
   "build": {
     "appId": "com.omniweave.medilabnexus",
     "productName": "MediLab Nexus",
+    "asar": false,
     "directories": {
-      "output": "../../dist-desktop"
+      "output": "../../dist-desktop/installer"
     },
     "files": [
       "dist/**/*",

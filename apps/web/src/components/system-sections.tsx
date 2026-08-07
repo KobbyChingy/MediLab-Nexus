@@ -162,6 +162,7 @@ function InternalBellInbox(props: {
 }
 
 export function InternalBellPanel(props: {
+  panelId?: string;
   bellForm: BellFormState;
   setBellForm: Dispatch<SetStateAction<BellFormState>>;
   bellRecipientOptions: UserDirectoryEntryPayload[];
@@ -171,6 +172,7 @@ export function InternalBellPanel(props: {
   onClose: () => void;
 }) {
   const {
+    panelId,
     bellForm,
     setBellForm,
     bellRecipientOptions,
@@ -181,7 +183,12 @@ export function InternalBellPanel(props: {
   } = props;
 
   return (
-    <div className="surface-card bell-panel">
+    <div
+      id={panelId}
+      className="surface-card bell-panel"
+      role="dialog"
+      aria-label="Alerts panel"
+    >
       <InternalBellComposer
         bellForm={bellForm}
         setBellForm={setBellForm}

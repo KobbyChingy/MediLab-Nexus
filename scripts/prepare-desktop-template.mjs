@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
-const schemaPath = path.join(repoRoot, "packages", "db", "prisma", "schema.prisma");
+const schemaPath = path.join(repoRoot, "packages", "db", "prisma", "sqlite", "schema.prisma");
 const templatePath = path.join(
   repoRoot,
   "packages",
@@ -14,7 +14,7 @@ const templatePath = path.join(
   "prisma",
   "desktop-template.db",
 );
-const stagingDir = path.join(repoRoot, "dist-desktop", "template-build");
+const stagingDir = path.join(repoRoot, ".desktop-staging", "template-build");
 const stagingDatabasePath = path.join(stagingDir, "medilab-nexus.db");
 
 function toSqliteUrl(filePath) {
@@ -37,7 +37,7 @@ function runPrismaPush(databasePath) {
         cwd: repoRoot,
         env: {
           ...process.env,
-          DATABASE_URL: toSqliteUrl(databasePath),
+          SQLITE_DATABASE_URL: toSqliteUrl(databasePath),
           PRISMA_HIDE_UPDATE_MESSAGE: "1",
           ...(process.platform === "win32"
             ? {

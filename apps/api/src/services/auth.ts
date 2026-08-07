@@ -46,17 +46,29 @@ async function findUserForLogin(prisma: PrismaClient, username: string) {
   }
 
   const legacyMatches = await prisma.appUser.findMany({
-    where: {
-      username: {
-        equals: normalizedUsername,
-        mode: "insensitive",
-      },
-    },
     orderBy: [{ createdAt: "asc" }],
-    take: 2,
+    select: {
+      id: true,
+      facilityId: true,
+      username: true,
+      displayName: true,
+      pinSalt: true,
+      pinHash: true,
+      role: true,
+      isActive: true,
+      failedLoginCount: true,
+      lockedUntil: true,
+      createdAt: true,
+    },
   });
 
-  if (legacyMatches.length !== 1) {
+  const normalizedLegacyMatches = legacyMatches
+    .filter((candidate) => normalizeUsername(candidate.username) === normalizedUsername)
+    .slice(0, 2);
+
+  const [legacyMatch] = normalizedLegacyMatches;
+
+  if (normalizedLegacyMatches.length !== 1 || !legacyMatch) {
     return {
       normalizedUsername,
       user: null,
@@ -66,8 +78,8 @@ async function findUserForLogin(prisma: PrismaClient, username: string) {
 
   return {
     normalizedUsername,
-    user: legacyMatches[0],
-    requiresNormalization: legacyMatches[0].username !== normalizedUsername,
+    user: legacyMatch,
+    requiresNormalization: legacyMatch.username !== normalizedUsername,
   };
 }
 
