@@ -14,6 +14,7 @@ import {
   adminUserInputSchema,
   analyticsRangeKeys,
   bulkServiceInputSchema,
+  catalogSeed,
   changeOwnPinInputSchema,
   expenseInputSchema,
   facilitySettingsInputSchema,
@@ -67,6 +68,7 @@ import {
   type WorkflowPayload,
 } from "@medilab/shared";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
@@ -499,6 +501,27 @@ function serializePatient(patient: {
       patient.referralCommissionPercent ??
       null,
   };
+}
+
+function normalizeOptionalString(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized || null;
+}
+
+function isUniqueConstraintError(error: unknown, field: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: string;
+    meta?: { target?: unknown };
+  };
+  return (
+    candidate.code === "P2002" &&
+    Array.isArray(candidate.meta?.target) &&
+    candidate.meta.target.includes(field)
+  );
 }
 
 function serializeExpense(expense: {
@@ -989,6 +1012,64 @@ function buildCatalogItemData(payload: {
             autoValidate: false,
           }),
   };
+}
+
+async function ensureCatalogItemsForOrderSelection(itemIds: string[]) {
+  const normalizedItemIds = itemIds.map((itemId) => itemId.trim().toUpperCase());
+  let catalogItems = await prisma.catalogItem.findMany({
+    where: {
+      OR: [{ id: { in: itemIds } }, { code: { in: normalizedItemIds } }],
+    },
+  });
+
+  const existingKeys = new Set(
+    catalogItems.flatMap((item) => [item.id, item.code.trim().toUpperCase()]),
+  );
+  const missingSeedItems = catalogSeed.filter(
+    (item) =>
+      normalizedItemIds.includes(item.code.trim().toUpperCase()) &&
+      !existingKeys.has(item.code.trim().toUpperCase()),
+  );
+
+  if (missingSeedItems.length > 0) {
+    await prisma.$transaction(
+      missingSeedItems.map((item) =>
+        prisma.catalogItem.upsert({
+          where: { code: item.code.trim().toUpperCase() },
+          update: {
+            ...buildCatalogItemData({
+              code: item.code,
+              name: item.name,
+              kind: item.kind,
+              specimenType: item.specimenType ?? "",
+              modality: item.modality ?? "",
+              priceCents: item.priceCents,
+              tatMinutes: item.tatMinutes,
+              isActive: item.isActive ?? true,
+            }),
+          },
+          create: buildCatalogItemData({
+            code: item.code,
+            name: item.name,
+            kind: item.kind,
+            specimenType: item.specimenType ?? "",
+            modality: item.modality ?? "",
+            priceCents: item.priceCents,
+            tatMinutes: item.tatMinutes,
+            isActive: item.isActive ?? true,
+          }),
+        }),
+      ),
+    );
+
+    catalogItems = await prisma.catalogItem.findMany({
+      where: {
+        OR: [{ id: { in: itemIds } }, { code: { in: normalizedItemIds } }],
+      },
+    });
+  }
+
+  return catalogItems;
 }
 
 async function recordDispatchEvent(
@@ -2995,23 +3076,67 @@ app.delete("/api/admin/services/:id", async (request, reply) => {
     return reply.code(404).send({ message: "Service not found." });
   }
 
-  const linkedOrderItems = await prisma.orderItem.count({
+  const linkedOrderItems = await prisma.orderItem.findMany({
     where: { catalogItemId: existing.id },
+    select: { orderId: true },
   });
-  if (linkedOrderItems > 0) {
-    return reply.code(409).send({
-      message:
-        "This service is already linked to workflow records. Archive it instead of deleting it.",
-    });
-  }
+  const orderIds = [...new Set(linkedOrderItems.map((item) => item.orderId))];
+  const orderItemIds = orderIds.length
+    ? (
+        await prisma.orderItem.findMany({
+          where: { orderId: { in: orderIds } },
+          select: { id: true },
+        })
+      ).map((item) => item.id)
+    : [];
+  const invoiceIds = orderIds.length
+    ? (
+        await prisma.invoice.findMany({
+          where: { orderId: { in: orderIds } },
+          select: { id: true },
+        })
+      ).map((invoice) => invoice.id)
+    : [];
 
-  await prisma.catalogItem.delete({ where: { id: existing.id } });
+  await prisma.$transaction(async (tx) => {
+    if (invoiceIds.length > 0) {
+      await tx.paymentRecord.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+      await tx.invoiceLine.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+      await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+    }
+
+    if (orderItemIds.length > 0) {
+      await tx.imagingStudy.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      });
+    }
+
+    if (orderIds.length > 0) {
+      await tx.report.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.sample.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.diagnosticOrder.deleteMany({ where: { id: { in: orderIds } } });
+    }
+
+    await tx.catalogItem.delete({ where: { id: existing.id } });
+  });
+
   await recordAudit(prisma, request.actor, {
     action: "SERVICE_DELETED",
     entityType: "CatalogItem",
     entityId: existing.id,
-    summary: `Service ${existing.code} deleted`,
-    payload: serializeCatalogItem(existing),
+    summary:
+      orderIds.length > 0
+        ? `Service ${existing.code} deleted and ${orderIds.length} linked order(s) removed`
+        : `Service ${existing.code} deleted`,
+    payload: {
+      ...serializeCatalogItem(existing),
+      linkedOrderCount: orderIds.length,
+    },
   });
   await recordDeleteDispatchEvent("CatalogItem", existing.id, existing);
 
@@ -3189,38 +3314,48 @@ app.put("/api/patients/:id", async (request, reply) => {
     });
   }
 
-  const updated = await prisma.patient.update({
-    where: { id: existingPatient.id },
-    data: {
-      referralDoctorId: referralDoctor?.id ?? null,
-      referralName: payload.referralName.trim() || null,
-      referralCommissionPercent: payload.referralCommissionPercent ?? null,
-      traceCode: trace.traceCode,
-      traceSequence: trace.traceSequence,
-      initials: trace.initials,
-      firstName: payload.firstName,
-      middleName: payload.middleName,
-      lastName: payload.lastName,
-      dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
-      gender: payload.gender,
-      phone: payload.phone,
-      location: payload.location?.trim() || null,
-      nhisId: payload.nhisId,
-      allergies: payload.allergies,
-      medicalHistory: payload.medicalHistory,
-      consentAccepted: payload.consentAccepted,
-      photoPath: payload.photoPath,
-      syncStatus: "LOCAL_ONLY",
-    },
-    include: {
-      referralDoctor: {
-        select: {
-          fullName: true,
-          commissionPercent: true,
+  let updated;
+  try {
+    updated = await prisma.patient.update({
+      where: { id: existingPatient.id },
+      data: {
+        referralDoctorId: referralDoctor?.id ?? null,
+        referralName: normalizeOptionalString(payload.referralName),
+        referralCommissionPercent: payload.referralCommissionPercent ?? null,
+        traceCode: trace.traceCode,
+        traceSequence: trace.traceSequence,
+        initials: trace.initials,
+        firstName: payload.firstName,
+        middleName: payload.middleName,
+        lastName: payload.lastName,
+        dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
+        gender: normalizeOptionalString(payload.gender),
+        phone: payload.phone,
+        location: normalizeOptionalString(payload.location),
+        nhisId: normalizeOptionalString(payload.nhisId),
+        allergies: normalizeOptionalString(payload.allergies),
+        medicalHistory: normalizeOptionalString(payload.medicalHistory),
+        consentAccepted: payload.consentAccepted,
+        photoPath: normalizeOptionalString(payload.photoPath),
+        syncStatus: "LOCAL_ONLY",
+      },
+      include: {
+        referralDoctor: {
+          select: {
+            fullName: true,
+            commissionPercent: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error, "nhisId")) {
+      return reply.code(400).send({
+        message: "That NHIS ID is already assigned to another patient.",
+      });
+    }
+    throw error;
+  }
 
   await recordDispatchEvent("Patient", updated.id, updated);
   await recordAudit(prisma, request.actor, {
@@ -3263,29 +3398,75 @@ app.delete("/api/patients/:id", async (request, reply) => {
     return reply.code(404).send({ message: "Patient not found." });
   }
 
-  const [orderCount, sampleCount, reportCount, invoiceCount] =
-    await Promise.all([
-      prisma.diagnosticOrder.count({ where: { patientId: existing.id } }),
-      prisma.sample.count({ where: { patientId: existing.id } }),
-      prisma.report.count({ where: { patientId: existing.id } }),
-      prisma.invoice.count({ where: { patientId: existing.id } }),
-    ]);
+  const patientIds = [existing.id];
+  const orderIds = (
+    await prisma.diagnosticOrder.findMany({
+      where: { patientId: existing.id },
+      select: { id: true },
+    })
+  ).map((order) => order.id);
+  const invoiceIds = (
+    await prisma.invoice.findMany({
+      where: { patientId: existing.id },
+      select: { id: true },
+    })
+  ).map((invoice) => invoice.id);
+  const orderItemIds = orderIds.length
+    ? (
+        await prisma.orderItem.findMany({
+          where: { orderId: { in: orderIds } },
+          select: { id: true },
+        })
+      ).map((orderItem) => orderItem.id)
+    : [];
 
-  if (orderCount + sampleCount + reportCount + invoiceCount > 0) {
-    return reply.code(409).send({
-      message:
-        "This patient already has workflow records and cannot be deleted. Remove the dependent orders, reports, and billing records first.",
+  await prisma.$transaction(async (tx) => {
+    if (invoiceIds.length > 0) {
+      await tx.paymentRecord.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+      await tx.invoiceLine.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+    }
+
+    if (orderItemIds.length > 0) {
+      await tx.imagingStudy.deleteMany({
+        where: { orderItemId: { in: orderItemIds } },
+      });
+    }
+
+    await tx.report.deleteMany({ where: { patientId: { in: patientIds } } });
+    await tx.sample.deleteMany({ where: { patientId: { in: patientIds } } });
+    await tx.notificationQueue.deleteMany({
+      where: { patientId: { in: patientIds } },
     });
-  }
 
-  await prisma.patient.delete({ where: { id: existing.id } });
+    if (invoiceIds.length > 0) {
+      await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+    }
+
+    if (orderIds.length > 0) {
+      await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+      await tx.diagnosticOrder.deleteMany({
+        where: { id: { in: orderIds } },
+      });
+    }
+
+    await tx.patient.delete({ where: { id: existing.id } });
+  });
+
   await recordAudit(prisma, request.actor, {
     action: "PATIENT_DELETED",
     entityType: "Patient",
     entityId: existing.id,
     traceCode: existing.traceCode,
-    summary: `Patient ${existing.traceCode} deleted`,
-    payload: serializePatient(existing),
+    summary: `Patient ${existing.traceCode} deleted with linked workflow records removed`,
+    payload: {
+      ...serializePatient(existing),
+      deletedOrderCount: orderIds.length,
+      deletedInvoiceCount: invoiceIds.length,
+    },
   });
   await recordDeleteDispatchEvent("Patient", existing.id, existing);
 
@@ -3442,38 +3623,48 @@ app.post("/api/patients", async (request, reply) => {
     });
   }
 
-  const patient = await prisma.patient.create({
-    data: {
-      facilityId: trace.facilityId,
-      referralDoctorId: referralDoctor?.id ?? null,
-      referralName: payload.referralName.trim() || null,
-      referralCommissionPercent: payload.referralCommissionPercent ?? null,
-      traceCode: trace.traceCode,
-      traceSequence: trace.traceSequence,
-      initials: trace.initials,
-      firstName: payload.firstName,
-      middleName: payload.middleName,
-      lastName: payload.lastName,
-      dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
-      gender: payload.gender,
-      phone: payload.phone,
-      location: payload.location?.trim() || null,
-      nhisId: payload.nhisId,
-      allergies: payload.allergies,
-      medicalHistory: payload.medicalHistory,
-      consentAccepted: payload.consentAccepted,
-      photoPath: payload.photoPath,
-      syncStatus: "LOCAL_ONLY",
-    },
-    include: {
-      referralDoctor: {
-        select: {
-          fullName: true,
-          commissionPercent: true,
+  let patient;
+  try {
+    patient = await prisma.patient.create({
+      data: {
+        facilityId: trace.facilityId,
+        referralDoctorId: referralDoctor?.id ?? null,
+        referralName: normalizeOptionalString(payload.referralName),
+        referralCommissionPercent: payload.referralCommissionPercent ?? null,
+        traceCode: trace.traceCode,
+        traceSequence: trace.traceSequence,
+        initials: trace.initials,
+        firstName: payload.firstName,
+        middleName: payload.middleName,
+        lastName: payload.lastName,
+        dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
+        gender: normalizeOptionalString(payload.gender),
+        phone: payload.phone,
+        location: normalizeOptionalString(payload.location),
+        nhisId: normalizeOptionalString(payload.nhisId),
+        allergies: normalizeOptionalString(payload.allergies),
+        medicalHistory: normalizeOptionalString(payload.medicalHistory),
+        consentAccepted: payload.consentAccepted,
+        photoPath: normalizeOptionalString(payload.photoPath),
+        syncStatus: "LOCAL_ONLY",
+      },
+      include: {
+        referralDoctor: {
+          select: {
+            fullName: true,
+            commissionPercent: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error, "nhisId")) {
+      return reply.code(400).send({
+        message: "That NHIS ID is already assigned to another patient.",
+      });
+    }
+    throw error;
+  }
 
   await recordDispatchEvent("Patient", patient.id, patient);
   await recordAudit(prisma, request.actor, {
@@ -3498,11 +3689,14 @@ app.post("/api/orders", async (request, reply) => {
   }
 
   const payload = orderInputSchema.parse(request.body);
-  const catalogItems = await prisma.catalogItem.findMany({
-    where: {
-      OR: [{ id: { in: payload.itemIds } }, { code: { in: payload.itemIds } }],
-    },
+  const catalogItems = await ensureCatalogItemsForOrderSelection(payload.itemIds);
+  const patient = await prisma.patient.findUnique({
+    where: { id: payload.patientId },
   });
+
+  if (!patient) {
+    return reply.code(404).send({ message: "Patient not found." });
+  }
 
   if (catalogItems.length !== payload.itemIds.length) {
     return reply
@@ -3510,7 +3704,23 @@ app.post("/api/orders", async (request, reply) => {
       .send({ message: "One or more catalog items were not found." });
   }
 
-  const totalAmountCents = catalogItems.reduce(
+  const catalogItemLookup = new Map(
+    catalogItems.flatMap((item) => [
+      [item.id, item],
+      [item.code.trim().toUpperCase(), item],
+    ]),
+  );
+  const selectedCatalogItems = payload.itemIds
+    .map((itemId) => catalogItemLookup.get(itemId.trim().toUpperCase()) ?? catalogItemLookup.get(itemId))
+    .filter((item): item is (typeof catalogItems)[number] => Boolean(item));
+
+  if (selectedCatalogItems.length !== payload.itemIds.length) {
+    return reply
+      .code(400)
+      .send({ message: "One or more catalog items were not found." });
+  }
+
+  const totalAmountCents = selectedCatalogItems.reduce(
     (sum, item) => sum + item.priceCents,
     0,
   );
@@ -3526,11 +3736,26 @@ app.post("/api/orders", async (request, reply) => {
     payload.payerCoveragePercent,
     payload.insuranceAuthorized,
   );
-  const createdOrder = await prisma.$transaction(async (tx) => {
-    const order = await tx.diagnosticOrder.create({
+  const scheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : null;
+  const orderId = randomUUID();
+  const accessionNumber = buildAccessionNumber();
+  const invoiceId = randomUUID();
+  const orderItems = selectedCatalogItems.map((item) => ({
+    id: randomUUID(),
+    catalogItem: item,
+  }));
+  const insuranceCoveredCents = Math.round(
+    totalAmountCents * (payerCoveragePercent / 100),
+  );
+  const patientResponsibilityCents =
+    totalAmountCents - insuranceCoveredCents;
+
+  await prisma.$transaction([
+    prisma.diagnosticOrder.create({
       data: {
+        id: orderId,
         patientId: payload.patientId,
-        accessionNumber: buildAccessionNumber(),
+        accessionNumber,
         orderedBy: payload.orderedBy,
         priority: payload.priority,
         payerType,
@@ -3542,62 +3767,55 @@ app.post("/api/orders", async (request, reply) => {
         insuranceAuthorized: payload.insuranceAuthorized,
         notes: payload.notes,
         referringClinic: payload.referringClinic,
-        scheduledFor: payload.scheduledFor
-          ? new Date(payload.scheduledFor)
-          : null,
+        scheduledFor,
         totalAmountCents,
-        items: {
-          create: catalogItems.map((item) => ({
-            catalogItemId: item.id,
-            status: item.kind === "IMAGING" ? "REGISTERED" : "COLLECTED",
-          })),
-        },
       },
-      include: { patient: true, items: { include: { catalogItem: true } } },
-    });
-
-    for (const item of order.items) {
-      if (item.catalogItem.kind === "TEST") {
-        await tx.sample.create({
-          data: {
-            patientId: order.patientId,
-            orderId: order.id,
-            traceLabel: buildSampleLabel(
-              order.patient.traceCode,
-              item.catalogItem.department,
-            ),
-            specimenType: item.catalogItem.specimenType ?? "Unspecified",
-            status: "PENDING",
-          },
-        });
-      }
-
-      if (item.catalogItem.kind === "IMAGING") {
-        await tx.imagingStudy.create({
-          data: {
-            orderItemId: item.id,
-            modality: item.catalogItem.modality ?? "Ultrasound",
-            scheduledAt: payload.scheduledFor
-              ? new Date(payload.scheduledFor)
-              : null,
-            appointmentStatus: "SCHEDULED",
-            sonographerName: payload.sonographerName || null,
-            radiologistName: payload.radiologistName || null,
-            priorStudyReference: payload.priorStudyReference || null,
-          },
-        });
-      }
-    }
-
-    const insuranceCoveredCents = Math.round(
-      totalAmountCents * (payerCoveragePercent / 100),
-    );
-    const patientResponsibilityCents =
-      totalAmountCents - insuranceCoveredCents;
-    const invoice = await tx.invoice.create({
+    }),
+    prisma.orderItem.createMany({
+      data: orderItems.map(({ id, catalogItem }) => ({
+        id,
+        orderId,
+        catalogItemId: catalogItem.id,
+        status: catalogItem.kind === "IMAGING" ? "REGISTERED" : "COLLECTED",
+      })),
+    }),
+    ...(orderItems.some(({ catalogItem }) => catalogItem.kind === "TEST")
+      ? [
+          prisma.sample.createMany({
+            data: orderItems
+              .filter(({ catalogItem }) => catalogItem.kind === "TEST")
+              .map(({ catalogItem }) => ({
+                patientId: payload.patientId,
+                orderId,
+                traceLabel: buildSampleLabel(patient.traceCode, catalogItem.department),
+                specimenType: catalogItem.specimenType ?? "Unspecified",
+                status: "PENDING",
+              })),
+          }),
+        ]
+      : []),
+    ...(orderItems.some(({ catalogItem }) => catalogItem.kind === "IMAGING")
+      ? [
+          prisma.imagingStudy.createMany({
+            data: orderItems
+              .filter(({ catalogItem }) => catalogItem.kind === "IMAGING")
+              .map(({ id, catalogItem }) => ({
+                orderItemId: id,
+                modality: catalogItem.modality ?? "Ultrasound",
+                scheduledAt: scheduledFor,
+                appointmentStatus: "SCHEDULED",
+                sonographerName: payload.sonographerName || null,
+                radiologistName: payload.radiologistName || null,
+                priorStudyReference: payload.priorStudyReference || null,
+              })),
+          }),
+        ]
+      : []),
+    prisma.invoice.create({
       data: {
+        id: invoiceId,
         patientId: payload.patientId,
-        orderId: order.id,
+        orderId,
         payerType,
         payerName,
         payerCoveragePercent,
@@ -3612,38 +3830,58 @@ app.post("/api/orders", async (request, reply) => {
         subtotalCents: totalAmountCents,
         insuranceCoveredCents,
         amountDueCents: patientResponsibilityCents,
-        lines: {
-          create: catalogItems.map((item) => ({
-            description: item.name,
-            quantity: 1,
-            unitPriceCents: item.priceCents,
-            totalPriceCents: item.priceCents,
-          })),
-        },
       },
-    });
-
-    await tx.syncEvent.create({
+    }),
+    prisma.invoiceLine.createMany({
+      data: selectedCatalogItems.map((item) => ({
+        invoiceId,
+        description: item.name,
+        quantity: 1,
+        unitPriceCents: item.priceCents,
+        totalPriceCents: item.priceCents,
+      })),
+    }),
+    prisma.syncEvent.create({
       data: {
         entityType: "DiagnosticOrder",
-        entityId: order.id,
+        entityId: orderId,
         operation: "UPSERT",
-        payload: JSON.stringify(order),
+        payload: JSON.stringify({
+          id: orderId,
+          patientId: payload.patientId,
+          accessionNumber,
+          itemIds: selectedCatalogItems.map((item) => item.id),
+          totalAmountCents,
+        }),
         status: "PENDING_SYNC",
       },
-    });
-    await recordAudit(tx, request.actor, {
-      action: "ORDER_CREATED",
-      entityType: "DiagnosticOrder",
-      entityId: order.id,
-      traceCode: order.patient.traceCode,
-      summary: `Order ${order.accessionNumber} created for ${order.patient.traceCode}`,
-      payload,
-    });
-    return { order, invoice };
-  });
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorName: request.actor.displayName,
+        actorRole: request.actor.role,
+        action: "ORDER_CREATED",
+        entityType: "DiagnosticOrder",
+        entityId: orderId,
+        traceCode: patient.traceCode,
+        summary: `Order ${accessionNumber} created for ${patient.traceCode}`,
+        payloadJson: JSON.stringify(payload),
+      },
+    }),
+  ]);
 
-  return reply.code(201).send(createdOrder);
+  const [order, invoice] = await Promise.all([
+    prisma.diagnosticOrder.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { patient: true, items: { include: { catalogItem: true } } },
+    }),
+    prisma.invoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+      include: { lines: true },
+    }),
+  ]);
+
+  return reply.code(201).send({ order, invoice });
 });
 
 app.get("/api/workflow", async (request, reply) => {
@@ -4408,11 +4646,8 @@ app.get(
     if (!request.actor.authenticated) {
       return unauthorized(reply);
     }
-    if (!hasCapability(request.actor, "finance:manage")) {
-      return deny(reply, "finance:manage");
-    }
 
-    const id = (request.params as { id: string }).id;
+    const { id } = request.params as { id: string };
     return renderPrintableReceiptHtml(prisma, id);
   },
 );
@@ -4423,19 +4658,13 @@ app.get(
     if (!request.actor.authenticated) {
       return unauthorized(reply);
     }
-    if (!hasCapability(request.actor, "finance:manage")) {
-      return deny(reply, "finance:manage");
-    }
 
-    const id = (request.params as { id: string }).id;
+    const { id } = request.params as { id: string };
     return renderPrintableInvoiceHtml(prisma, id);
   },
 );
 
 app.patch("/api/billing/invoices/:id/claim", async (request, reply) => {
-  if (!request.actor.authenticated) {
-    return unauthorized(reply);
-  }
   if (!hasCapability(request.actor, "finance:manage")) {
     return deny(reply, "finance:manage");
   }

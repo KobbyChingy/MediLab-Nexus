@@ -46,7 +46,6 @@ import {
   type IntegrationDispatchRunPayload,
   type IntegrationDispatchStatusPayload,
   type WorkflowPayload,
-  catalogSeed,
   notificationChannels,
   paymentMethods,
   paymentResponsibilities,
@@ -450,6 +449,29 @@ function buildDefaultEchoWorksheetState(): EchoWorksheetState {
     comments: "",
     conclusion: "",
   };
+}
+
+function getCatalogSelectionValue(item: CatalogSeedItem): string {
+  return item.code.trim().toUpperCase();
+}
+
+function normalizeCatalogSelectionValues(
+  values: string[],
+  catalog: CatalogSeedItem[],
+): string[] {
+  const normalized = new Set<string>();
+
+  values.forEach((value) => {
+    const match = catalog.find(
+      (item) => item.id === value || getCatalogSelectionValue(item) === value,
+    );
+
+    if (match) {
+      normalized.add(getCatalogSelectionValue(match));
+    }
+  });
+
+  return [...normalized];
 }
 
 function parseEchoWorksheetState(value: string) {
@@ -2980,8 +3002,6 @@ export default function App() {
 
       setStatusText(`Connected as ${authSession.user.displayName}`);
     } catch {
-      setPatients([]);
-      setWorkflow(emptyWorkflow);
       setAdminOverview(baseOverview);
       setFinanceAnalytics({
         ...fallbackFinanceAnalytics,
@@ -3000,14 +3020,29 @@ export default function App() {
       setBackups([]);
       setUsers([]);
       setDirectoryUsers([]);
-      setServices([]);
       setReferralDoctors([]);
       setReportTemplates([]);
       setSyncStatus(emptySyncStatus);
       setStatusText(
-        `Unable to reach the MediLab Nexus server for ${authSession.user.displayName}. Check the connection and try again.`,
+        `Some MediLab Nexus workspace panels could not be refreshed for ${authSession.user.displayName}. Existing patient and workflow data has been kept.`,
       );
     }
+  }
+
+  async function refreshRegistrationWorkspaceData() {
+    if (!authSession) {
+      return;
+    }
+
+    const [patientList, workflowPayload] = await Promise.all([
+      requestJson<PatientRecord[]>("/patients"),
+      requestJson<WorkflowPayload>("/workflow"),
+    ]);
+
+    startTransition(() => {
+      setPatients(patientList);
+      setWorkflow(workflowPayload);
+    });
   }
 
   async function loadExpenseWorkspace() {
@@ -3249,9 +3284,13 @@ export default function App() {
     }));
   }, [reportForm.orderId, workflow.orders]);
 
-  const catalogOptions = (
-    bootstrap.catalog.length ? bootstrap.catalog : catalogSeed
-  ) as CatalogSeedItem[];
+  const catalogOptions = useMemo(
+    () =>
+      bootstrap.catalog.length
+        ? bootstrap.catalog
+        : services.filter((service) => service.isActive !== false),
+    [bootstrap.catalog, services],
+  );
   const selectedPatient = useMemo(
     () =>
       patients.find((patient) => patient.id === selectedPatientId) ??
@@ -3482,8 +3521,8 @@ export default function App() {
     });
   }, [catalogOptions]);
   const servicesCatalog = useMemo(
-    () => (services.length ? services : catalogOptions),
-    [catalogOptions, services],
+    () => (services.length ? services : bootstrap.catalog),
+    [bootstrap.catalog, services],
   );
   const sonographyStudies = useMemo(
     () =>
@@ -3739,14 +3778,18 @@ export default function App() {
   const totalCents = useMemo(
     () =>
       catalogOptions
-        .filter((item) => selectedItemIds.includes(item.id ?? item.code))
+        .filter((item) =>
+          selectedItemIds.includes(getCatalogSelectionValue(item)),
+        )
         .reduce((sum, item) => sum + item.priceCents, 0),
     [catalogOptions, selectedItemIds],
   );
   const registrationTotalCents = useMemo(
     () =>
       catalogOptions
-        .filter((item) => registrationItemIds.includes(item.id ?? item.code))
+        .filter((item) =>
+          registrationItemIds.includes(getCatalogSelectionValue(item)),
+        )
         .reduce((sum, item) => sum + item.priceCents, 0),
     [catalogOptions, registrationItemIds],
   );
@@ -3766,6 +3809,22 @@ export default function App() {
       registrationTotalCents,
     ],
   );
+  useEffect(() => {
+    setSelectedItemIds((current) => {
+      const normalized = normalizeCatalogSelectionValues(current, catalogOptions);
+      return normalized.length === current.length &&
+        normalized.every((value, index) => value === current[index])
+        ? current
+        : normalized;
+    });
+    setRegistrationItemIds((current) => {
+      const normalized = normalizeCatalogSelectionValues(current, catalogOptions);
+      return normalized.length === current.length &&
+        normalized.every((value, index) => value === current[index])
+        ? current
+        : normalized;
+    });
+  }, [catalogOptions]);
   const expenseFilterCategories = useMemo(
     () => ["ALL", ...expenseWorkspace.availableCategories],
     [expenseWorkspace.availableCategories],
@@ -4729,7 +4788,7 @@ export default function App() {
         }
       }
 
-      await loadOperationalData();
+      await refreshRegistrationWorkspaceData();
       openPatient(created);
       setPatientForm(buildPatientDraft());
       setPatientReferralCommission("");
@@ -7811,7 +7870,7 @@ export default function App() {
             </div>
             <div className="service-selection-list full-width">
               {filteredRegistrationServices.map((item) => {
-                const value = item.id ?? item.code;
+                const value = getCatalogSelectionValue(item);
                 const checked = registrationItemIds.includes(value);
                 return (
                   <label
@@ -8274,7 +8333,7 @@ export default function App() {
           </div>
           <div className="service-selection-list full-width">
             {filteredOrderServices.map((item) => {
-              const value = item.id ?? item.code;
+              const value = getCatalogSelectionValue(item);
               const checked = selectedItemIds.includes(value);
               return (
                 <label
