@@ -127,6 +127,23 @@ function renderRichText(value: string) {
   });
 }
 
+function renderEchoWorksheetMarkup(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  // Echo worksheet findings are generated from structured fields whose values are
+  // already escaped in the web app. Keep the worksheet's inline layout styles intact
+  // so the printable output matches the on-screen template instead of collapsing into
+  // a plain stacked text block.
+  if (/adult echocardiography worksheet/iu.test(trimmed)) {
+    return trimmed;
+  }
+
+  return renderRichText(trimmed);
+}
+
 function toFacilityProfile(
   facility:
     | {
@@ -504,7 +521,7 @@ function composePrintableReportHtml(bundle: {
           </div>
         </header>
         <div class="echo-print-content">
-          <div class="body-copy">${renderRichText(description)}</div>
+          <div class="body-copy">${renderEchoWorksheetMarkup(description)}</div>
         </div>
         ${(history && history !== "Not provided.") || impression || imagePaths.length ? `<section class="echo-section">` : ""}
         ${(history && history !== "Not provided.") ? `<div><h3>Clinical History</h3><div class="body-copy">${renderRichText(history)}</div></div>` : ""}
