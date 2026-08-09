@@ -4969,14 +4969,19 @@ export default function App() {
   }
 
   function buildPreparedReportPayload() {
+    if (!reportForm.patientId || !reportForm.orderId) {
+      setStatusText(
+        "Select the patient and order before previewing, printing, or saving the report.",
+      );
+      return null;
+    }
+
     if (
-      !reportForm.patientId ||
-      !reportForm.orderId ||
       reportForm.title.trim().length < 3 ||
       reportForm.signedBy.trim().length < 3
     ) {
       setStatusText(
-        "Select the patient and order, then add a report title and signature before previewing or saving.",
+        "Add a report title and signature before previewing, printing, or saving.",
       );
       return null;
     }
@@ -5042,7 +5047,9 @@ export default function App() {
       richTextToPlainText(findings).length < 3 ||
       richTextToPlainText(impression).length < 3
     ) {
-      setStatusText("Add report description and impression before saving.");
+      setStatusText(
+        "Add the test result or description and the impression before previewing, printing, or saving.",
+      );
       return null;
     }
 
@@ -12229,6 +12236,12 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+        <div className="workspace-status-banner" role="status" aria-live="polite">
+          {statusText}
+        </div>
+      ) : null}
 
       {sidebarOpen ? (
         <button

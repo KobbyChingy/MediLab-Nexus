@@ -205,6 +205,22 @@ label span {
   box-shadow: var(--shadow-soft);
 }
 
+.workspace-status-banner {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(
+      135deg,
+      rgba(15, 107, 255, 0.1),
+      rgba(0, 196, 180, 0.08)
+    ),
+    var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  font-weight: 600;
+}
+
 :root[data-theme="dark"] .topbar {
   background: rgba(15, 23, 42, 0.72);
 }
