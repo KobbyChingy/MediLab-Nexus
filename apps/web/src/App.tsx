@@ -1360,6 +1360,10 @@ function buildEchoWorksheetHtml(params: {
 }) {
   const { patient, traceCode, worksheet, technician } = params;
   const read = (value: string) => escapeEditorHtml(value.trim() || " ");
+  const labelStyle =
+    "font-size:10px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;";
+  const valueStyle =
+    "min-height:18px; border-bottom:1px solid rgba(17,24,39,0.72); padding:1px 0; font-size:11px; line-height:1.2; color:#111827;";
   const patientName = patient
     ? `${patient.firstName} ${patient.middleName ?? ""} ${patient.lastName}`
         .replace(/\s+/gu, " ")
@@ -1370,24 +1374,24 @@ function buildEchoWorksheetHtml(params: {
   const patientAge = formatPatientAge(patient?.dateOfBirth);
 
   const lineField = (label: string, value: string, wide = false) => `
-    <div style="display:grid; gap:6px; ${wide ? "grid-column: span 2;" : ""}">
-      <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(label)}</div>
-      <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827; white-space:pre-wrap;">${read(value)}</div>
+    <div style="display:grid; gap:4px; ${wide ? "grid-column: span 2;" : ""}">
+      <div style="${labelStyle}">${escapeEditorHtml(label)}</div>
+      <div style="${valueStyle} white-space:pre-wrap;">${read(value)}</div>
     </div>`;
 
   const lineTextarea = (label: string, value: string, minHeight: number) => `
-    <div style="display:grid; gap:6px;">
-      <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(label)}</div>
-      <div style="min-height:${minHeight}px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827; white-space:pre-wrap;">${read(value)}</div>
+    <div style="display:grid; gap:4px;">
+      <div style="${labelStyle}">${escapeEditorHtml(label)}</div>
+      <div style="min-height:${minHeight}px; ${valueStyle} white-space:pre-wrap;">${read(value)}</div>
     </div>`;
 
   const measurementCells = echoMeasurementPairs
     .flatMap(({ left, right }) => [left, right])
     .map(
       (field) => `
-        <div style="display:grid; gap:6px;">
-          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(field.label)}</div>
-          <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet[field.key])}</div>
+        <div style="display:grid; gap:4px;">
+          <div style="${labelStyle}">${escapeEditorHtml(field.label)}</div>
+          <div style="${valueStyle}">${read(worksheet[field.key])}</div>
         </div>`,
     )
     .join("");
@@ -1395,11 +1399,11 @@ function buildEchoWorksheetHtml(params: {
   const otherCells = echoOtherFieldRows
     .map(
       (field) => `
-        <div style="display:grid; gap:6px;">
-          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(field.label)}</div>
-          <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">
+        <div style="display:grid; gap:4px;">
+          <div style="${labelStyle}">${escapeEditorHtml(field.label)}</div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:end; ${valueStyle}">
             <span>${read(worksheet[field.key])}</span>
-            ${field.suffix ? `<span style="font-size:11px; color:#475569;">${escapeEditorHtml(field.suffix)}</span>` : ""}
+            ${field.suffix ? `<span style="font-size:9px; color:#475569;">${escapeEditorHtml(field.suffix)}</span>` : ""}
           </div>
         </div>`,
     )
@@ -1409,75 +1413,75 @@ function buildEchoWorksheetHtml(params: {
     .map(
       (row) => `
         <tr>
-          <th style="padding:8px 7px; border:1px solid #1f2937; text-align:left; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">${escapeEditorHtml(row.label)}</th>
-          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.aortic])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
-          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.pulmonic])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
-          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.tricuspid])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
-          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.mitral])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <th style="padding:5px 6px; border:1px solid #1f2937; text-align:left; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">${escapeEditorHtml(row.label)}</th>
+          <td style="padding:5px 6px; border:1px solid #1f2937; vertical-align:top; min-width:88px;"><div style="min-height:16px; border-bottom:1px solid rgba(17,24,39,0.72); font-size:11px; line-height:1.2;">${read(worksheet[row.aortic])}</div>${row.unit ? `<div style="font-size:9px; color:#475569; margin-top:2px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:5px 6px; border:1px solid #1f2937; vertical-align:top; min-width:88px;"><div style="min-height:16px; border-bottom:1px solid rgba(17,24,39,0.72); font-size:11px; line-height:1.2;">${read(worksheet[row.pulmonic])}</div>${row.unit ? `<div style="font-size:9px; color:#475569; margin-top:2px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:5px 6px; border:1px solid #1f2937; vertical-align:top; min-width:88px;"><div style="min-height:16px; border-bottom:1px solid rgba(17,24,39,0.72); font-size:11px; line-height:1.2;">${read(worksheet[row.tricuspid])}</div>${row.unit ? `<div style="font-size:9px; color:#475569; margin-top:2px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:5px 6px; border:1px solid #1f2937; vertical-align:top; min-width:88px;"><div style="min-height:16px; border-bottom:1px solid rgba(17,24,39,0.72); font-size:11px; line-height:1.2;">${read(worksheet[row.mitral])}</div>${row.unit ? `<div style="font-size:9px; color:#475569; margin-top:2px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
         </tr>`,
     )
     .join("");
 
   return `
-    <div style="border:3px solid #1f2937; border-radius:10px; padding:22px; background:#ffffff; color:#111827; font-family:'Segoe UI', Arial, sans-serif; box-shadow:0 18px 32px rgba(15,23,42,0.07);">
-      <div style="display:grid; gap:16px;">
-        <div style="font-size:16px; font-weight:800; color:#111827; letter-spacing:0.02em; text-transform:uppercase;">Adult Echocardiography Worksheet</div>
-        <div style="display:grid; grid-template-columns:minmax(0,1.7fr) repeat(2,minmax(140px,1fr)); gap:14px;">
+    <div style="border:2px solid #1f2937; border-radius:6px; padding:14px; background:#ffffff; color:#111827; font-family:'Segoe UI', Arial, sans-serif; box-shadow:0 8px 16px rgba(15,23,42,0.05);">
+      <div style="display:grid; gap:10px;">
+        <div style="font-size:13px; font-weight:800; color:#111827; letter-spacing:0.02em; text-transform:uppercase;">Adult Echocardiography Worksheet</div>
+        <div style="display:grid; grid-template-columns:minmax(0,1.7fr) repeat(2,minmax(112px,1fr)); gap:10px;">
           ${lineField("Name", patientName, true)}
           ${lineField("Date", formatDateOnly(worksheet.studyDate))}
           ${lineField("ID", traceCode)}
         </div>
-        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,2fr); gap:14px;">
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.8fr); gap:10px;">
           ${lineField("DOB", patientDob)}
           ${lineField("Age", patientAge)}
           ${lineField("Sex", patientSex)}
           ${lineField("Referring Physician", worksheet.referringPhysician)}
         </div>
-        <div style="display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:14px; align-items:start;">
-          ${lineTextarea("Indications", worksheet.indications, 48)}
+        <div style="display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:10px; align-items:start;">
+          ${lineTextarea("Indications", worksheet.indications, 34)}
           ${lineField("Tech", technician)}
         </div>
-        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; align-items:end;">
+        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:end;">
           ${lineField("Height", worksheet.height)}
           ${lineField("Weight", worksheet.weight)}
           ${lineField("BSA", worksheet.bodySurfaceArea)}
-          <div style="display:grid; gap:6px;">
-            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">BP</div>
-            <div style="display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:12px; align-items:end;">
-              <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet.bloodPressureSystolic)}</div>
+          <div style="display:grid; gap:4px;">
+            <div style="${labelStyle}">BP</div>
+            <div style="display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:8px; align-items:end;">
+              <div style="${valueStyle}">${read(worksheet.bloodPressureSystolic)}</div>
               <div style="font-weight:700; color:#111827;">/</div>
-              <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet.bloodPressureDiastolic)}</div>
+              <div style="${valueStyle}">${read(worksheet.bloodPressureDiastolic)}</div>
             </div>
           </div>
         </div>
-        <div style="display:grid; grid-template-columns:minmax(0,1.2fr) minmax(260px,0.9fr); gap:0; border:2px solid #1f2937;">
-          <div style="display:grid; gap:14px; padding:16px; border-right:2px solid #1f2937;">
-            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">M-Mode/2D Measurements</div>
-            <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 16px;">${measurementCells}</div>
+        <div style="display:grid; grid-template-columns:minmax(0,1.2fr) minmax(220px,0.9fr); gap:0; border:1.5px solid #1f2937;">
+          <div style="display:grid; gap:10px; padding:10px; border-right:1.5px solid #1f2937;">
+            <div style="${labelStyle}">M-Mode/2D Measurements</div>
+            <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px;">${measurementCells}</div>
           </div>
-          <div style="display:grid; gap:14px; padding:16px;">
-            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Other</div>
-            <div style="display:grid; gap:14px 16px;">${otherCells}</div>
+          <div style="display:grid; gap:10px; padding:10px;">
+            <div style="${labelStyle}">Other</div>
+            <div style="display:grid; gap:10px 12px;">${otherCells}</div>
           </div>
         </div>
-        <div style="display:grid; gap:14px;">
-          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Doppler Measurements</div>
-          <table style="width:100%; border-collapse:collapse; font-size:12px; color:#111827;">
+        <div style="display:grid; gap:8px;">
+          <div style="${labelStyle}">Doppler Measurements</div>
+          <table style="width:100%; border-collapse:collapse; font-size:10px; color:#111827;">
             <thead>
               <tr>
-                <th style="padding:8px; border:1px solid #1f2937; text-align:left; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">&nbsp;</th>
-                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Aortic</th>
-                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Pulmonic</th>
-                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Tricuspid</th>
-                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Mitral</th>
+                <th style="padding:5px 6px; border:1px solid #1f2937; text-align:left; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">&nbsp;</th>
+                <th style="padding:5px 6px; border:1px solid #1f2937; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">Aortic</th>
+                <th style="padding:5px 6px; border:1px solid #1f2937; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">Pulmonic</th>
+                <th style="padding:5px 6px; border:1px solid #1f2937; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">Tricuspid</th>
+                <th style="padding:5px 6px; border:1px solid #1f2937; font-size:10px; letter-spacing:0.04em; text-transform:uppercase;">Mitral</th>
               </tr>
             </thead>
             <tbody>${dopplerTable}</tbody>
           </table>
         </div>
-        <div style="display:grid; gap:8px;">
-          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Comments</div>
-          <div style="min-height:120px; border:1.5px solid rgba(17,24,39,0.7); border-radius:6px; padding:12px 14px; white-space:pre-wrap; font-size:14px; color:#111827;">${read(worksheet.comments)}</div>
+        <div style="display:grid; gap:6px;">
+          <div style="${labelStyle}">Comments</div>
+          <div style="min-height:72px; border:1px solid rgba(17,24,39,0.72); border-radius:4px; padding:8px 10px; white-space:pre-wrap; font-size:11px; line-height:1.25; color:#111827;">${read(worksheet.comments)}</div>
         </div>
       </div>
     </div>`;
