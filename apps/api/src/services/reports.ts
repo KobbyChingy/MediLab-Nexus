@@ -453,11 +453,23 @@ function composePrintableReportHtml(bundle: {
       .workspace { max-width: 940px; margin: 0 auto; display: grid; gap: 14px; }
       .actions { display: flex; justify-content: flex-end; }
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f2937; background: #ffffff; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); cursor: pointer; }
-      .echo-paper { background: #fff; border: 1px solid #1f2937; box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08); }
-      .echo-paper .echo-print-content { padding: 20px; }
+      .echo-sheet { background: #fff; border: 1px solid #1f2937; box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08); }
+      .echo-header { padding: 16px 20px 10px; border-bottom: 1px solid #1f2937; }
+      .letterhead { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+      .letterhead img { width: 64px; height: 64px; object-fit: contain; }
+      .letterhead-copy { display: grid; gap: 2px; }
+      .letterhead-copy h1, .letterhead-copy p, .letterhead-copy h2 { margin: 0; }
+      .facility-name { font-size: 22px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; }
+      .facility-meta { font-size: 13px; line-height: 1.5; }
+      .report-title { margin-top: 8px; font-size: 18px; font-weight: 800; text-transform: uppercase; text-decoration: underline; letter-spacing: 0.03em; }
+      .echo-paper .echo-print-content { padding: 18px 20px 20px; }
+      .echo-section { padding: 16px 20px 18px; border-top: 1px solid #d1d5db; }
       .echo-footer { background: #fff; border: 1px solid #1f2937; padding: 16px 20px 18px; display: grid; gap: 12px; }
       .echo-footer h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
       .echo-footer .body-copy { font-size: 15px; line-height: 1.65; }
+      .echo-print-content .body-copy { font-size: 15px; line-height: 1.6; }
+      .echo-print-content .body-copy p { margin: 0 0 0.7rem; }
+      .echo-print-content .body-copy p:last-child { margin-bottom: 0; }
       .signoff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 8px; }
       .signoff-block { min-height: 74px; display: flex; flex-direction: column; justify-content: flex-end; }
       .signoff-line { border-top: 1px solid #1f1f1f; padding-top: 6px; font-size: 14px; }
@@ -470,7 +482,7 @@ function composePrintableReportHtml(bundle: {
         body { padding: 0; background: #fff; }
         .workspace { max-width: none; }
         .print-button { display: none; }
-        .echo-paper, .echo-footer { box-shadow: none; }
+        .echo-sheet, .echo-footer { box-shadow: none; }
       }
     </style>
   </head>
@@ -479,13 +491,28 @@ function composePrintableReportHtml(bundle: {
       <div class="actions">
         <button class="print-button" type="button" onclick="window.print()">Print report</button>
       </div>
-      <article class="echo-paper">
-        <div class="echo-print-content body-copy">${renderRichText(description)}</div>
+      <article class="echo-sheet">
+        <header class="echo-header">
+          <div class="letterhead">
+            <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+            <div class="letterhead-copy">
+              <h1 class="facility-name">${escapeHtml(facility.name)}</h1>
+              ${facility.location ? `<p class="facility-meta">${escapeHtml(facility.location)}</p>` : ""}
+              ${facility.phone || facility.email ? `<p class="facility-meta">${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}
+              <h2 class="report-title">${escapeHtml(report.title)}</h2>
+            </div>
+          </div>
+        </header>
+        <div class="echo-print-content">
+          <div class="body-copy">${renderRichText(description)}</div>
+        </div>
+        ${(history && history !== "Not provided.") || impression || imagePaths.length ? `<section class="echo-section">` : ""}
+        ${(history && history !== "Not provided.") ? `<div><h3>Clinical History</h3><div class="body-copy">${renderRichText(history)}</div></div>` : ""}
+        ${impression ? `<div style="margin-top:${history && history !== "Not provided." ? "14px" : "0"}"><h3>Conclusion / Impression</h3><div class="body-copy">${renderRichText(impression)}</div></div>` : ""}
+        ${imagePaths.length ? `<div style="margin-top:${(history && history !== "Not provided.") || impression ? "14px" : "0"}"><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></div>` : ""}
+        ${(history && history !== "Not provided.") || impression || imagePaths.length ? `</section>` : ""}
       </article>
       <section class="echo-footer">
-        ${history && history !== "Not provided." ? `<div><h3>Clinical History</h3><div class="body-copy">${renderRichText(history)}</div></div>` : ""}
-        ${impression ? `<div><h3>Conclusion / Impression</h3><div class="body-copy">${renderRichText(impression)}</div></div>` : ""}
-        ${imagePaths.length ? `<div><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></div>` : ""}
         <div class="signoff">
           <div class="signoff-block">
             <div class="signoff-line">${escapeHtml(reportedBy)}</div>
