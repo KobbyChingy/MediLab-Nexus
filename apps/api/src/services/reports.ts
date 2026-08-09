@@ -231,6 +231,18 @@ function formatReportDate(value: Date) {
   return value.toLocaleDateString();
 }
 
+function isEchoWorksheetReport(report: {
+  title: string;
+  findings: string;
+}) {
+  const title = report.title.toLowerCase();
+  const findings = report.findings.toLowerCase();
+  return (
+    title.includes("echocardi") ||
+    findings.includes("adult echocardiography worksheet")
+  );
+}
+
 function getPdfImageBuffer(dataUrl: string) {
   const match = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/u);
   if (!match) {
@@ -420,6 +432,78 @@ function composePrintableReportHtml(bundle: {
   const description = report.findings.trim();
   const impression = report.impression.trim();
   const reportedBy = report.signedBy?.trim() || "Pending sign-off";
+
+  if (isEchoWorksheetReport(report)) {
+    const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(report.title)} - ${escapeHtml(report.patient.traceCode)}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", Arial, sans-serif;
+        ${getPrintTypographyCss(facility)}
+        color: #111827;
+        background: #efefed;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 18px; background: #efefed; }
+      .workspace { max-width: 940px; margin: 0 auto; display: grid; gap: 14px; }
+      .actions { display: flex; justify-content: flex-end; }
+      .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f2937; background: #ffffff; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); cursor: pointer; }
+      .echo-paper { background: #fff; border: 1px solid #1f2937; box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08); }
+      .echo-paper .echo-print-content { padding: 20px; }
+      .echo-footer { background: #fff; border: 1px solid #1f2937; padding: 16px 20px 18px; display: grid; gap: 12px; }
+      .echo-footer h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
+      .echo-footer .body-copy { font-size: 15px; line-height: 1.65; }
+      .signoff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 8px; }
+      .signoff-block { min-height: 74px; display: flex; flex-direction: column; justify-content: flex-end; }
+      .signoff-line { border-top: 1px solid #1f1f1f; padding-top: 6px; font-size: 14px; }
+      .signoff-role { margin-top: 4px; font-size: 12px; text-transform: uppercase; color: #4b5563; }
+      .facility-note { font-size: 12px; color: #4b5563; text-align: center; }
+      @media (max-width: 720px) {
+        .signoff { grid-template-columns: 1fr; }
+      }
+      @media print {
+        body { padding: 0; background: #fff; }
+        .workspace { max-width: none; }
+        .print-button { display: none; }
+        .echo-paper, .echo-footer { box-shadow: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="workspace">
+      <div class="actions">
+        <button class="print-button" type="button" onclick="window.print()">Print report</button>
+      </div>
+      <article class="echo-paper">
+        <div class="echo-print-content body-copy">${renderRichText(description)}</div>
+      </article>
+      <section class="echo-footer">
+        ${history && history !== "Not provided." ? `<div><h3>Clinical History</h3><div class="body-copy">${renderRichText(history)}</div></div>` : ""}
+        ${impression ? `<div><h3>Conclusion / Impression</h3><div class="body-copy">${renderRichText(impression)}</div></div>` : ""}
+        ${imagePaths.length ? `<div><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></div>` : ""}
+        <div class="signoff">
+          <div class="signoff-block">
+            <div class="signoff-line">${escapeHtml(reportedBy)}</div>
+            <div class="signoff-role">Reported by</div>
+          </div>
+          <div class="signoff-block">
+            <div class="signoff-line">${escapeHtml(reportDate)}</div>
+            <div class="signoff-role">Date</div>
+          </div>
+        </div>
+        <div class="facility-note">${escapeHtml(facility.footerMessage || "Preserve the Patient Trace Code on all printed copies.")}</div>
+      </section>
+    </div>
+  </body>
+</html>`;
+
+    return { fileName, html };
+  }
 
   const html = `<!doctype html>
 <html lang="en">
@@ -981,9 +1065,11 @@ export async function renderPrintableInvoiceHtml(
       .sheet { max-width: 840px; margin: 0 auto; background: #ffffff; border: 1px solid rgba(15, 42, 78, 0.1); border-radius: 24px; overflow: hidden; box-shadow: 0 18px 42px rgba(15, 42, 78, 0.1); }
       .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 28px 32px; background: linear-gradient(135deg, #0f6bff, #00c4b4); color: #ffffff; }
       .hero img { width: 74px; height: 74px; object-fit: contain; border-radius: 18px; background: rgba(255,255,255,0.12); padding: 8px; }
+      .hero-side { display: grid; justify-items: end; gap: 12px; }
       .hero h1, .hero p { margin: 0; }
       .hero h1 { margin-top: 8px; font-size: var(--print-title-size); }
       .contact { margin-top: 8px; opacity: 0.92; font-size: var(--print-copy-size); }
+      .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #0f3f75; background: #ffffff; cursor: pointer; }
       .section { padding: 22px 32px; border-top: 1px solid rgba(15, 42, 78, 0.08); }
       .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       .meta-card, .summary-card, .line-item { border: 1px solid rgba(15, 42, 78, 0.08); border-radius: 18px; padding: 16px; background: #f8fbff; }
@@ -995,7 +1081,7 @@ export async function renderPrintableInvoiceHtml(
       .line-item small { color: #64748b; }
       .footer { padding: 22px 32px; color: #5b6d82; background: #f8fbff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
       .developer-credit { color: #6b7280; font-size: 12px; }
-      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } }
+      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
     </style>
   </head>
   <body>
@@ -1006,7 +1092,10 @@ export async function renderPrintableInvoiceHtml(
           <h1>Invoice Statement</h1>
           <p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>
         </div>
-        <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+        <div class="hero-side">
+          <button class="print-button" type="button" onclick="window.print()">Print invoice</button>
+          <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+        </div>
       </header>
       <section class="section">
         <div class="meta-grid">
@@ -1095,9 +1184,11 @@ export async function renderPrintableFinanceAnalyticsHtml(
       .sheet { max-width: 980px; margin: 0 auto; background: #ffffff; border: 1px solid rgba(15, 42, 78, 0.1); border-radius: 24px; overflow: hidden; box-shadow: 0 18px 42px rgba(15, 42, 78, 0.1); }
       .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 28px 32px; background: linear-gradient(135deg, #0f6bff, #00c4b4); color: #ffffff; }
       .hero img { width: 74px; height: 74px; object-fit: contain; border-radius: 18px; background: rgba(255,255,255,0.12); padding: 8px; }
+      .hero-side { display: grid; justify-items: end; gap: 12px; }
       .hero h1, .hero p { margin: 0; }
       .hero h1 { margin-top: 8px; font-size: var(--print-title-size); }
       .contact { margin-top: 8px; opacity: 0.92; font-size: var(--print-copy-size); }
+      .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #0f3f75; background: #ffffff; cursor: pointer; }
       .section { padding: 22px 32px; border-top: 1px solid rgba(15, 42, 78, 0.08); }
       .section-title { margin: 0 0 14px; font-size: var(--print-section-title-size); color: #10233d; }
       .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -1108,7 +1199,7 @@ export async function renderPrintableFinanceAnalyticsHtml(
       .value { margin-top: 6px; font-size: var(--print-metric-size); font-weight: 700; color: #10233d; }
       .footer { padding: 22px 32px; color: #5b6d82; background: #f8fbff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
       .developer-credit { color: #6b7280; font-size: 12px; }
-      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } }
+      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
     </style>
   </head>
   <body>
@@ -1119,7 +1210,10 @@ export async function renderPrintableFinanceAnalyticsHtml(
           <h1>Financial Overview</h1>
           <p class="contact">${escapeHtml(rangeLabel)} · Generated ${escapeHtml(new Date(analytics.generatedAt).toLocaleString())}</p>
         </div>
-        <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+        <div class="hero-side">
+          <button class="print-button" type="button" onclick="window.print()">Print overview</button>
+          <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+        </div>
       </header>
       <section class="section">
         <div class="metric-grid">

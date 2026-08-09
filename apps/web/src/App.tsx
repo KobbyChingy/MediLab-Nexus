@@ -214,6 +214,62 @@ type ExpenseFiltersState = {
 
 type UltrasoundReportAssistState = ReportTemplateAssistPayload;
 
+type EchoWorksheetState = {
+  studyDate: string;
+  referringPhysician: string;
+  indications: string;
+  height: string;
+  weight: string;
+  bodySurfaceArea: string;
+  bloodPressureSystolic: string;
+  bloodPressureDiastolic: string;
+  lvidd: string;
+  lvids: string;
+  ivsd: string;
+  ivss: string;
+  lvpwd: string;
+  lvpws: string;
+  rvd: string;
+  aoRoot: string;
+  la: string;
+  avCusp: string;
+  lvot: string;
+  ef: string;
+  effusion: string;
+  thrombus: string;
+  wallMotion: string;
+  rvsp: string;
+  mitralEa: string;
+  mvp: string;
+  avCuspsTrileaflet: string;
+  aorticPpg: string;
+  pulmonicPpg: string;
+  tricuspidPpg: string;
+  mitralPpg: string;
+  aorticMpg: string;
+  pulmonicMpg: string;
+  tricuspidMpg: string;
+  mitralMpg: string;
+  aorticVelocity: string;
+  pulmonicVelocity: string;
+  tricuspidVelocity: string;
+  mitralVelocity: string;
+  aorticValveArea: string;
+  pulmonicValveArea: string;
+  tricuspidValveArea: string;
+  mitralValveArea: string;
+  aorticPht: string;
+  pulmonicPht: string;
+  tricuspidPht: string;
+  mitralPht: string;
+  aorticRegurge: string;
+  pulmonicRegurge: string;
+  tricuspidRegurge: string;
+  mitralRegurge: string;
+  comments: string;
+  conclusion: string;
+};
+
 type PresetAssistFieldConfig = {
   key: keyof UltrasoundReportAssistState;
   label: string;
@@ -319,6 +375,7 @@ const defaultUltrasoundReportAssistState: UltrasoundReportAssistState = {
   technique: "",
   measurementsText: "",
   recommendation: "",
+  echoWorksheetJson: "",
   gestationalAge: "",
   fetalHeartRate: "",
   placentaLocation: "",
@@ -336,6 +393,85 @@ const defaultUltrasoundReportAssistState: UltrasoundReportAssistState = {
   valveAssessment: "",
   pericardium: "",
 };
+
+function buildDefaultEchoWorksheetState(): EchoWorksheetState {
+  return {
+    studyDate: new Date().toISOString().slice(0, 10),
+    referringPhysician: "",
+    indications: "",
+    height: "",
+    weight: "",
+    bodySurfaceArea: "",
+    bloodPressureSystolic: "",
+    bloodPressureDiastolic: "",
+    lvidd: "",
+    lvids: "",
+    ivsd: "",
+    ivss: "",
+    lvpwd: "",
+    lvpws: "",
+    rvd: "",
+    aoRoot: "",
+    la: "",
+    avCusp: "",
+    lvot: "",
+    ef: "",
+    effusion: "",
+    thrombus: "",
+    wallMotion: "",
+    rvsp: "",
+    mitralEa: "",
+    mvp: "",
+    avCuspsTrileaflet: "",
+    aorticPpg: "",
+    pulmonicPpg: "",
+    tricuspidPpg: "",
+    mitralPpg: "",
+    aorticMpg: "",
+    pulmonicMpg: "",
+    tricuspidMpg: "",
+    mitralMpg: "",
+    aorticVelocity: "",
+    pulmonicVelocity: "",
+    tricuspidVelocity: "",
+    mitralVelocity: "",
+    aorticValveArea: "",
+    pulmonicValveArea: "",
+    tricuspidValveArea: "",
+    mitralValveArea: "",
+    aorticPht: "",
+    pulmonicPht: "",
+    tricuspidPht: "",
+    mitralPht: "",
+    aorticRegurge: "",
+    pulmonicRegurge: "",
+    tricuspidRegurge: "",
+    mitralRegurge: "",
+    comments: "",
+    conclusion: "",
+  };
+}
+
+function parseEchoWorksheetState(value: string) {
+  const defaults = buildDefaultEchoWorksheetState();
+  if (!value.trim()) {
+    return defaults;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<EchoWorksheetState>;
+    const nextState = { ...defaults };
+
+    (Object.keys(defaults) as Array<keyof EchoWorksheetState>).forEach((key) => {
+      const candidate = parsed[key];
+      nextState[key] = typeof candidate === "string" ? candidate : defaults[key];
+    });
+
+    return nextState;
+  } catch {
+    return defaults;
+  }
+}
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -597,6 +733,108 @@ const navSections: NavSectionDef[] = [
     key: "system",
     label: "System",
     items: ["auditLogs", "userManagement", "alerts", "settings"],
+  },
+];
+
+const echoMeasurementPairs: Array<{
+  left: { key: keyof EchoWorksheetState; label: string };
+  right: { key: keyof EchoWorksheetState; label: string };
+}> = [
+  {
+    left: { key: "lvidd", label: "LVIDd" },
+    right: { key: "rvd", label: "RVd" },
+  },
+  {
+    left: { key: "lvids", label: "LVIDs" },
+    right: { key: "aoRoot", label: "AO root" },
+  },
+  {
+    left: { key: "ivsd", label: "IVSd" },
+    right: { key: "la", label: "LA" },
+  },
+  {
+    left: { key: "ivss", label: "IVSs" },
+    right: { key: "avCusp", label: "AV cusp" },
+  },
+  {
+    left: { key: "lvpwd", label: "LVPWd" },
+    right: { key: "lvot", label: "LVOT" },
+  },
+  {
+    left: { key: "lvpws", label: "LVPWs" },
+    right: { key: "ef", label: "EF %" },
+  },
+];
+
+const echoOtherFieldRows: Array<{
+  key: keyof EchoWorksheetState;
+  label: string;
+  suffix?: string;
+}> = [
+  { key: "effusion", label: "Effusion" },
+  { key: "thrombus", label: "Thrombus" },
+  { key: "wallMotion", label: "Wall Motion" },
+  { key: "rvsp", label: "RVSP", suffix: "mmHg" },
+  { key: "mitralEa", label: "Mitral E/A" },
+  { key: "mvp", label: "MVP" },
+  { key: "avCuspsTrileaflet", label: "AV Cusps Trileaflet" },
+];
+
+const echoDopplerRows: Array<{
+  label: string;
+  unit: string;
+  aortic: keyof EchoWorksheetState;
+  pulmonic: keyof EchoWorksheetState;
+  tricuspid: keyof EchoWorksheetState;
+  mitral: keyof EchoWorksheetState;
+}> = [
+  {
+    label: "PPG",
+    unit: "mmHg",
+    aortic: "aorticPpg",
+    pulmonic: "pulmonicPpg",
+    tricuspid: "tricuspidPpg",
+    mitral: "mitralPpg",
+  },
+  {
+    label: "MPG",
+    unit: "mmHg",
+    aortic: "aorticMpg",
+    pulmonic: "pulmonicMpg",
+    tricuspid: "tricuspidMpg",
+    mitral: "mitralMpg",
+  },
+  {
+    label: "Velocity",
+    unit: "m/s",
+    aortic: "aorticVelocity",
+    pulmonic: "pulmonicVelocity",
+    tricuspid: "tricuspidVelocity",
+    mitral: "mitralVelocity",
+  },
+  {
+    label: "Valve Area",
+    unit: "cm2",
+    aortic: "aorticValveArea",
+    pulmonic: "pulmonicValveArea",
+    tricuspid: "tricuspidValveArea",
+    mitral: "mitralValveArea",
+  },
+  {
+    label: "PHT",
+    unit: "ms",
+    aortic: "aorticPht",
+    pulmonic: "pulmonicPht",
+    tricuspid: "tricuspidPht",
+    mitral: "mitralPht",
+  },
+  {
+    label: "Regurge",
+    unit: "",
+    aortic: "aorticRegurge",
+    pulmonic: "pulmonicRegurge",
+    tricuspid: "tricuspidRegurge",
+    mitral: "mitralRegurge",
   },
 ];
 
@@ -1072,6 +1310,174 @@ function richTextToPlainText(value: string) {
     .trim();
 }
 
+function buildEchoWorksheetHtml(params: {
+  patient: PatientRecord | null;
+  traceCode: string;
+  worksheet: EchoWorksheetState;
+  technician: string;
+}) {
+  const { patient, traceCode, worksheet, technician } = params;
+  const read = (value: string) => escapeEditorHtml(value.trim() || " ");
+  const patientName = patient
+    ? `${patient.firstName} ${patient.middleName ?? ""} ${patient.lastName}`
+        .replace(/\s+/gu, " ")
+        .trim()
+    : "";
+  const patientSex = patient?.gender?.trim() ?? "";
+  const patientDob = formatDateOnly(patient?.dateOfBirth);
+  const patientAge = formatPatientAge(patient?.dateOfBirth);
+
+  const measurementTable = echoMeasurementPairs
+    .map(
+      ({ left, right }) => `
+        <tr>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700;">${escapeEditorHtml(left.label)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937; min-width: 88px;">${read(worksheet[left.key])}</td>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700;">${escapeEditorHtml(right.label)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937; min-width: 88px;">${read(worksheet[right.key])}</td>
+        </tr>`,
+    )
+    .join("");
+
+  const otherTable = echoOtherFieldRows
+    .map(
+      (field) => `
+        <tr>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700; width: 44%;">${escapeEditorHtml(field.label)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #1f2937;">${read(worksheet[field.key])}${field.suffix ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(field.suffix)}</span>` : ""}</td>
+        </tr>`,
+    )
+    .join("");
+
+  const dopplerTable = echoDopplerRows
+    .map(
+      (row) => `
+        <tr>
+          <th style="padding: 7px 8px; border: 1px solid #1f2937; text-align: left; font-size: 12px;">${escapeEditorHtml(row.label)}</th>
+          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.aortic])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
+          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.pulmonic])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
+          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.tricuspid])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
+          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.mitral])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
+        </tr>`,
+    )
+    .join("");
+
+  return `
+    <div style="border: 2px solid #111827; border-radius: 18px; padding: 20px; background: #ffffff; color: #111827; font-family: 'Segoe UI', Arial, sans-serif;">
+      <div style="display: grid; gap: 14px;">
+        <div style="font-size: 20px; font-weight: 800; letter-spacing: 0.01em;">Adult Echocardiography Worksheet</div>
+        <div style="display: grid; gap: 10px; font-size: 13px;">
+          <div style="display: grid; grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(140px, 1fr)); gap: 10px;">
+            <div><strong>Name:</strong> ${read(patientName)}</div>
+            <div><strong>Date:</strong> ${read(formatDateOnly(worksheet.studyDate))}</div>
+            <div><strong>ID:</strong> ${read(traceCode)}</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+            <div><strong>DOB:</strong> ${read(patientDob)}</div>
+            <div><strong>Age:</strong> ${read(patientAge)}</div>
+            <div><strong>Sex:</strong> ${read(patientSex)}</div>
+            <div style="grid-column: span 2;"><strong>Referring Physician:</strong> ${read(worksheet.referringPhysician)}</div>
+          </div>
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 10px;">
+            <div><strong>Indications:</strong> ${read(worksheet.indications)}</div>
+            <div><strong>Tech:</strong> ${read(technician)}</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+            <div><strong>Height:</strong> ${read(worksheet.height)}</div>
+            <div><strong>Weight:</strong> ${read(worksheet.weight)}</div>
+            <div><strong>BSA:</strong> ${read(worksheet.bodySurfaceArea)}</div>
+            <div><strong>BP:</strong> ${read(worksheet.bloodPressureSystolic)} / ${read(worksheet.bloodPressureDiastolic)}</div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.9fr); gap: 0; border: 1px solid #1f2937;">
+          <div style="padding: 12px; border-right: 1px solid #1f2937;">
+            <div style="font-weight: 800; margin-bottom: 10px;">M-Mode / 2D Measurements</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <tbody>${measurementTable}</tbody>
+            </table>
+          </div>
+          <div style="padding: 12px;">
+            <div style="font-weight: 800; margin-bottom: 10px;">Other</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+              <tbody>${otherTable}</tbody>
+            </table>
+          </div>
+        </div>
+        <div style="display: grid; gap: 10px;">
+          <div style="font-weight: 800;">Doppler Measurements</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+              <tr>
+                <th style="padding: 8px; border: 1px solid #1f2937; text-align: left;">&nbsp;</th>
+                <th style="padding: 8px; border: 1px solid #1f2937;">Aortic</th>
+                <th style="padding: 8px; border: 1px solid #1f2937;">Pulmonic</th>
+                <th style="padding: 8px; border: 1px solid #1f2937;">Tricuspid</th>
+                <th style="padding: 8px; border: 1px solid #1f2937;">Mitral</th>
+              </tr>
+            </thead>
+            <tbody>${dopplerTable}</tbody>
+          </table>
+        </div>
+        <div style="display: grid; gap: 8px;">
+          <div style="font-weight: 800;">Comments</div>
+          <div style="min-height: 92px; border: 1px solid #1f2937; padding: 10px 12px; white-space: pre-wrap;">${read(worksheet.comments)}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildEchoWorksheetReportContent(params: {
+  patient: PatientRecord | null;
+  traceCode: string;
+  worksheet: EchoWorksheetState;
+  technician: string;
+  title: string;
+}) {
+  const { patient, traceCode, worksheet, technician, title } = params;
+  const medicalHistory = buildRichTextTextBlock(
+    [
+      worksheet.indications.trim()
+        ? `Clinical indication: ${worksheet.indications.trim()}`
+        : "Clinical indication: Adult echocardiography review.",
+      worksheet.referringPhysician.trim()
+        ? `Referring physician: ${worksheet.referringPhysician.trim()}`
+        : "",
+      technician.trim() ? `Tech: ${technician.trim()}` : "",
+      worksheet.height.trim() ? `Height: ${worksheet.height.trim()}` : "",
+      worksheet.weight.trim() ? `Weight: ${worksheet.weight.trim()}` : "",
+      worksheet.bodySurfaceArea.trim()
+        ? `BSA: ${worksheet.bodySurfaceArea.trim()}`
+        : "",
+      worksheet.bloodPressureSystolic.trim() || worksheet.bloodPressureDiastolic.trim()
+        ? `BP: ${worksheet.bloodPressureSystolic.trim()} / ${worksheet.bloodPressureDiastolic.trim()}`
+        : "",
+      patient?.traceCode
+        ? `Trace code: ${patient.traceCode}`
+        : traceCode
+          ? `Trace code: ${traceCode}`
+          : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  return {
+    medicalHistory,
+    summary: worksheet.indications.trim() || title.trim(),
+    findings: buildEchoWorksheetHtml({
+      patient,
+      traceCode,
+      worksheet,
+      technician,
+    }),
+    impression: ensureRichTextHtml(
+      worksheet.conclusion.trim() ||
+        worksheet.comments.trim() ||
+        "Adult echocardiography worksheet completed.",
+    ),
+  };
+}
+
 function extractStructuredTemplateSections(text: string) {
   const normalized = normalizeImportedTemplateText(text);
   const sectionPattern =
@@ -1284,6 +1690,33 @@ function buildLocalTraceCode(
 
 function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : "Not recorded";
+}
+
+function formatDateOnly(value?: string | null) {
+  return value ? new Date(value).toLocaleDateString() : "";
+}
+
+function formatPatientAge(value?: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const birthDate = new Date(value);
+  if (Number.isNaN(birthDate.getTime())) {
+    return "";
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDelta = today.getMonth() - birthDate.getMonth();
+  if (
+    monthDelta < 0 ||
+    (monthDelta === 0 && today.getDate() < birthDate.getDate())
+  ) {
+    age -= 1;
+  }
+
+  return age >= 0 ? String(age) : "";
 }
 
 function readFileAsDataUrl(file: File) {
@@ -2070,6 +2503,9 @@ export default function App() {
   });
   const [ultrasoundReportAssist, setUltrasoundReportAssist] =
     useState<UltrasoundReportAssistState>(defaultUltrasoundReportAssistState);
+  const [echoWorksheet, setEchoWorksheet] = useState<EchoWorksheetState>(() =>
+    buildDefaultEchoWorksheetState(),
+  );
   const [reportImagePathsText, setReportImagePathsText] = useState("");
   const [reportPatientQuery, setReportPatientQuery] = useState("");
   const [qcForm, setQcForm] = useState({
@@ -3149,7 +3585,7 @@ export default function App() {
   const filteredRegistrationServices = useMemo(() => {
     const query = registrationServiceQuery.trim().toLowerCase();
     if (!query) {
-      return [];
+      return sonographyIntakeCatalog;
     }
 
     return sonographyIntakeCatalog.filter((item) =>
@@ -3388,6 +3824,10 @@ export default function App() {
       null,
     [reportForm.orderId, reportOrdersForSelectedPatient, reportableOrders],
   );
+  const selectedReportPatient = useMemo(
+    () => patients.find((patient) => patient.id === reportForm.patientId) ?? null,
+    [patients, reportForm.patientId],
+  );
   const selectedReportImagingStudy = useMemo(
     () =>
       workflow.imaging.find((study) => study.orderId === reportForm.orderId) ??
@@ -3408,6 +3848,8 @@ export default function App() {
         : [],
     [reportForm.templateKind],
   );
+  const isEchoWorksheetTemplate =
+    reportForm.templateKind === "ULTRASOUND_ECHOCARDIOGRAPHY";
   useEffect(() => {
     if (!reportForm.patientId) {
       if (!reportForm.orderId) {
@@ -3524,6 +3966,34 @@ export default function App() {
         "",
     }));
   }, [reportForm.templateKind, selectedReportImagingStudy]);
+  useEffect(() => {
+    if (reportForm.templateKind !== "ULTRASOUND_ECHOCARDIOGRAPHY") {
+      return;
+    }
+
+    setEchoWorksheet((current) => ({
+      ...buildDefaultEchoWorksheetState(),
+      ...current,
+      studyDate: current.studyDate || new Date().toISOString().slice(0, 10),
+      referringPhysician:
+        current.referringPhysician ||
+        selectedReportPatient?.referralDoctorName ||
+        selectedReportPatient?.referralName ||
+        "",
+      indications:
+        current.indications || richTextToPlainText(reportForm.medicalHistory),
+      conclusion:
+        current.conclusion ||
+        richTextToPlainText(reportForm.impression) ||
+        "Adult echocardiography worksheet completed.",
+    }));
+  }, [
+    reportForm.templateKind,
+    reportForm.orderId,
+    reportForm.medicalHistory,
+    reportForm.impression,
+    selectedReportPatient,
+  ]);
   const labServices = useMemo(
     () =>
       services
@@ -3581,6 +4051,14 @@ export default function App() {
       ].some((value) => value.toLowerCase().includes(query));
     });
   }, [selectedServiceKind, selectedServiceState, serviceSearchQuery, services]);
+  const filteredLabServiceRows = useMemo(
+    () => filteredServiceRows.filter((service) => service.kind === "TEST"),
+    [filteredServiceRows],
+  );
+  const filteredImagingServiceRows = useMemo(
+    () => filteredServiceRows.filter((service) => service.kind === "IMAGING"),
+    [filteredServiceRows],
+  );
   const activeServiceCount = useMemo(
     () => filteredServiceRows.filter((service) => service.isActive !== false).length,
     [filteredServiceRows],
@@ -4009,7 +4487,7 @@ export default function App() {
 
     if (
       !window.confirm(
-        `Delete patient ${selectedPatient.traceCode}? This only works when no dependent workflow records exist.`,
+        `Delete patient ${selectedPatient.traceCode}? This removes the patient together with linked orders, samples, reports, invoices, receipts, and queued notifications.`,
       )
     ) {
       return;
@@ -4229,16 +4707,25 @@ export default function App() {
               });
               statusMessage = `Patient ${created.traceCode} registered, service request added, payment captured, and receipt generated`;
               await handlePreviewReceipt(paymentResponse.payment.id);
-            } catch {
-              statusMessage = `Patient ${created.traceCode} registered and service request added, but payment could not be captured`;
+            } catch (error) {
+              statusMessage =
+                error instanceof Error
+                  ? `Patient ${created.traceCode} registered and service request added, but payment failed: ${error.message}`
+                  : `Patient ${created.traceCode} registered and service request added, but payment could not be captured`;
             }
+          } else if (intakePayment.collectNow && !canManageFinance) {
+            statusMessage = `Patient ${created.traceCode} registered and service request added. Payment requires a finance-capable account.`;
           }
-        } catch {
-          statusMessage = `Patient ${created.traceCode} registered, but the service request could not be created`;
+        } catch (error) {
+          statusMessage =
+            error instanceof Error
+              ? `Patient ${created.traceCode} registered, but the service request failed: ${error.message}`
+              : `Patient ${created.traceCode} registered, but the service request could not be created`;
         }
       }
 
-      setStatusText(statusMessage);
+      await loadOperationalData();
+      openPatient(created);
       setPatientForm(buildPatientDraft());
       setPatientReferralCommission("");
       setRegistrationItemIds([]);
@@ -4261,10 +4748,12 @@ export default function App() {
         method: "CASH",
         reference: "",
       });
-      await loadOperationalData();
-    } catch {
+      setStatusText(statusMessage);
+    } catch (error) {
       setStatusText(
-        "Patient registration failed. Verify server connectivity and try again.",
+        error instanceof Error
+          ? error.message
+          : "Patient registration failed. Verify server connectivity and try again.",
       );
     }
   }
@@ -4403,6 +4892,7 @@ export default function App() {
       });
       setReportImagePathsText("");
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
+      setEchoWorksheet(buildDefaultEchoWorksheetState());
       await loadOperationalData();
       setStatusText(
         `Scan report ${payload.title} saved as ${formatStatusLabel(payload.status)}`,
@@ -4427,6 +4917,18 @@ export default function App() {
       return null;
     }
 
+    const echoReportContent = isEchoWorksheetTemplate
+      ? buildEchoWorksheetReportContent({
+          patient: selectedReportPatient,
+          traceCode:
+            selectedReportPatient?.traceCode ||
+            selectedReportOrder?.patientTraceCode ||
+            "",
+          worksheet: echoWorksheet,
+          technician: ultrasoundReportAssist.sonographerName,
+          title: reportForm.title,
+        })
+      : null;
     const presetMeasurementLines = isUltrasoundTemplate(reportForm.templateKind)
       ? buildPresetMeasurementLines(
           reportForm.templateKind,
@@ -4437,7 +4939,9 @@ export default function App() {
       ultrasoundReportAssist.measurementsText.trim(),
       ...presetMeasurementLines,
     ].filter(Boolean);
-    const findings = isUltrasoundTemplate(reportForm.templateKind)
+    const findings = echoReportContent
+      ? echoReportContent.findings
+      : isUltrasoundTemplate(reportForm.templateKind)
       ? joinRichTextSections(
           ultrasoundReportAssist.technique
             ? buildRichTextTextBlock(
@@ -4457,7 +4961,9 @@ export default function App() {
             : "",
         )
       : ensureRichTextHtml(reportForm.findings);
-    const impression = isUltrasoundTemplate(reportForm.templateKind)
+    const impression = echoReportContent
+      ? echoReportContent.impression
+      : isUltrasoundTemplate(reportForm.templateKind)
       ? joinRichTextSections(
           ensureRichTextHtml(reportForm.impression),
           ultrasoundReportAssist.recommendation
@@ -4480,8 +4986,12 @@ export default function App() {
       ...reportForm,
       title: reportForm.title.trim(),
       signedBy: reportForm.signedBy.trim(),
-      medicalHistory: ensureRichTextHtml(reportForm.medicalHistory),
-      summary: reportForm.summary.trim() || reportForm.title.trim(),
+      medicalHistory: echoReportContent
+        ? echoReportContent.medicalHistory
+        : ensureRichTextHtml(reportForm.medicalHistory),
+      summary: echoReportContent
+        ? echoReportContent.summary
+        : reportForm.summary.trim() || reportForm.title.trim(),
       findings,
       impression,
       imagePaths: reportImagePathsText
@@ -4546,16 +5056,42 @@ export default function App() {
       ...defaultUltrasoundReportAssistState,
       ...template.assist,
     });
+    setEchoWorksheet(parseEchoWorksheetState(template.assist.echoWorksheetJson));
     setReportTemplateName(template.name);
     setStatusText(`Loaded report template ${template.name}`);
   }
 
   async function handleSaveReportTemplate() {
     const templateName = reportTemplateName.trim() || reportForm.title.trim();
+    const echoReportContent = isEchoWorksheetTemplate
+      ? buildEchoWorksheetReportContent({
+          patient: selectedReportPatient,
+          traceCode:
+            selectedReportPatient?.traceCode ||
+            selectedReportOrder?.patientTraceCode ||
+            "",
+          worksheet: echoWorksheet,
+          technician: ultrasoundReportAssist.sonographerName,
+          title: reportForm.title,
+        })
+      : null;
+    const summaryText = echoReportContent
+      ? echoReportContent.summary
+      : reportForm.summary.trim();
+    const historyHtml = echoReportContent
+      ? echoReportContent.medicalHistory
+      : ensureRichTextHtml(reportForm.medicalHistory);
+    const findingsHtml = echoReportContent
+      ? echoReportContent.findings
+      : ensureRichTextHtml(reportForm.findings);
+    const impressionHtml = echoReportContent
+      ? echoReportContent.impression
+      : ensureRichTextHtml(reportForm.impression);
+
     if (
       !templateName ||
-      reportForm.summary.trim().length < 3 ||
-      richTextToPlainText(reportForm.findings).length < 3
+      summaryText.length < 3 ||
+      richTextToPlainText(findingsHtml).length < 3
     ) {
       setStatusText(
         "Add a template name plus report summary/findings before saving the template.",
@@ -4572,11 +5108,14 @@ export default function App() {
             name: templateName,
             templateKind: reportForm.templateKind,
             title: reportForm.title,
-            medicalHistory: ensureRichTextHtml(reportForm.medicalHistory),
-            summary: reportForm.summary,
-            findings: ensureRichTextHtml(reportForm.findings),
-            impression: ensureRichTextHtml(reportForm.impression),
-            assist: ultrasoundReportAssist,
+            medicalHistory: historyHtml,
+            summary: summaryText,
+            findings: findingsHtml,
+            impression: impressionHtml,
+            assist: {
+              ...ultrasoundReportAssist,
+              echoWorksheetJson: JSON.stringify(echoWorksheet),
+            },
           } satisfies ReportTemplateInput),
         },
       );
@@ -4618,9 +5157,27 @@ export default function App() {
 
   async function handleExportCurrentTemplateDocument() {
     const templateName = reportTemplateName.trim() || reportForm.title.trim();
-    const descriptionHtml = ensureRichTextHtml(reportForm.findings);
-    const impressionHtml = ensureRichTextHtml(reportForm.impression);
-    const historyHtml = ensureRichTextHtml(reportForm.medicalHistory);
+    const echoReportContent = isEchoWorksheetTemplate
+      ? buildEchoWorksheetReportContent({
+          patient: selectedReportPatient,
+          traceCode:
+            selectedReportPatient?.traceCode ||
+            selectedReportOrder?.patientTraceCode ||
+            "",
+          worksheet: echoWorksheet,
+          technician: ultrasoundReportAssist.sonographerName,
+          title: reportForm.title,
+        })
+      : null;
+    const descriptionHtml = echoReportContent
+      ? echoReportContent.findings
+      : ensureRichTextHtml(reportForm.findings);
+    const impressionHtml = echoReportContent
+      ? echoReportContent.impression
+      : ensureRichTextHtml(reportForm.impression);
+    const historyHtml = echoReportContent
+      ? echoReportContent.medicalHistory
+      : ensureRichTextHtml(reportForm.medicalHistory);
 
     if (!templateName || richTextToPlainText(descriptionHtml).length < 3) {
       setStatusText("Add a template name and document content before export.");
@@ -4881,6 +5438,16 @@ export default function App() {
     value: string,
   ) {
     setUltrasoundReportAssist((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateEchoWorksheetField(
+    field: keyof EchoWorksheetState,
+    value: string,
+  ) {
+    setEchoWorksheet((current) => ({
       ...current,
       [field]: value,
     }));
@@ -5792,7 +6359,7 @@ export default function App() {
 
     if (
       !window.confirm(
-        `Delete ${service.name}? This only works when the service has not been used in workflow records.`,
+        `Delete ${service.name}? This removes the service and deletes any linked orders, reports, scans, invoices, and payments that use it.`,
       )
     ) {
       return;
@@ -5814,6 +6381,89 @@ export default function App() {
           : "Service could not be deleted right now",
       );
     }
+  }
+
+  function renderServiceTable(
+    rows: CatalogSeedItem[],
+    emptyMessage: string,
+  ) {
+    if (rows.length === 0) {
+      return <div className="chart-empty audit-log-empty-state">{emptyMessage}</div>;
+    }
+
+    return (
+      <div className="audit-log-table-shell compact-scroll admin-table-shell">
+        <table className="audit-log-table admin-table">
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Code</th>
+              <th>Type</th>
+              <th>Price</th>
+              <th>TAT</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((service) => (
+              <tr key={service.id ?? service.code}>
+                <td>
+                  <strong>{service.name}</strong>
+                  <div className="admin-table-subcopy">
+                    {service.kind === "IMAGING"
+                      ? service.modality ?? "Imaging"
+                      : service.specimenType ?? "Lab test"}
+                  </div>
+                </td>
+                <td>{service.code}</td>
+                <td>{service.kind === "IMAGING" ? "Imaging" : "Lab test"}</td>
+                <td>{formatMoney(service.priceCents)}</td>
+                <td>{service.tatMinutes} min</td>
+                <td>
+                  <span
+                    className={`tag ${service.isActive === false ? "tag-critical" : "tag-good"}`}
+                  >
+                    {service.isActive === false ? "Archived" : "Active"}
+                  </span>
+                </td>
+                <td>
+                  <div className="inline-actions admin-table-actions">
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() =>
+                        service.id
+                          ? startEditServiceEditor(service.id)
+                          : setStatusText("This service cannot be edited yet.")
+                      }
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() => handleToggleServiceActive(service)}
+                      disabled={!canManageServices}
+                    >
+                      {service.isActive === false ? "Reactivate" : "Archive"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-action small"
+                      onClick={() => void handleDeleteService(service)}
+                      disabled={!canManageServices}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   async function handleDownloadPdf(reportId: string, title: string) {
@@ -7151,49 +7801,45 @@ export default function App() {
               <small className="section-note">
                 {registrationServiceQuery.trim()
                   ? `${filteredRegistrationServices.length} registered service(s) match.`
-                  : "Type to search the available services."}
+                  : `${filteredRegistrationServices.length} registered service(s) available.`}
               </small>
             </div>
-            {registrationServiceQuery.trim() ? (
-              <div className="service-selection-list full-width">
-                {filteredRegistrationServices.map((item) => {
-                  const value = item.id ?? item.code;
-                  const checked = registrationItemIds.includes(value);
-                  return (
-                    <label
-                      key={`intake-${item.code}`}
-                      className={`service-option-row ${checked ? "selected" : ""}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          setRegistrationItemIds((current) =>
-                            current.includes(value)
-                              ? current.filter((entry) => entry !== value)
-                              : [...current, value],
-                          )
-                        }
-                      />
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span>
-                          {item.department} ·{" "}
-                          {item.modality ?? item.specimenType ?? "General"}
-                        </span>
-                        <small>{item.code}</small>
-                      </div>
-                      <div className="service-option-meta">
-                        <small>{formatMoney(item.priceCents)}</small>
-                        <small>{item.tatMinutes} min TAT</small>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : null}
-            {registrationServiceQuery.trim() &&
-            filteredRegistrationServices.length === 0 ? (
+            <div className="service-selection-list full-width">
+              {filteredRegistrationServices.map((item) => {
+                const value = item.id ?? item.code;
+                const checked = registrationItemIds.includes(value);
+                return (
+                  <label
+                    key={`intake-${item.code}`}
+                    className={`service-option-row ${checked ? "selected" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setRegistrationItemIds((current) =>
+                          current.includes(value)
+                            ? current.filter((entry) => entry !== value)
+                            : [...current, value],
+                        )
+                      }
+                    />
+                    <div>
+                      <strong>{item.name}</strong>
+                      <span>
+                        {item.department} · {item.modality ?? item.specimenType ?? "General"}
+                      </span>
+                      <small>{item.code}</small>
+                    </div>
+                    <div className="service-option-meta">
+                      <small>{formatMoney(item.priceCents)}</small>
+                      <small>{item.tatMinutes} min TAT</small>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            {filteredRegistrationServices.length === 0 ? (
               <p className="section-note full-width">
                 No registered services match that search yet.
               </p>
@@ -8377,8 +9023,8 @@ export default function App() {
             <div>
               <h2>Scan Reports</h2>
               <p>
-                Full-screen scan reporting with live preview and print while
-                you type.
+                Single-sheet scan reporting with a dedicated worksheet for
+                echocardiography and printable previews.
               </p>
             </div>
           </div>
@@ -8602,7 +9248,314 @@ export default function App() {
                 </p>
               </div>
             ) : null}
-            {isUltrasoundTemplate(reportForm.templateKind) ? (
+            {isEchoWorksheetTemplate ? (
+              <div className="full-width echo-worksheet-shell">
+                <div className="echo-worksheet-intro">
+                  <div>
+                    <span className="eyebrow">Adult echocardiography</span>
+                    <h3>Single worksheet layout</h3>
+                    <p>
+                      Reception enters the header details here, then the study
+                      findings are completed directly on the worksheet.
+                    </p>
+                  </div>
+                </div>
+                <div className="echo-worksheet-paper">
+                  <div className="echo-worksheet-title">
+                    Adult Echocardiography Worksheet
+                  </div>
+                  <div className="echo-info-grid echo-info-grid--top">
+                    <label className="echo-line-field echo-line-field--wide">
+                      <span>Name</span>
+                      <input
+                        className="echo-line-input"
+                        value={
+                          selectedReportPatient
+                            ? `${selectedReportPatient.firstName} ${selectedReportPatient.middleName ?? ""} ${selectedReportPatient.lastName}`
+                                .replace(/\s+/gu, " ")
+                                .trim()
+                            : ""
+                        }
+                        readOnly
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>Date</span>
+                      <input
+                        className="echo-line-input"
+                        type="date"
+                        value={echoWorksheet.studyDate}
+                        onChange={(event) =>
+                          updateEchoWorksheetField("studyDate", event.target.value)
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>ID</span>
+                      <input
+                        className="echo-line-input"
+                        value={
+                          selectedReportPatient?.traceCode ||
+                          selectedReportOrder?.patientTraceCode ||
+                          ""
+                        }
+                        readOnly
+                      />
+                    </label>
+                  </div>
+                  <div className="echo-info-grid echo-info-grid--meta">
+                    <label className="echo-line-field">
+                      <span>DOB</span>
+                      <input
+                        className="echo-line-input"
+                        value={formatDateOnly(selectedReportPatient?.dateOfBirth)}
+                        readOnly
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>Age</span>
+                      <input
+                        className="echo-line-input"
+                        value={formatPatientAge(selectedReportPatient?.dateOfBirth)}
+                        readOnly
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>Sex</span>
+                      <input
+                        className="echo-line-input"
+                        value={selectedReportPatient?.gender ?? ""}
+                        readOnly
+                      />
+                    </label>
+                    <label className="echo-line-field echo-line-field--double">
+                      <span>Referring Physician</span>
+                      <input
+                        className="echo-line-input"
+                        value={echoWorksheet.referringPhysician}
+                        onChange={(event) =>
+                          updateEchoWorksheetField(
+                            "referringPhysician",
+                            event.target.value,
+                          )
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                  </div>
+                  <div className="echo-info-grid echo-info-grid--indications">
+                    <label className="echo-line-field echo-line-field--wide">
+                      <span>Indications</span>
+                      <textarea
+                        className="echo-line-textarea"
+                        rows={2}
+                        value={echoWorksheet.indications}
+                        onChange={(event) =>
+                          updateEchoWorksheetField("indications", event.target.value)
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>Tech</span>
+                      <input
+                        className="echo-line-input"
+                        value={ultrasoundReportAssist.sonographerName}
+                        onChange={(event) =>
+                          updateUltrasoundAssistField(
+                            "sonographerName",
+                            event.target.value,
+                          )
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                  </div>
+                  <div className="echo-info-grid echo-info-grid--vitals">
+                    <label className="echo-line-field">
+                      <span>Height</span>
+                      <input
+                        className="echo-line-input"
+                        value={echoWorksheet.height}
+                        onChange={(event) =>
+                          updateEchoWorksheetField("height", event.target.value)
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>Weight</span>
+                      <input
+                        className="echo-line-input"
+                        value={echoWorksheet.weight}
+                        onChange={(event) =>
+                          updateEchoWorksheetField("weight", event.target.value)
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                    <label className="echo-line-field">
+                      <span>BSA</span>
+                      <input
+                        className="echo-line-input"
+                        value={echoWorksheet.bodySurfaceArea}
+                        onChange={(event) =>
+                          updateEchoWorksheetField(
+                            "bodySurfaceArea",
+                            event.target.value,
+                          )
+                        }
+                        disabled={!canWriteReports}
+                      />
+                    </label>
+                    <div className="echo-line-field echo-line-field--bp">
+                      <span>BP</span>
+                      <div className="echo-bp-row">
+                        <input
+                          className="echo-line-input"
+                          value={echoWorksheet.bloodPressureSystolic}
+                          onChange={(event) =>
+                            updateEchoWorksheetField(
+                              "bloodPressureSystolic",
+                              event.target.value,
+                            )
+                          }
+                          disabled={!canWriteReports}
+                        />
+                        <span>/</span>
+                        <input
+                          className="echo-line-input"
+                          value={echoWorksheet.bloodPressureDiastolic}
+                          onChange={(event) =>
+                            updateEchoWorksheetField(
+                              "bloodPressureDiastolic",
+                              event.target.value,
+                            )
+                          }
+                          disabled={!canWriteReports}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="echo-worksheet-slab">
+                    <section className="echo-worksheet-block echo-worksheet-block--measurements">
+                      <h4>M-Mode/2D Measurements</h4>
+                      <div className="echo-measurement-grid">
+                        {echoMeasurementPairs.flatMap(({ left, right }) =>
+                          [left, right].map((field) => (
+                            <label key={field.key} className="echo-measurement-field">
+                              <span>{field.label}</span>
+                              <input
+                                className="echo-line-input"
+                                value={echoWorksheet[field.key]}
+                                onChange={(event) =>
+                                  updateEchoWorksheetField(
+                                    field.key,
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={!canWriteReports}
+                              />
+                            </label>
+                          )),
+                        )}
+                      </div>
+                    </section>
+                    <section className="echo-worksheet-block echo-worksheet-block--other">
+                      <h4>Other</h4>
+                      <div className="echo-other-grid">
+                        {echoOtherFieldRows.map((field) => (
+                          <label key={field.key} className="echo-measurement-field">
+                            <span>{field.label}</span>
+                            <div className="echo-inline-field">
+                              <input
+                                className="echo-line-input"
+                                value={echoWorksheet[field.key]}
+                                onChange={(event) =>
+                                  updateEchoWorksheetField(
+                                    field.key,
+                                    event.target.value,
+                                  )
+                                }
+                                disabled={!canWriteReports}
+                              />
+                              {field.suffix ? (
+                                <small>{field.suffix}</small>
+                              ) : null}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                  <section className="echo-doppler-panel">
+                    <h4>Doppler Measurements</h4>
+                    <div className="echo-doppler-table-shell">
+                      <table className="echo-doppler-table">
+                        <thead>
+                          <tr>
+                            <th>&nbsp;</th>
+                            <th>Aortic</th>
+                            <th>Pulmonic</th>
+                            <th>Tricuspid</th>
+                            <th>Mitral</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {echoDopplerRows.map((row) => (
+                            <tr key={row.label}>
+                              <th>{row.label}</th>
+                              {[row.aortic, row.pulmonic, row.tricuspid, row.mitral].map(
+                                (fieldKey) => (
+                                  <td key={fieldKey}>
+                                    <input
+                                      className="echo-table-input"
+                                      value={echoWorksheet[fieldKey]}
+                                      onChange={(event) =>
+                                        updateEchoWorksheetField(
+                                          fieldKey,
+                                          event.target.value,
+                                        )
+                                      }
+                                      disabled={!canWriteReports}
+                                    />
+                                    {row.unit ? <small>{row.unit}</small> : null}
+                                  </td>
+                                ),
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                  <label className="echo-comments-block">
+                    <span>Comments</span>
+                    <textarea
+                      rows={4}
+                      value={echoWorksheet.comments}
+                      onChange={(event) =>
+                        updateEchoWorksheetField("comments", event.target.value)
+                      }
+                      disabled={!canWriteReports}
+                    />
+                  </label>
+                </div>
+                <label className="full-width">
+                  <span>Conclusion / impression</span>
+                  <textarea
+                    rows={3}
+                    value={echoWorksheet.conclusion}
+                    onChange={(event) =>
+                      updateEchoWorksheetField("conclusion", event.target.value)
+                    }
+                    placeholder="Summarize the adult echocardiography conclusion"
+                    disabled={!canWriteReports}
+                  />
+                </label>
+              </div>
+            ) : isUltrasoundTemplate(reportForm.templateKind) ? (
               <>
                 <label>
                   <span>Sonographer</span>
@@ -8636,106 +9589,110 @@ export default function App() {
                 </label>
               </>
             ) : null}
-            <Suspense fallback={<RichTextEditorFallback label="History" />}>
-              <RichTextEditor
-                label="History"
-                value={ensureRichTextHtml(reportForm.medicalHistory)}
-                onChange={(value) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    medicalHistory: value,
-                  }))
-                }
-                placeholder="Type the clinical history for this scan report"
-                disabled={!canWriteReports}
-              />
-            </Suspense>
-            <Suspense fallback={<RichTextEditorFallback label="Description" />}>
-              <RichTextEditor
-                label="Description"
-                value={ensureRichTextHtml(reportForm.findings)}
-                onChange={(value) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    findings: value,
-                  }))
-                }
-                placeholder="Type or paste the report description here, then format it as needed"
-                disabled={!canWriteReports}
-                documentMode
-              />
-            </Suspense>
-            {isUltrasoundTemplate(reportForm.templateKind) ? (
-              <label className="full-width">
-                <span>Measurements</span>
-                <textarea
-                  rows={3}
-                  value={ultrasoundReportAssist.measurementsText}
-                  onChange={(event) =>
-                    updateUltrasoundAssistField(
-                      "measurementsText",
-                      event.target.value,
-                    )
-                  }
-                  placeholder={
-                    selectedUltrasoundTemplatePreset?.measurementsPlaceholder
-                  }
-                  disabled={!canWriteReports}
-                />
-              </label>
-            ) : null}
-            {selectedUltrasoundPresetFields.length > 0 ? (
-              <div className="full-width report-assist-grid">
-                {selectedUltrasoundPresetFields.map((field) => (
-                  <label key={field.key}>
-                    <span>{field.label}</span>
-                    <input
-                      value={ultrasoundReportAssist[field.key]}
+            {!isEchoWorksheetTemplate ? (
+              <>
+                <Suspense fallback={<RichTextEditorFallback label="History" />}>
+                  <RichTextEditor
+                    label="History"
+                    value={ensureRichTextHtml(reportForm.medicalHistory)}
+                    onChange={(value) =>
+                      setReportForm((current) => ({
+                        ...current,
+                        medicalHistory: value,
+                      }))
+                    }
+                    placeholder="Type the clinical history for this scan report"
+                    disabled={!canWriteReports}
+                  />
+                </Suspense>
+                <Suspense fallback={<RichTextEditorFallback label="Description" />}>
+                  <RichTextEditor
+                    label="Description"
+                    value={ensureRichTextHtml(reportForm.findings)}
+                    onChange={(value) =>
+                      setReportForm((current) => ({
+                        ...current,
+                        findings: value,
+                      }))
+                    }
+                    placeholder="Type or paste the report description here, then format it as needed"
+                    disabled={!canWriteReports}
+                    documentMode
+                  />
+                </Suspense>
+                {isUltrasoundTemplate(reportForm.templateKind) ? (
+                  <label className="full-width">
+                    <span>Measurements</span>
+                    <textarea
+                      rows={3}
+                      value={ultrasoundReportAssist.measurementsText}
                       onChange={(event) =>
                         updateUltrasoundAssistField(
-                          field.key,
+                          "measurementsText",
                           event.target.value,
                         )
                       }
-                      placeholder={field.placeholder}
+                      placeholder={
+                        selectedUltrasoundTemplatePreset?.measurementsPlaceholder
+                      }
                       disabled={!canWriteReports}
                     />
                   </label>
-                ))}
-              </div>
-            ) : null}
-            <Suspense fallback={<RichTextEditorFallback label="Impression" />}>
-              <RichTextEditor
-                label="Impression"
-                value={ensureRichTextHtml(reportForm.impression)}
-                onChange={(value) =>
-                  setReportForm((current) => ({
-                    ...current,
-                    impression: value,
-                  }))
-                }
-                placeholder="Summarize the report impression"
-                disabled={!canWriteReports}
-              />
-            </Suspense>
-            {isUltrasoundTemplate(reportForm.templateKind) ? (
-              <label className="full-width">
-                <span>Recommendation</span>
-                <textarea
-                  rows={2}
-                  value={ultrasoundReportAssist.recommendation}
-                  onChange={(event) =>
-                    updateUltrasoundAssistField(
-                      "recommendation",
-                      event.target.value,
-                    )
-                  }
-                  placeholder={
-                    selectedUltrasoundTemplatePreset?.recommendationPlaceholder
-                  }
-                  disabled={!canWriteReports}
-                />
-              </label>
+                ) : null}
+                {selectedUltrasoundPresetFields.length > 0 ? (
+                  <div className="full-width report-assist-grid">
+                    {selectedUltrasoundPresetFields.map((field) => (
+                      <label key={field.key}>
+                        <span>{field.label}</span>
+                        <input
+                          value={ultrasoundReportAssist[field.key]}
+                          onChange={(event) =>
+                            updateUltrasoundAssistField(
+                              field.key,
+                              event.target.value,
+                            )
+                          }
+                          placeholder={field.placeholder}
+                          disabled={!canWriteReports}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+                <Suspense fallback={<RichTextEditorFallback label="Impression" />}>
+                  <RichTextEditor
+                    label="Impression"
+                    value={ensureRichTextHtml(reportForm.impression)}
+                    onChange={(value) =>
+                      setReportForm((current) => ({
+                        ...current,
+                        impression: value,
+                      }))
+                    }
+                    placeholder="Summarize the report impression"
+                    disabled={!canWriteReports}
+                  />
+                </Suspense>
+                {isUltrasoundTemplate(reportForm.templateKind) ? (
+                  <label className="full-width">
+                    <span>Recommendation</span>
+                    <textarea
+                      rows={2}
+                      value={ultrasoundReportAssist.recommendation}
+                      onChange={(event) =>
+                        updateUltrasoundAssistField(
+                          "recommendation",
+                          event.target.value,
+                        )
+                      }
+                      placeholder={
+                        selectedUltrasoundTemplatePreset?.recommendationPlaceholder
+                      }
+                      disabled={!canWriteReports}
+                    />
+                  </label>
+                ) : null}
+              </>
             ) : null}
             <label>
               <span>Signed by</span>
@@ -10301,96 +11258,43 @@ export default function App() {
           </div>
           <div className="audit-log-metrics">
             <div className="metric-mini audit-log-metric">
-              <span>Visible services</span>
-              <strong>{filteredServiceRows.length}</strong>
+              <span>Lab services</span>
+              <strong>{filteredLabServiceRows.length}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Scan services</span>
+              <strong>{filteredImagingServiceRows.length}</strong>
             </div>
             <div className="metric-mini audit-log-metric">
               <span>Active services</span>
               <strong>{activeServiceCount}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
-              <span>Imaging services</span>
-              <strong>{imagingServiceCount}</strong>
-            </div>
           </div>
         </div>
-        {filteredServiceRows.length === 0 ? (
-          <div className="chart-empty audit-log-empty-state">
-            No services match the current filters.
+        <div className="bordered-top">
+          <div className="section-head compact-head">
+            <div>
+              <h3>Lab services</h3>
+              <p>Hematology, chemistry, serology, and other laboratory tests.</p>
+            </div>
           </div>
-        ) : (
-          <div className="audit-log-table-shell compact-scroll admin-table-shell">
-            <table className="audit-log-table admin-table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Code</th>
-                  <th>Type</th>
-                  <th>Price</th>
-                  <th>TAT</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredServiceRows.map((service) => (
-                  <tr key={service.id ?? service.code}>
-                    <td>
-                      <strong>{service.name}</strong>
-                      <div className="admin-table-subcopy">
-                        {service.kind === "IMAGING"
-                          ? service.modality ?? "Imaging"
-                          : service.specimenType ?? "Lab test"}
-                      </div>
-                    </td>
-                    <td>{service.code}</td>
-                    <td>{service.kind === "IMAGING" ? "Imaging" : "Lab test"}</td>
-                    <td>{formatMoney(service.priceCents)}</td>
-                    <td>{service.tatMinutes} min</td>
-                    <td>
-                      <span
-                        className={`tag ${service.isActive === false ? "tag-critical" : "tag-good"}`}
-                      >
-                        {service.isActive === false ? "Archived" : "Active"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="inline-actions admin-table-actions">
-                        <button
-                          type="button"
-                          className="ghost-action small"
-                          onClick={() =>
-                            service.id
-                              ? startEditServiceEditor(service.id)
-                              : setStatusText("This service cannot be edited yet.")
-                          }
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-action small"
-                          onClick={() => handleToggleServiceActive(service)}
-                          disabled={!canManageServices}
-                        >
-                          {service.isActive === false ? "Reactivate" : "Archive"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-action small"
-                          onClick={() => void handleDeleteService(service)}
-                          disabled={!canManageServices}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {renderServiceTable(
+            filteredLabServiceRows,
+            "No lab services match the current filters.",
+          )}
+        </div>
+        <div className="bordered-top">
+          <div className="section-head compact-head">
+            <div>
+              <h3>Scan services</h3>
+              <p>Ultrasound, echo, and other imaging studies.</p>
+            </div>
           </div>
-        )}
+          {renderServiceTable(
+            filteredImagingServiceRows,
+            "No scan services match the current filters.",
+          )}
+        </div>
         <div className="form-divider" />
         <form className="form-grid" onSubmit={handleBulkServiceSubmit}>
           <div className="section-head stacked-head full-width">

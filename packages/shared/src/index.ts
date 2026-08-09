@@ -330,6 +330,7 @@ export const reportTemplateAssistInputSchema = z.object({
   technique: z.string().optional().default(""),
   measurementsText: z.string().optional().default(""),
   recommendation: z.string().optional().default(""),
+  echoWorksheetJson: z.string().optional().default(""),
   gestationalAge: z.string().optional().default(""),
   fetalHeartRate: z.string().optional().default(""),
   placentaLocation: z.string().optional().default(""),
