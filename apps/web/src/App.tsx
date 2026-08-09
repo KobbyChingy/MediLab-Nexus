@@ -1641,7 +1641,7 @@ function parseBulkServiceText(source: string) {
     const priceCents = Number(priceValue);
     if (!Number.isInteger(priceCents) || priceCents < 0) {
       errors.push(
-        `Line ${row.lineNumber}: price must be a whole number in pesewas.`,
+        `Line ${row.lineNumber}: price must be a whole number.`,
       );
       continue;
     }
@@ -8036,7 +8036,7 @@ export default function App() {
                 </select>
               </label>
               <label>
-                <span>Payment amount (pesewas)</span>
+                <span>Payment amount</span>
                 <input
                   type="number"
                   value={intakePayment.amountCents}
@@ -10443,7 +10443,7 @@ export default function App() {
             />
           </label>
           <label>
-            <span>Amount (pesewas)</span>
+            <span>Amount</span>
             <input
               type="number"
               value={paymentForm.amountCents}
@@ -11218,7 +11218,7 @@ export default function App() {
                 />
               </label>
               <label>
-                <span>Price (pesewas)</span>
+                <span>Price</span>
                 <input
                   type="number"
                   value={serviceForm.priceCents}
@@ -11367,7 +11367,7 @@ export default function App() {
               <p>
                 Upload a CSV or paste one service per line using pipe, comma, or
                 tab columns: code, name, kind, specimen or modality, price in
-                pesewas, TAT minutes, and optional active flag.
+                price, TAT minutes, and optional active flag.
               </p>
             </div>
             <button

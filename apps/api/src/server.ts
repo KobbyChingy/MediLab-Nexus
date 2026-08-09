@@ -2553,7 +2553,7 @@ app.post("/api/finance/expenses", async (request, reply) => {
     action: "EXPENSE_RECORDED",
     entityType: "ExpenseRecord",
     entityId: created.id,
-    summary: `${created.category} expense recorded at ${created.amountCents} pesewas`,
+    summary: `${created.category} expense recorded at ${created.amountCents}`,
     payload,
   });
   await recordDispatchEvent("ExpenseRecord", created.id, created);
@@ -2909,7 +2909,7 @@ app.post("/api/admin/services", async (request, reply) => {
     action: "SERVICE_CREATED",
     entityType: "CatalogItem",
     entityId: created.id,
-    summary: `Service ${created.code} created at ${created.priceCents} pesewas`,
+    summary: `Service ${created.code} created at ${created.priceCents}`,
     payload,
   });
   await recordDispatchEvent("CatalogItem", created.id, created);
@@ -3005,7 +3005,7 @@ app.post("/api/admin/services/bulk", async (request, reply) => {
         action: "SERVICE_CREATED",
         entityType: "CatalogItem",
         entityId: service.id,
-        summary: `Service ${service.code} created at ${service.priceCents} pesewas via bulk import`,
+        summary: `Service ${service.code} created at ${service.priceCents} via bulk import`,
         payload: serializeCatalogItem(service),
       }),
       recordDispatchEvent("CatalogItem", service.id, service),
@@ -3015,7 +3015,7 @@ app.post("/api/admin/services/bulk", async (request, reply) => {
         action: "SERVICE_UPDATED",
         entityType: "CatalogItem",
         entityId: service.id,
-        summary: `Service ${service.code} updated to ${service.priceCents} pesewas via bulk import`,
+        summary: `Service ${service.code} updated to ${service.priceCents} via bulk import`,
         payload: serializeCatalogItem(service),
       }),
       recordDispatchEvent("CatalogItem", service.id, service),
@@ -3051,7 +3051,7 @@ app.put("/api/admin/services/:id", async (request, reply) => {
     action: "SERVICE_UPDATED",
     entityType: "CatalogItem",
     entityId: updated.id,
-    summary: `Service ${updated.code} updated to ${updated.priceCents} pesewas`,
+    summary: `Service ${updated.code} updated to ${updated.priceCents}`,
     payload,
   });
   await recordDispatchEvent("CatalogItem", updated.id, updated);
