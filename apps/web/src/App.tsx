@@ -73,140 +73,7 @@ const RichTextEditor = lazy(async () => {
   return { default: module.RichTextEditor };
 });
 
-function RichTextEditorFallback({ label }: { label: string }) {
-  return (
-    <div className="field-shell full-width">
-      <div className="field-label-row">
-        <span>{label}</span>
-      </div>
-      <div className="rich-text-editor is-disabled">
-        <div className="rich-text-editor__viewport">
-          <div className="rich-text-editor__content">Loading editor...</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type NavKey =
-  | "dashboard"
-  | "patients"
-  | "patientRecords"
-  | "orders"
-  | "tracking"
-  | "sonography"
-  | "scanReports"
-  | "inventory"
-  | "billing"
-  | "analytics"
-  | "expenses"
-  | "services"
-  | "referrals"
-  | "quality"
-  | "auditLogs"
-  | "userManagement"
-  | "alerts"
-  | "settings";
-
-type PatientRecord = {
-  id: string;
-  traceCode: string;
-  firstName: string;
-  middleName?: string;
-  lastName: string;
-  dateOfBirth?: string;
-  gender?: string;
-  phone: string;
-  location?: string;
-  nhisId?: string;
-  allergies?: string;
-  medicalHistory?: string;
-  consentAccepted?: boolean;
-  photoPath?: string;
-  createdAt: string;
-  referralDoctorId?: string | null;
-  referralName?: string;
-  referralDoctorName?: string | null;
-  referralDoctorCommissionPercent?: number | null;
-};
-
-type InitialSetupFormState = InitialSetupInput;
-
-type PatientTimelineEntry = {
-  id: string;
-  occurredAt: string;
-  label: string;
-  detail: string;
-  meta: string;
-  tone: "neutral" | "good" | "warn" | "critical";
-};
-
-type BackupRecord = {
-  id: string;
-  label: string;
-  createdAt: string;
-  restoredAt?: string | null;
-  encrypted: boolean;
-};
-
-type InvoiceRecord = WorkflowPayload["invoices"][number];
-type SampleRecord = WorkflowPayload["samples"][number];
-type ReportRecord = WorkflowPayload["reports"][number];
-
-type IntakeOrderState = {
-  orderedBy: string;
-  priority: OrderInput["priority"];
-  payerType: OrderInput["payerType"];
-  payerName: string;
-  payerCoveragePercent: number;
-  payerMemberId: string;
-  payerAuthorizationCode: string;
-  insuranceProvider: string;
-  insuranceAuthorized: boolean;
-  scheduledFor: string;
-};
-
-type IntakePaymentState = {
-  collectNow: boolean;
-  amountCents: string;
-  method: PaymentInput["method"];
-  reference: string;
-};
-
-type PatientIntakeFormState = PatientInput & {
-  referralName: string;
-};
-
-type ServiceFormState = {
-  code: string;
-  name: string;
-  kind: ServiceInput["kind"];
-  specimenType: string;
-  modality: string;
-  priceCents: string;
-  tatMinutes: string;
-  isActive: boolean;
-};
-
-type ReferralDoctorFormState = {
-  fullName: string;
-  phone: string;
-  email: string;
-  commissionPercent: string;
-  isActive: boolean;
-};
-
-type ExpenseFormState = {
-  category: string;
-  description: string;
-  amount: string;
-  incurredAt: string;
-  recordedBy: string;
-  notes: string;
-};
-
-type ExpenseFiltersState = {
-  category: string;
+type CustomDateRange = {
   startDate: string;
   endDate: string;
 };
@@ -269,6 +136,151 @@ type EchoWorksheetState = {
   conclusion: string;
 };
 
+type NavKey =
+  | "dashboard"
+  | "patients"
+  | "patientRecords"
+  | "orders"
+  | "tracking"
+  | "sonography"
+  | "scanReports"
+  | "inventory"
+  | "billing"
+  | "analytics"
+  | "expenses"
+  | "services"
+  | "referrals"
+  | "quality"
+  | "auditLogs"
+  | "userManagement"
+  | "alerts"
+  | "settings";
+
+type PatientRecord = {
+  id: string;
+  traceCode: string;
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+  dateOfBirth: string;
+  gender: string;
+  phone: string;
+  location: string;
+  nhisId: string | null;
+  allergies: string | null;
+  medicalHistory: string | null;
+  referralDoctorId: string | null;
+  referralName: string | null;
+  referralDoctorName: string | null;
+  referralDoctorCommissionPercent: number | null;
+  consentAccepted: boolean;
+  photoPath: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+};
+
+type PatientIntakeFormState = {
+  firstName: string;
+  lastName: string;
+  middleName: string;
+  traceCode: string;
+  dateOfBirth: string;
+  gender: string;
+  phone: string;
+  location: string;
+  nhisId?: string;
+  allergies: string;
+  medicalHistory: string;
+  referralDoctorId: string;
+  referralName: string;
+  referralCommissionPercent?: number;
+  consentAccepted: boolean;
+  photoPath?: string;
+};
+
+type InitialSetupFormState = {
+  admin: {
+    displayName: string;
+    username: string;
+    pin: string;
+  };
+};
+
+type IntakeOrderState = {
+  orderedBy: string;
+  priority: OrderInput["priority"];
+  payerType: OrderInput["payerType"];
+  payerName: string;
+  payerCoveragePercent: number;
+  payerMemberId: string;
+  payerAuthorizationCode: string;
+  insuranceProvider: string;
+  insuranceAuthorized: boolean;
+  scheduledFor: string;
+};
+
+type IntakePaymentState = {
+  collectNow: boolean;
+  amountCents: string;
+  method: PaymentInput["method"];
+  reference: string;
+};
+
+type ServiceFormState = {
+  code: string;
+  name: string;
+  kind: ServiceInput["kind"];
+  specimenType: string;
+  modality: string;
+  priceCents: string;
+  tatMinutes: string;
+  isActive: boolean;
+};
+
+type ReferralDoctorFormState = {
+  fullName: string;
+  phone: string;
+  email: string;
+  commissionPercent: string;
+  isActive: boolean;
+};
+
+type ExpenseFormState = {
+  category: string;
+  description: string;
+  amount: string;
+  incurredAt: string;
+  recordedBy: string;
+  notes: string;
+};
+
+type ExpenseFiltersState = {
+  category: string;
+  startDate: string;
+  endDate: string;
+};
+
+type PatientTimelineEntry = {
+  id: string;
+  occurredAt: string;
+  label: string;
+  detail: string;
+  meta: string;
+  tone: "good" | "warn" | "critical" | "neutral";
+};
+
+type SampleRecord = WorkflowPayload["samples"][number];
+type ReportRecord = WorkflowPayload["reports"][number];
+type InvoiceRecord = WorkflowPayload["invoices"][number];
+
+type BackupRecord = {
+  id: string;
+  label: string;
+  createdAt: string;
+  restoredAt?: string | null;
+  encrypted: boolean;
+};
+
 type PresetAssistFieldConfig = {
   key: keyof UltrasoundReportAssistState;
   label: string;
@@ -309,6 +321,14 @@ type UltrasoundTemplateKind = Exclude<
   ReportInput["templateKind"],
   "LAB_STANDARD"
 >;
+
+function RichTextEditorFallback(props: { label: string }) {
+  return (
+    <div className="rich-text-editor-fallback" aria-busy="true">
+      Loading {props.label.toLowerCase()} editor...
+    </div>
+  );
+}
 
 type PortalAction = {
   label: string;
@@ -1349,25 +1369,39 @@ function buildEchoWorksheetHtml(params: {
   const patientDob = formatDateOnly(patient?.dateOfBirth);
   const patientAge = formatPatientAge(patient?.dateOfBirth);
 
-  const measurementTable = echoMeasurementPairs
+  const lineField = (label: string, value: string, wide = false) => `
+    <div style="display:grid; gap:6px; ${wide ? "grid-column: span 2;" : ""}">
+      <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(label)}</div>
+      <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827; white-space:pre-wrap;">${read(value)}</div>
+    </div>`;
+
+  const lineTextarea = (label: string, value: string, minHeight: number) => `
+    <div style="display:grid; gap:6px;">
+      <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(label)}</div>
+      <div style="min-height:${minHeight}px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827; white-space:pre-wrap;">${read(value)}</div>
+    </div>`;
+
+  const measurementCells = echoMeasurementPairs
+    .flatMap(({ left, right }) => [left, right])
     .map(
-      ({ left, right }) => `
-        <tr>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700;">${escapeEditorHtml(left.label)}</td>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937; min-width: 88px;">${read(worksheet[left.key])}</td>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700;">${escapeEditorHtml(right.label)}</td>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937; min-width: 88px;">${read(worksheet[right.key])}</td>
-        </tr>`,
+      (field) => `
+        <div style="display:grid; gap:6px;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(field.label)}</div>
+          <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet[field.key])}</div>
+        </div>`,
     )
     .join("");
 
-  const otherTable = echoOtherFieldRows
+  const otherCells = echoOtherFieldRows
     .map(
       (field) => `
-        <tr>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937; font-weight: 700; width: 44%;">${escapeEditorHtml(field.label)}</td>
-          <td style="padding: 6px 8px; border: 1px solid #1f2937;">${read(worksheet[field.key])}${field.suffix ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(field.suffix)}</span>` : ""}</td>
-        </tr>`,
+        <div style="display:grid; gap:6px;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">${escapeEditorHtml(field.label)}</div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">
+            <span>${read(worksheet[field.key])}</span>
+            ${field.suffix ? `<span style="font-size:11px; color:#475569;">${escapeEditorHtml(field.suffix)}</span>` : ""}
+          </div>
+        </div>`,
     )
     .join("");
 
@@ -1375,74 +1409,75 @@ function buildEchoWorksheetHtml(params: {
     .map(
       (row) => `
         <tr>
-          <th style="padding: 7px 8px; border: 1px solid #1f2937; text-align: left; font-size: 12px;">${escapeEditorHtml(row.label)}</th>
-          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.aortic])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
-          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.pulmonic])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
-          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.tricuspid])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
-          <td style="padding: 7px 8px; border: 1px solid #1f2937;">${read(worksheet[row.mitral])}${row.unit ? ` <span style="font-size: 11px; color: #475569;">${escapeEditorHtml(row.unit)}</span>` : ""}</td>
+          <th style="padding:8px 7px; border:1px solid #1f2937; text-align:left; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">${escapeEditorHtml(row.label)}</th>
+          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.aortic])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.pulmonic])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.tricuspid])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
+          <td style="padding:8px 7px; border:1px solid #1f2937; vertical-align:top; min-width:120px;"><div style="min-height:22px; border-bottom:1.5px solid rgba(17,24,39,0.7);">${read(worksheet[row.mitral])}</div>${row.unit ? `<div style="font-size:11px; color:#475569; margin-top:4px;">${escapeEditorHtml(row.unit)}</div>` : ""}</td>
         </tr>`,
     )
     .join("");
 
   return `
-    <div style="border: 2px solid #111827; border-radius: 18px; padding: 20px; background: #ffffff; color: #111827; font-family: 'Segoe UI', Arial, sans-serif;">
-      <div style="display: grid; gap: 14px;">
-        <div style="font-size: 20px; font-weight: 800; letter-spacing: 0.01em;">Adult Echocardiography Worksheet</div>
-        <div style="display: grid; gap: 10px; font-size: 13px;">
-          <div style="display: grid; grid-template-columns: minmax(0, 1.7fr) repeat(2, minmax(140px, 1fr)); gap: 10px;">
-            <div><strong>Name:</strong> ${read(patientName)}</div>
-            <div><strong>Date:</strong> ${read(formatDateOnly(worksheet.studyDate))}</div>
-            <div><strong>ID:</strong> ${read(traceCode)}</div>
-          </div>
-          <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
-            <div><strong>DOB:</strong> ${read(patientDob)}</div>
-            <div><strong>Age:</strong> ${read(patientAge)}</div>
-            <div><strong>Sex:</strong> ${read(patientSex)}</div>
-            <div style="grid-column: span 2;"><strong>Referring Physician:</strong> ${read(worksheet.referringPhysician)}</div>
-          </div>
-          <div style="display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 10px;">
-            <div><strong>Indications:</strong> ${read(worksheet.indications)}</div>
-            <div><strong>Tech:</strong> ${read(technician)}</div>
-          </div>
-          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
-            <div><strong>Height:</strong> ${read(worksheet.height)}</div>
-            <div><strong>Weight:</strong> ${read(worksheet.weight)}</div>
-            <div><strong>BSA:</strong> ${read(worksheet.bodySurfaceArea)}</div>
-            <div><strong>BP:</strong> ${read(worksheet.bloodPressureSystolic)} / ${read(worksheet.bloodPressureDiastolic)}</div>
+    <div style="border:3px solid #1f2937; border-radius:10px; padding:22px; background:#ffffff; color:#111827; font-family:'Segoe UI', Arial, sans-serif; box-shadow:0 18px 32px rgba(15,23,42,0.07);">
+      <div style="display:grid; gap:16px;">
+        <div style="font-size:16px; font-weight:800; color:#111827; letter-spacing:0.02em; text-transform:uppercase;">Adult Echocardiography Worksheet</div>
+        <div style="display:grid; grid-template-columns:minmax(0,1.7fr) repeat(2,minmax(140px,1fr)); gap:14px;">
+          ${lineField("Name", patientName, true)}
+          ${lineField("Date", formatDateOnly(worksheet.studyDate))}
+          ${lineField("ID", traceCode)}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,2fr); gap:14px;">
+          ${lineField("DOB", patientDob)}
+          ${lineField("Age", patientAge)}
+          ${lineField("Sex", patientSex)}
+          ${lineField("Referring Physician", worksheet.referringPhysician)}
+        </div>
+        <div style="display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:14px; align-items:start;">
+          ${lineTextarea("Indications", worksheet.indications, 48)}
+          ${lineField("Tech", technician)}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; align-items:end;">
+          ${lineField("Height", worksheet.height)}
+          ${lineField("Weight", worksheet.weight)}
+          ${lineField("BSA", worksheet.bodySurfaceArea)}
+          <div style="display:grid; gap:6px;">
+            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">BP</div>
+            <div style="display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:12px; align-items:end;">
+              <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet.bloodPressureSystolic)}</div>
+              <div style="font-weight:700; color:#111827;">/</div>
+              <div style="min-height:24px; border-bottom:1.5px solid rgba(17,24,39,0.7); padding:2px 0; font-size:14px; color:#111827;">${read(worksheet.bloodPressureDiastolic)}</div>
+            </div>
           </div>
         </div>
-        <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.9fr); gap: 0; border: 1px solid #1f2937;">
-          <div style="padding: 12px; border-right: 1px solid #1f2937;">
-            <div style="font-weight: 800; margin-bottom: 10px;">M-Mode / 2D Measurements</div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-              <tbody>${measurementTable}</tbody>
-            </table>
+        <div style="display:grid; grid-template-columns:minmax(0,1.2fr) minmax(260px,0.9fr); gap:0; border:2px solid #1f2937;">
+          <div style="display:grid; gap:14px; padding:16px; border-right:2px solid #1f2937;">
+            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">M-Mode/2D Measurements</div>
+            <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 16px;">${measurementCells}</div>
           </div>
-          <div style="padding: 12px;">
-            <div style="font-weight: 800; margin-bottom: 10px;">Other</div>
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-              <tbody>${otherTable}</tbody>
-            </table>
+          <div style="display:grid; gap:14px; padding:16px;">
+            <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Other</div>
+            <div style="display:grid; gap:14px 16px;">${otherCells}</div>
           </div>
         </div>
-        <div style="display: grid; gap: 10px;">
-          <div style="font-weight: 800;">Doppler Measurements</div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <div style="display:grid; gap:14px;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Doppler Measurements</div>
+          <table style="width:100%; border-collapse:collapse; font-size:12px; color:#111827;">
             <thead>
               <tr>
-                <th style="padding: 8px; border: 1px solid #1f2937; text-align: left;">&nbsp;</th>
-                <th style="padding: 8px; border: 1px solid #1f2937;">Aortic</th>
-                <th style="padding: 8px; border: 1px solid #1f2937;">Pulmonic</th>
-                <th style="padding: 8px; border: 1px solid #1f2937;">Tricuspid</th>
-                <th style="padding: 8px; border: 1px solid #1f2937;">Mitral</th>
+                <th style="padding:8px; border:1px solid #1f2937; text-align:left; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">&nbsp;</th>
+                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Aortic</th>
+                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Pulmonic</th>
+                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Tricuspid</th>
+                <th style="padding:8px; border:1px solid #1f2937; font-size:12px; letter-spacing:0.04em; text-transform:uppercase;">Mitral</th>
               </tr>
             </thead>
             <tbody>${dopplerTable}</tbody>
           </table>
         </div>
-        <div style="display: grid; gap: 8px;">
-          <div style="font-weight: 800;">Comments</div>
-          <div style="min-height: 92px; border: 1px solid #1f2937; padding: 10px 12px; white-space: pre-wrap;">${read(worksheet.comments)}</div>
+        <div style="display:grid; gap:8px;">
+          <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#111827;">Comments</div>
+          <div style="min-height:120px; border:1.5px solid rgba(17,24,39,0.7); border-radius:6px; padding:12px 14px; white-space:pre-wrap; font-size:14px; color:#111827;">${read(worksheet.comments)}</div>
         </div>
       </div>
     </div>`;
