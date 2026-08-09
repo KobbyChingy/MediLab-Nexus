@@ -3481,6 +3481,10 @@ export default function App() {
       return left.name.localeCompare(right.name);
     });
   }, [catalogOptions]);
+  const servicesCatalog = useMemo(
+    () => (services.length ? services : catalogOptions),
+    [catalogOptions, services],
+  );
   const sonographyStudies = useMemo(
     () =>
       [...workflow.imaging]
@@ -3971,6 +3975,10 @@ export default function App() {
       return;
     }
 
+    const reportMedicalHistory = richTextToPlainText(reportForm.medicalHistory);
+    const registeredMedicalHistory = selectedReportPatient?.medicalHistory?.trim() ?? "";
+    const reportImpression = richTextToPlainText(reportForm.impression);
+
     setEchoWorksheet((current) => ({
       ...buildDefaultEchoWorksheetState(),
       ...current,
@@ -3980,12 +3988,9 @@ export default function App() {
         selectedReportPatient?.referralDoctorName ||
         selectedReportPatient?.referralName ||
         "",
-      indications:
-        current.indications || richTextToPlainText(reportForm.medicalHistory),
+      indications: current.indications || reportMedicalHistory || registeredMedicalHistory,
       conclusion:
-        current.conclusion ||
-        richTextToPlainText(reportForm.impression) ||
-        "Adult echocardiography worksheet completed.",
+        current.conclusion || reportImpression || "Adult echocardiography worksheet completed.",
     }));
   }, [
     reportForm.templateKind,
@@ -3996,25 +4001,25 @@ export default function App() {
   ]);
   const labServices = useMemo(
     () =>
-      services
+      servicesCatalog
         .filter((service) => service.kind === "TEST")
         .sort(
           (left, right) =>
             Number(right.isActive ?? true) - Number(left.isActive ?? true) ||
             left.name.localeCompare(right.name),
         ),
-    [services],
+    [servicesCatalog],
   );
   const imagingServices = useMemo(
     () =>
-      services
+      servicesCatalog
         .filter((service) => service.kind === "IMAGING")
         .sort(
           (left, right) =>
             Number(right.isActive ?? true) - Number(left.isActive ?? true) ||
             left.name.localeCompare(right.name),
         ),
-    [services],
+    [servicesCatalog],
   );
   const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [selectedServiceKind, setSelectedServiceKind] = useState<
@@ -4026,7 +4031,7 @@ export default function App() {
   const filteredServiceRows = useMemo(() => {
     const query = serviceSearchQuery.trim().toLowerCase();
 
-    return services.filter((service) => {
+    return servicesCatalog.filter((service) => {
       if (selectedServiceKind !== "ALL" && service.kind !== selectedServiceKind) {
         return false;
       }
@@ -4050,7 +4055,7 @@ export default function App() {
         service.specimenType ?? "",
       ].some((value) => value.toLowerCase().includes(query));
     });
-  }, [selectedServiceKind, selectedServiceState, serviceSearchQuery, services]);
+  }, [selectedServiceKind, selectedServiceState, serviceSearchQuery, servicesCatalog]);
   const filteredLabServiceRows = useMemo(
     () => filteredServiceRows.filter((service) => service.kind === "TEST"),
     [filteredServiceRows],
