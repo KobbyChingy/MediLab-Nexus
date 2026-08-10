@@ -76,6 +76,29 @@ async function createMainWindow() {
     },
   });
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow in-app preview windows opened via window.open from the hosted app.
+    if (!url || url === "about:blank") {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 1200,
+          height: 900,
+          minWidth: 900,
+          minHeight: 700,
+          autoHideMenuBar: true,
+          backgroundColor: "#f3efe7",
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
+    }
+
+    return { action: "allow" };
+  });
+
   await mainWindow.loadURL(target.url);
   mainWindow.on("closed", () => {
     mainWindow = null;

@@ -217,6 +217,7 @@ export function InternalBellPanel(props: {
 
 export function SystemUserManagementSection(props: {
   canManageUsers: boolean;
+  statusText: string;
   currentUsername: string;
   userForm: AdminUserInput;
   setUserForm: Dispatch<SetStateAction<AdminUserInput>>;
@@ -243,6 +244,7 @@ export function SystemUserManagementSection(props: {
 }) {
   const {
     canManageUsers,
+    statusText,
     currentUsername,
     userForm,
     setUserForm,
@@ -312,6 +314,9 @@ export function SystemUserManagementSection(props: {
     () => users.find((user) => user.id === pinRecovery.userId) ?? null,
     [pinRecovery.userId, users],
   );
+
+  const hasVisibleStatusMessage =
+    statusText !== "Ready to connect" && statusText !== "Signed out";
 
   return (
     <section className="content-grid">
@@ -414,6 +419,11 @@ export function SystemUserManagementSection(props: {
                 Create user
               </button>
             </div>
+            {hasVisibleStatusMessage ? (
+              <div className="full-width inline-status-panel" role="status" aria-live="polite">
+                {statusText}
+              </div>
+            ) : null}
           </form>
         ) : null}
         {showChangeOwnPinForm ? (

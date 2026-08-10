@@ -221,6 +221,16 @@ label span {
   font-weight: 600;
 }
 
+.inline-status-panel {
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  font-weight: 600;
+}
+
 :root[data-theme="dark"] .topbar {
   background: rgba(15, 23, 42, 0.72);
 }

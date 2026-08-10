@@ -8140,6 +8140,11 @@ export default function App() {
               the printed receipt from this single form.
             </span>
           </div>
+          {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+            <div className="full-width inline-status-panel" role="status" aria-live="polite">
+              {statusText}
+            </div>
+          ) : null}
         </form>
       </article>
     </section>
@@ -9863,6 +9868,11 @@ export default function App() {
                 Save report
               </button>
             </div>
+            {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+              <div className="full-width inline-status-panel" role="status" aria-live="polite">
+                {statusText}
+              </div>
+            ) : null}
           </form>
         </article>
       ) : (
@@ -11868,6 +11878,7 @@ export default function App() {
   const userManagementSection = (
     <SystemUserManagementSection
       canManageUsers={canManageUsers}
+      statusText={statusText}
       currentUsername={authSession?.user.username ?? ""}
       userForm={userForm}
       setUserForm={setUserForm}
