@@ -309,6 +309,16 @@ export const facilitySettingsInputSchema = z.object({
   printFontSize: z.enum(printFontSizes).default("MEDIUM"),
 });
 
+export const attendanceHolidayInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  label: z.string().trim().min(2).max(80),
+});
+
+export const attendanceSettingsInputSchema = z.object({
+  offDays: z.array(z.number().int().min(0).max(6)).default([]),
+  holidays: z.array(attendanceHolidayInputSchema).default([]),
+});
+
 export const initialSetupInputSchema = z.object({
   admin: z.object({
     displayName: z.string().min(3),
@@ -414,6 +424,8 @@ export type RotatePinInput = z.infer<typeof rotatePinInputSchema>;
 export type ChangeOwnPinInput = z.infer<typeof changeOwnPinInputSchema>;
 export type UserStatusInput = z.infer<typeof userStatusInputSchema>;
 export type FacilitySettingsInput = z.infer<typeof facilitySettingsInputSchema>;
+export type AttendanceHolidayInput = z.infer<typeof attendanceHolidayInputSchema>;
+export type AttendanceSettingsInput = z.infer<typeof attendanceSettingsInputSchema>;
 export type InitialSetupInput = z.infer<typeof initialSetupInputSchema>;
 export type ReportTemplateAssistPayload = z.infer<
   typeof reportTemplateAssistInputSchema
@@ -1044,6 +1056,32 @@ export type IntegrationDispatchRunPayload = IntegrationDispatchStatusPayload & {
   deferredEvents: number;
   sentNotifications: number;
   deferredNotifications: number;
+};
+
+export type AttendanceSettingsPayload = AttendanceSettingsInput;
+
+export type AttendanceWorkspacePayload = {
+  date: string;
+  generatedAt: string;
+  settings: AttendanceSettingsPayload;
+  summary: {
+    presentCount: number;
+    closedCount: number;
+    absentCount: number;
+    offDayCount: number;
+    holidayCount: number;
+  };
+  entries: Array<{
+    userId: string;
+    username: string;
+    displayName: string;
+    role: (typeof userRoles)[number];
+    status: "PRESENT" | "CLOSED" | "ABSENT" | "OFF_DAY" | "HOLIDAY";
+    holidayLabel: string | null;
+    firstLoginAt: string | null;
+    lastActivityAt: string | null;
+    lastLogoutAt: string | null;
+  }>;
 };
 
 export type AdminOverviewPayload = {

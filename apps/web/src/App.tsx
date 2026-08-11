@@ -1,6 +1,8 @@
 import {
   type ChangeOwnPinInput,
   type AdminOverviewPayload,
+  type AttendanceSettingsInput,
+  type AttendanceWorkspacePayload,
   type AdminUserInput,
   type AdminUserSummaryPayload,
   type AuthSessionPayload,
@@ -63,6 +65,7 @@ import {
 } from "./data/fallback";
 import {
   InternalBellPanel,
+  SystemAttendanceSection,
   SystemAlertsSection,
   SystemAuditLogsSection,
   SystemSettingsSection,
@@ -149,6 +152,7 @@ type NavKey =
   | "analytics"
   | "expenses"
   | "services"
+  | "attendance"
   | "referrals"
   | "quality"
   | "auditLogs"
@@ -727,6 +731,7 @@ const navItems: Array<{ key: NavKey; label: string; short: string }> = [
   { key: "analytics", label: "Operations Report", short: "RP" },
   { key: "expenses", label: "Expenses", short: "EX" },
   { key: "services", label: "Services", short: "SV" },
+  { key: "attendance", label: "Attendance", short: "AT" },
   { key: "auditLogs", label: "Audit Logs", short: "AL" },
   { key: "userManagement", label: "User Management", short: "UM" },
   { key: "alerts", label: "Alerts", short: "AR" },
@@ -747,6 +752,7 @@ const navDescriptions: Record<NavKey, string> = {
     "Combined billing, expenses, inventory activity, and user performance.",
   expenses: "Operating cost capture, categorization, and recent spend review.",
   services: "Service availability, pricing, and turnaround visibility.",
+  attendance: "Daily sign-in, closing time, absences, and calendar settings.",
   referrals: "Referral doctor setup and commission visibility.",
   quality: "QC events, release risk, and corrective action tracking.",
   auditLogs: "Track significant system activities and operational changes.",
@@ -774,7 +780,7 @@ const navSections: NavSectionDef[] = [
   {
     key: "system",
     label: "System",
-    items: ["auditLogs", "userManagement", "alerts", "settings"],
+    items: ["attendance", "auditLogs", "userManagement", "alerts", "settings"],
   },
 ];
 
@@ -971,6 +977,7 @@ const navCapabilityRequirements: Partial<Record<NavKey, Capability[]>> = {
   analytics: ["finance:manage"],
   expenses: ["finance:manage"],
   services: ["service:view"],
+  attendance: ["admin:view"],
   referrals: ["service:manage"],
   quality: ["qc:manage"],
   auditLogs: ["admin:view"],
@@ -1087,6 +1094,7 @@ const portalProfiles: Partial<
       "analytics",
       "expenses",
       "services",
+      "attendance",
       "userManagement",
       "alerts",
       "settings",
@@ -1249,6 +1257,35 @@ function buildEmptyExpenseWorkspace(
     },
     categories: [],
     expenses: [],
+  };
+}
+
+function buildCurrentDateInputValue() {
+  const current = new Date();
+  const localDate = new Date(
+    current.getTime() - current.getTimezoneOffset() * 60 * 1000,
+  );
+  return localDate.toISOString().slice(0, 10);
+}
+
+function buildEmptyAttendanceWorkspace(
+  date: string,
+): AttendanceWorkspacePayload {
+  return {
+    date,
+    generatedAt: new Date().toISOString(),
+    settings: {
+      offDays: [],
+      holidays: [],
+    },
+    summary: {
+      presentCount: 0,
+      closedCount: 0,
+      absentCount: 0,
+      offDayCount: 0,
+      holidayCount: 0,
+    },
+    entries: [],
   };
 }
 
@@ -2462,6 +2499,16 @@ export default function App() {
   const backupImportInputRef = useRef<HTMLInputElement | null>(null);
   const [patients, setPatients] = useState<PatientRecord[]>([]);
   const [users, setUsers] = useState<AdminUserSummaryPayload[]>([]);
+  const [attendanceDate, setAttendanceDate] = useState(buildCurrentDateInputValue);
+  const [attendanceWorkspace, setAttendanceWorkspace] =
+    useState<AttendanceWorkspacePayload>(() =>
+      buildEmptyAttendanceWorkspace(buildCurrentDateInputValue()),
+    );
+  const [attendanceSettingsForm, setAttendanceSettingsForm] =
+    useState<AttendanceSettingsInput>({
+      offDays: [],
+      holidays: [],
+    });
   const [services, setServices] = useState<CatalogSeedItem[]>([]);
   const [referralDoctors, setReferralDoctors] = useState<
     ReferralDoctorSummaryPayload[]
@@ -3113,6 +3160,24 @@ export default function App() {
     }
   }
 
+  async function loadAttendanceWorkspace() {
+    if (!authSession || !allowedActions.includes("admin:view")) {
+      setAttendanceWorkspace(buildEmptyAttendanceWorkspace(attendanceDate));
+      setAttendanceSettingsForm({ offDays: [], holidays: [] });
+      return;
+    }
+
+    try {
+      const payload = await requestJson<AttendanceWorkspacePayload>(
+        `/admin/attendance?date=${encodeURIComponent(attendanceDate)}`,
+      );
+      setAttendanceWorkspace(payload);
+      setAttendanceSettingsForm(payload.settings);
+    } catch {
+      setAttendanceWorkspace(buildEmptyAttendanceWorkspace(attendanceDate));
+    }
+  }
+
   useEffect(() => {
     void loadOperationalData();
   }, [
@@ -3131,6 +3196,10 @@ export default function App() {
     expenseFilters.startDate,
     expenseFilters.endDate,
   ]);
+
+  useEffect(() => {
+    void loadAttendanceWorkspace();
+  }, [authSession?.user.id, attendanceDate]);
 
   useEffect(() => {
     if (!setupStatus?.requiresSetup) {
@@ -4312,6 +4381,7 @@ export default function App() {
   const canQueueNotifications = allowedActions.includes("notify:queue");
   const canManageUsers = allowedActions.includes("user:manage");
   const canManageIntegrations = allowedActions.includes("integration:manage");
+  const canManageAttendanceSettings = currentRole === "ADMIN";
   const visibleNavItems = useMemo(() => {
     const scopedNavItems = portalProfile
       ? navItems.filter((item) => portalProfile.navKeys.includes(item.key))
@@ -4697,6 +4767,36 @@ export default function App() {
       setBellOpen(false);
       setIncomingAlerts([]);
       setStatusText("Signed out");
+    }
+  }
+
+  async function handleAttendanceSettingsSave(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    if (!authSession || currentRole !== "ADMIN") {
+      setStatusText("Only the administrator can update attendance off days and holidays.");
+      return;
+    }
+
+    try {
+      const updated = await requestJson<AttendanceSettingsInput>(
+        "/admin/attendance/settings",
+        {
+          method: "PUT",
+          body: JSON.stringify(attendanceSettingsForm satisfies AttendanceSettingsInput),
+        },
+      );
+      setAttendanceSettingsForm(updated);
+      await loadAttendanceWorkspace();
+      setStatusText("Attendance calendar updated");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Attendance calendar could not be saved right now",
+      );
     }
   }
 
@@ -11899,6 +11999,19 @@ export default function App() {
     />
   );
 
+  const attendanceSection = (
+    <SystemAttendanceSection
+      attendance={attendanceWorkspace}
+      attendanceDate={attendanceDate}
+      setAttendanceDate={setAttendanceDate}
+      attendanceSettingsForm={attendanceSettingsForm}
+      setAttendanceSettingsForm={setAttendanceSettingsForm}
+      handleAttendanceSettingsSave={handleAttendanceSettingsSave}
+      canManageAttendanceSettings={canManageAttendanceSettings}
+      formatDate={formatDate}
+    />
+  );
+
   const alertsSection = (
     <SystemAlertsSection
       bellForm={bellForm}
@@ -11958,6 +12071,7 @@ export default function App() {
     analytics: analyticsSection,
     expenses: expensesSection,
     services: servicesSection,
+    attendance: attendanceSection,
     referrals: referralDoctorsSection,
     quality: qualitySection,
     auditLogs: auditLogsSection,

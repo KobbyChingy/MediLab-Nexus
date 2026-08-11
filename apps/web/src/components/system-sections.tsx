@@ -1,5 +1,7 @@
 import {
   type AdminOverviewPayload,
+  type AttendanceSettingsInput,
+  type AttendanceWorkspacePayload,
   type AdminUserInput,
   type AdminUserSummaryPayload,
   type ChangeOwnPinInput,
@@ -667,6 +669,305 @@ export function SystemUserManagementSection(props: {
             </tbody>
           </table>
         </div>
+      </article>
+    </section>
+  );
+}
+
+export function SystemAttendanceSection(props: {
+  attendance: AttendanceWorkspacePayload;
+  attendanceDate: string;
+  setAttendanceDate: Dispatch<SetStateAction<string>>;
+  attendanceSettingsForm: AttendanceSettingsInput;
+  setAttendanceSettingsForm: Dispatch<SetStateAction<AttendanceSettingsInput>>;
+  handleAttendanceSettingsSave: FormEventHandler<HTMLFormElement>;
+  canManageAttendanceSettings: boolean;
+  formatDate: (value?: string | null) => string;
+}) {
+  const {
+    attendance,
+    attendanceDate,
+    setAttendanceDate,
+    attendanceSettingsForm,
+    setAttendanceSettingsForm,
+    handleAttendanceSettingsSave,
+    canManageAttendanceSettings,
+    formatDate,
+  } = props;
+  const [holidayDraft, setHolidayDraft] = useState({ date: "", label: "" });
+
+  const weekdayOptions = [
+    { value: 0, label: "Sunday" },
+    { value: 1, label: "Monday" },
+    { value: 2, label: "Tuesday" },
+    { value: 3, label: "Wednesday" },
+    { value: 4, label: "Thursday" },
+    { value: 5, label: "Friday" },
+    { value: 6, label: "Saturday" },
+  ] as const;
+
+  const toggleOffDay = (value: number) => {
+    setAttendanceSettingsForm((current) => ({
+      ...current,
+      offDays: current.offDays.includes(value)
+        ? current.offDays.filter((day) => day !== value)
+        : [...current.offDays, value].sort((left, right) => left - right),
+    }));
+  };
+
+  const addHoliday = () => {
+    if (!holidayDraft.date || holidayDraft.label.trim().length < 2) {
+      return;
+    }
+
+    setAttendanceSettingsForm((current) => ({
+      ...current,
+      holidays: [
+        ...current.holidays.filter((entry) => entry.date !== holidayDraft.date),
+        {
+          date: holidayDraft.date,
+          label: holidayDraft.label.trim(),
+        },
+      ].sort((left, right) => left.date.localeCompare(right.date)),
+    }));
+    setHolidayDraft({ date: "", label: "" });
+  };
+
+  const removeHoliday = (date: string) => {
+    setAttendanceSettingsForm((current) => ({
+      ...current,
+      holidays: current.holidays.filter((entry) => entry.date !== date),
+    }));
+  };
+
+  const formatTimestamp = (value?: string | null) =>
+    value ? formatDate(value) : "-";
+
+  const statusTone = (status: AttendanceWorkspacePayload["entries"][number]["status"]) => {
+    if (status === "CLOSED") {
+      return "tag-good";
+    }
+    if (status === "ABSENT") {
+      return "tag-critical";
+    }
+    if (status === "OFF_DAY" || status === "HOLIDAY") {
+      return "tag-warn";
+    }
+    return "status-pill";
+  };
+
+  return (
+    <section className="content-grid admin-workspace-layout">
+      <article className="surface-card workspace-table-card attendance-overview-card">
+        <div className="section-head compact-head">
+          <div>
+            <h2>Attendance register</h2>
+            <p>
+              Morning sign-in marks the user present. Evening logout records the
+              closing time and marks the day as closed.
+            </p>
+          </div>
+        </div>
+        <div className="audit-log-toolbar attendance-toolbar">
+          <label className="audit-log-search attendance-day-picker">
+            <span>Attendance day</span>
+            <input
+              type="date"
+              value={attendanceDate}
+              onChange={(event) => setAttendanceDate(event.target.value)}
+            />
+          </label>
+          <div className="audit-log-metrics">
+            <div className="metric-mini audit-log-metric">
+              <span>Present</span>
+              <strong>{attendance.summary.presentCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Closed</span>
+              <strong>{attendance.summary.closedCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Absent</span>
+              <strong>{attendance.summary.absentCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric">
+              <span>Off / Holiday</span>
+              <strong>
+                {attendance.summary.offDayCount + attendance.summary.holidayCount}
+              </strong>
+            </div>
+          </div>
+        </div>
+        {attendance.entries.length === 0 ? (
+          <div className="chart-empty audit-log-empty-state">
+            No active users are available for this attendance day.
+          </div>
+        ) : (
+          <div className="audit-log-table-shell compact-scroll admin-table-shell">
+            <table className="audit-log-table admin-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Opened</th>
+                  <th>Last activity</th>
+                  <th>Closed</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendance.entries.map((entry) => (
+                  <tr key={`${attendance.date}-${entry.userId}`}>
+                    <td>
+                      <strong>{entry.displayName}</strong>
+                      <div className="admin-table-subcopy">{entry.username}</div>
+                    </td>
+                    <td>{entry.role}</td>
+                    <td>
+                      <div className="attendance-status-cell">
+                        <span className={`tag ${statusTone(entry.status)}`}>
+                          {entry.status === "OFF_DAY"
+                            ? "Off day"
+                            : entry.status === "HOLIDAY"
+                              ? "Holiday"
+                              : entry.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td>{formatTimestamp(entry.firstLoginAt)}</td>
+                    <td>{formatTimestamp(entry.lastActivityAt)}</td>
+                    <td>{formatTimestamp(entry.lastLogoutAt)}</td>
+                    <td>
+                      {entry.status === "HOLIDAY"
+                        ? entry.holidayLabel ?? "Holiday"
+                        : entry.status === "OFF_DAY"
+                          ? "Configured off day"
+                          : entry.status === "ABSENT"
+                            ? "No login activity"
+                            : entry.status === "CLOSED"
+                              ? "Closed for the day"
+                              : "Currently open"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </article>
+
+      <article className="surface-card form-card workspace-form-card attendance-calendar-card">
+        <div className="section-head compact-head">
+          <div>
+            <h2>Attendance calendar</h2>
+            <p>Configure off days and holiday dates used when absent staff are evaluated.</p>
+          </div>
+        </div>
+        {!canManageAttendanceSettings ? (
+          <div className="summary-panel full-width">
+            <span>View only</span>
+            <strong>Only the administrator can change attendance calendar settings</strong>
+            <p className="muted-copy">
+              Managers can monitor daily attendance here, but only the admin can
+              change off days and holidays.
+            </p>
+          </div>
+        ) : null}
+        <form className="form-grid" onSubmit={handleAttendanceSettingsSave}>
+          <div className="full-width">
+            <span>Weekly off days</span>
+            <div className="pill-filter-group attendance-weekday-row">
+              {weekdayOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`pill-filter${attendanceSettingsForm.offDays.includes(option.value) ? " active" : ""}`}
+                  onClick={() => toggleOffDay(option.value)}
+                  disabled={!canManageAttendanceSettings}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="full-width section-head compact-head">
+            <div>
+              <h3>Holiday dates</h3>
+              <p>Add the public holidays or special closures that should not count as absence.</p>
+            </div>
+          </div>
+          <div className="attendance-holiday-row full-width">
+            <label>
+              <span>Date</span>
+              <input
+                type="date"
+                value={holidayDraft.date}
+                onChange={(event) =>
+                  setHolidayDraft((current) => ({
+                    ...current,
+                    date: event.target.value,
+                  }))
+                }
+                disabled={!canManageAttendanceSettings}
+              />
+            </label>
+            <label>
+              <span>Holiday name</span>
+              <input
+                value={holidayDraft.label}
+                onChange={(event) =>
+                  setHolidayDraft((current) => ({
+                    ...current,
+                    label: event.target.value,
+                  }))
+                }
+                placeholder="Founders' Day, Independence Day..."
+                disabled={!canManageAttendanceSettings}
+              />
+            </label>
+            <button
+              type="button"
+              className="ghost-action attendance-holiday-add"
+              onClick={addHoliday}
+              disabled={!canManageAttendanceSettings}
+            >
+              Add holiday
+            </button>
+          </div>
+
+          {attendanceSettingsForm.holidays.length > 0 ? (
+            <div className="attendance-holiday-list full-width">
+              {attendanceSettingsForm.holidays.map((holiday) => (
+                <div key={holiday.date} className="attendance-holiday-item">
+                  <div>
+                    <strong>{holiday.label}</strong>
+                    <div className="admin-table-subcopy">{holiday.date}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => removeHoliday(holiday.date)}
+                    disabled={!canManageAttendanceSettings}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="section-note full-width">
+              No holidays have been configured yet.
+            </p>
+          )}
+
+          <div className="full-width action-row">
+            <button type="submit" disabled={!canManageAttendanceSettings}>
+              Save attendance calendar
+            </button>
+          </div>
+        </form>
       </article>
     </section>
   );

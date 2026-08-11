@@ -131,6 +131,11 @@ enum NotificationStatus {
   CANCELLED
 }
 
+enum AttendanceRecordStatus {
+  OPEN
+  CLOSED
+}
+
 enum UserRole {
   RECEPTION
   PHLEBOTOMIST
@@ -176,6 +181,8 @@ model Facility {
   referralDoctors ReferralDoctor[]
   expenses      ExpenseRecord[]
   reportTemplates ReportTemplate[]
+  attendanceSettings AttendanceSettings?
+  attendanceRecords AttendanceRecord[]
   users         AppUser[]
 }
 
@@ -229,9 +236,39 @@ model AppUser {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   facility    Facility  @relation(fields: [facilityId], references: [id])
+  attendanceRecords AttendanceRecord[]
   sessions    AppSession[]
 
   @@index([role, isActive])
+}
+
+model AttendanceSettings {
+  id          String   @id @default(cuid())
+  facilityId  String   @unique
+  offDaysJson String   @default("[]")
+  holidaysJson String  @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  facility    Facility @relation(fields: [facilityId], references: [id])
+}
+
+model AttendanceRecord {
+  id             String                 @id @default(cuid())
+  facilityId     String
+  userId         String
+  attendanceDate String
+  firstLoginAt   DateTime
+  lastActivityAt DateTime
+  lastLogoutAt   DateTime?
+  status         AttendanceRecordStatus @default(OPEN)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  facility       Facility               @relation(fields: [facilityId], references: [id])
+  user           AppUser                @relation(fields: [userId], references: [id])
+
+  @@unique([facilityId, userId, attendanceDate])
+  @@index([facilityId, attendanceDate])
+  @@index([userId, attendanceDate])
 }
 
 model AppSession {

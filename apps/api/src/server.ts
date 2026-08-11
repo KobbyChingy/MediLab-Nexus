@@ -12,6 +12,7 @@ import {
 } from "@medilab/db";
 import {
   adminUserInputSchema,
+  attendanceSettingsInputSchema,
   analyticsRangeKeys,
   bulkServiceInputSchema,
   catalogSeed,
@@ -42,6 +43,7 @@ import {
   userStatusInputSchema,
   type AdminOverviewPayload,
   type AdminUserSummaryPayload,
+  type AttendanceWorkspacePayload,
   type BootstrapPayload,
   type Capability,
   type CatalogSeedItem,
@@ -73,6 +75,12 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { recordAudit } from "./services/audit.js";
+import {
+  buildAttendanceWorkspace,
+  recordAttendanceLogin,
+  recordAttendanceLogout,
+  saveAttendanceSettings,
+} from "./services/attendance.js";
 import {
   changeOwnPin,
   createLocalUser,
@@ -2241,6 +2249,10 @@ app.post("/api/auth/login", async (request, reply) => {
     entityId: session.user.id,
     summary: `${session.user.displayName} signed in locally`,
   });
+  await recordAttendanceLogin(prisma, {
+    facilityId: session.user.facilityId,
+    userId: session.user.id,
+  });
 
   reply.header(
     "set-cookie",
@@ -2292,6 +2304,10 @@ app.post("/api/auth/logout", async (request, reply) => {
       entityType: "AppUser",
       entityId: session.user.id,
       summary: `${session.user.displayName} signed out locally`,
+    });
+    await recordAttendanceLogout(prisma, {
+      facilityId: session.user.facilityId,
+      userId: session.user.id,
     });
   }
 
@@ -2471,6 +2487,55 @@ app.get("/api/admin/overview", async (request, reply) => {
   }
 
   return buildAdminOverview(request.actor);
+});
+
+app.get(
+  "/api/admin/attendance",
+  async (request, reply): Promise<AttendanceWorkspacePayload | unknown> => {
+    if (!request.actor.authenticated) {
+      return unauthorized(reply);
+    }
+    if (!hasCapability(request.actor, "admin:view")) {
+      return deny(reply, "admin:view");
+    }
+
+    return buildAttendanceWorkspace(
+      prisma,
+      request.actor.facilityId,
+      (request.query as { date?: string }).date,
+    );
+  },
+);
+
+app.put("/api/admin/attendance/settings", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "admin:view")) {
+    return deny(reply, "admin:view");
+  }
+  if (request.actor.role !== "ADMIN") {
+    return reply.code(403).send({
+      message: "Only administrators can update attendance off days and holidays.",
+    });
+  }
+
+  const payload = attendanceSettingsInputSchema.parse(request.body);
+  const settings = await saveAttendanceSettings(
+    prisma,
+    request.actor.facilityId,
+    payload,
+  );
+
+  await recordAudit(prisma, request.actor, {
+    action: "ATTENDANCE_SETTINGS_UPDATED",
+    entityType: "AttendanceSettings",
+    entityId: request.actor.facilityId,
+    summary: `${request.actor.displayName} updated attendance off days and holidays`,
+    payload: settings,
+  });
+
+  return settings;
 });
 
 app.get("/api/analytics/finance", async (request, reply) => {

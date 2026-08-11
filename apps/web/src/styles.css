@@ -231,6 +231,50 @@ label span {
   font-weight: 600;
 }
 
+.attendance-toolbar {
+  gap: 1rem;
+}
+
+.attendance-day-picker {
+  max-width: 14rem;
+}
+
+.attendance-status-cell {
+  display: flex;
+  align-items: flex-start;
+}
+
+.attendance-weekday-row {
+  margin-top: 0.75rem;
+}
+
+.attendance-holiday-row {
+  display: grid;
+  grid-template-columns: minmax(0, 12rem) minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.attendance-holiday-add {
+  align-self: end;
+}
+
+.attendance-holiday-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.attendance-holiday-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
 :root[data-theme="dark"] .topbar {
   background: rgba(15, 23, 42, 0.72);
 }
