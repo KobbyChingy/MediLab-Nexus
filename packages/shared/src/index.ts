@@ -518,6 +518,27 @@ export type ReportTemplatePayload = {
   updatedAt: string;
 };
 
+export type SavedReportPayload = {
+  id: string;
+  patientId: string;
+  orderId: string;
+  patientTraceCode: string;
+  patientName: string;
+  title: string;
+  status: (typeof reportStatuses)[number];
+  signedBy: string | null;
+  signedAt: string | null;
+  criticalFlag: boolean;
+  medicalHistory: string;
+  summary: string;
+  findings: string;
+  impression: string;
+  imagePaths: string[];
+  templateKind: (typeof reportTemplateKinds)[number];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CatalogSeedItem = {
   id?: string;
   code: string;
@@ -740,6 +761,231 @@ export const catalogSeed: CatalogSeedItem[] = [
     rulesJson: JSON.stringify({
       template: "echo",
       dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-ECHO-ADULT",
+    name: "Echocardiography Adult Report",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 50000,
+    tatMinutes: 90,
+    rulesJson: JSON.stringify({
+      template: "echo-adult",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-ECHO-YOUNG",
+    name: "Echocardiography Young Report",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 45000,
+    tatMinutes: 90,
+    rulesJson: JSON.stringify({
+      template: "echo-young",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-ABD-SCAN",
+    name: "Abdomen Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 25000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "abdominal",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-ABDPEL-SCAN",
+    name: "Abdomen pelvic Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 28000,
+    tatMinutes: 75,
+    rulesJson: JSON.stringify({
+      template: "abdominopelvic",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-OBS-SCAN",
+    name: "Obedstrics Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 15000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "obstetric",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-PELPER-SCAN",
+    name: "Pelvic personal Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 10000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "pelvic",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-PELDR-SCAN",
+    name: "Pelvic from Doctor scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 15000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "pelvic",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-PROSTATE-SCAN",
+    name: "Prostate Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 30000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "prostate",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-SCROTAL-SCAN",
+    name: "Scrotal Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 30000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "scrotal",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-BREAST-SCAN",
+    name: "Breast Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 30000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "breast",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-LUMPS-SCAN",
+    name: "Lumps Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 30000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "lumps",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-CAROTID-SCAN",
+    name: "Carotid Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 50000,
+    tatMinutes: 90,
+    rulesJson: JSON.stringify({
+      template: "carotid",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-NECK-SCAN",
+    name: "Neck Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 30000,
+    tatMinutes: 60,
+    rulesJson: JSON.stringify({
+      template: "neck",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-DVT-DOPPLER",
+    name: "Dvt doppler Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "Ultrasound",
+    priceCents: 35000,
+    tatMinutes: 90,
+    rulesJson: JSON.stringify({
+      template: "dvt-doppler",
+      dicom: true,
+      measurements: true,
+    }),
+  },
+  {
+    code: "IMG-ECG-SCAN",
+    name: "ELECTROCARDIO GRAM Scan",
+    kind: "IMAGING",
+    department: "IMAGING",
+    specimenType: null,
+    modality: "ECG",
+    priceCents: 25000,
+    tatMinutes: 45,
+    rulesJson: JSON.stringify({
+      template: "ecg",
+      dicom: false,
       measurements: true,
     }),
   },

@@ -25,6 +25,7 @@
     "db:reset": "node scripts/prisma-safe.mjs db push --schema packages/db/prisma/schema.postgres.prisma --force-reset --skip-generate && npm run db:generate && npm run db:seed",
     "db:reset:sqlite": "node scripts/prisma-safe.mjs db push --schema packages/db/prisma/sqlite/schema.prisma --force-reset --skip-generate && npm run db:generate:sqlite && npm run db:seed",
     "db:seed": "tsx packages/db/prisma/seed.ts",
+    "db:bootstrap:requested-services": "tsx scripts/bootstrap-requested-services.ts",
     "postinstall": "npm run db:generate && npm run build -w @medilab/shared && npm run build -w @medilab/db"
   },
   "devDependencies": {

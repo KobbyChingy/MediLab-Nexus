@@ -38,6 +38,7 @@ import {
   type ReferralDoctorInput,
   type ReferralDoctorSummaryPayload,
   type ReportInput,
+  type SavedReportPayload,
   type ReportTemplateInput,
   type ReportTemplatePayload,
   type ReportTemplateAssistPayload,
@@ -2197,7 +2198,11 @@ function resolveUltrasoundTemplate(
   if (normalized.includes("abdominal")) {
     return "ULTRASOUND_ABDOMINAL";
   }
-  if (normalized.includes("echo") || normalized.includes("card")) {
+  if (
+    normalized.includes("echo") ||
+    normalized.includes("echocardi") ||
+    normalized.includes("cardiac")
+  ) {
     return "ULTRASOUND_ECHOCARDIOGRAPHY";
   }
   return "ULTRASOUND_STANDARD";
@@ -2882,6 +2887,7 @@ export default function App() {
   const [reportTemplates, setReportTemplates] = useState<
     ReportTemplatePayload[]
   >([]);
+  const [editingReportId, setEditingReportId] = useState("");
   const [ownProfile, setOwnProfile] = useState<OwnProfilePayload | null>(null);
   const [ownProfileForm, setOwnProfileForm] = useState<OwnProfileInput>({
     username: "",
@@ -3837,6 +3843,19 @@ export default function App() {
       (payment) => payment.patientId === selectedPatient.id,
     );
   }, [selectedPatient, workflow.payments]);
+  const selectedPatientReports = useMemo(
+    () =>
+      selectedPatient
+        ? workflow.reports
+            .filter((report) => report.patientId === selectedPatient.id)
+            .sort(
+              (left, right) =>
+                new Date(right.signedAt ?? right.createdAt).getTime() -
+                new Date(left.signedAt ?? left.createdAt).getTime(),
+            )
+        : ([] as WorkflowPayload["reports"]),
+    [selectedPatient, workflow.reports],
+  );
   const filteredPatientRecords = useMemo(() => {
     const query = patientRecordsQuery.trim().toLowerCase();
     const rankedPatients = [...patients].sort(
@@ -4264,6 +4283,9 @@ export default function App() {
     const reportPatientIds = new Set(
       activeReportableOrders.map((order) => order.patientId),
     );
+    if (reportForm.patientId) {
+      reportPatientIds.add(reportForm.patientId);
+    }
     const sortedPatients = [...patients].sort((left, right) => {
       const leftLabel = `${left.firstName} ${left.lastName}`.trim();
       const rightLabel = `${right.firstName} ${right.lastName}`.trim();
@@ -4294,7 +4316,14 @@ export default function App() {
   }, [activeReportableOrders, patients, reportPatientQuery]);
   const reportOrdersForSelectedPatient = useMemo(
     () =>
-      activeReportableOrders
+      [...activeReportableOrders]
+        .concat(
+          workflow.orders.filter(
+            (order) =>
+              order.id === reportForm.orderId &&
+              !activeReportableOrders.some((entry) => entry.id === order.id),
+          ),
+        )
         .filter(
           (order) =>
             !reportForm.patientId || order.patientId === reportForm.patientId,
@@ -4304,7 +4333,7 @@ export default function App() {
             new Date(right.createdAt).getTime() -
             new Date(left.createdAt).getTime(),
         ),
-    [activeReportableOrders, reportForm.patientId],
+    [activeReportableOrders, reportForm.orderId, reportForm.patientId, workflow.orders],
   );
   const selectedReportOrder = useMemo(
     () =>
@@ -4339,8 +4368,7 @@ export default function App() {
         : [],
     [reportForm.templateKind],
   );
-  const isEchoWorksheetTemplate =
-    reportForm.templateKind === "ULTRASOUND_ECHOCARDIOGRAPHY";
+  const isEchoWorksheetTemplate = false;
   const narrativeReportDocumentHtml = useMemo(
     () =>
       buildNarrativeReportDocumentHtml({
@@ -4360,7 +4388,9 @@ export default function App() {
   const visibleSavedReportTemplates = useMemo(
     () =>
       reportTemplates.filter((template) =>
-        isLabReportWorkspace
+        template.name.trim().toLowerCase() === "general template"
+          ? true
+          : isLabReportWorkspace
           ? template.templateKind === "LAB_STANDARD"
           : template.templateKind !== "LAB_STANDARD",
       ),
@@ -5506,12 +5536,12 @@ export default function App() {
     }
 
     try {
-      await requestJson("/reports", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      setStatusText(
-        `Scan report ${payload.title} prepared with printable output`,
+      const saved = await requestJson<SavedReportPayload>(
+        editingReportId ? `/reports/${editingReportId}` : "/reports",
+        {
+          method: editingReportId ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        },
       );
       setReportForm({
         patientId: "",
@@ -5527,16 +5557,19 @@ export default function App() {
         criticalFlag: false,
         imagePaths: [],
       });
+      setEditingReportId("");
+      setSelectedReportTemplateId("");
+      setReportTemplateName("");
       setReportImagePathsText("");
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
       setEchoWorksheet(buildDefaultEchoWorksheetState());
       await loadOperationalData();
       setStatusText(
-        `Scan report ${payload.title} saved as ${formatStatusLabel(payload.status)}`,
+        `${editingReportId ? "Updated" : "Saved"} report ${saved.title} as ${formatStatusLabel(saved.status)}`,
       );
     } catch {
       setStatusText(
-        "Scan report could not be submitted. Retry when the server is available.",
+        `Report could not be ${editingReportId ? "updated" : "saved"}. Retry when the server is available.`,
       );
     }
   }
@@ -5559,70 +5592,11 @@ export default function App() {
       return null;
     }
 
-    const echoReportContent = isEchoWorksheetTemplate
-      ? buildEchoWorksheetReportContent({
-          patient: selectedReportPatient,
-          traceCode:
-            selectedReportPatient?.traceCode ||
-            selectedReportOrder?.patientTraceCode ||
-            "",
-          worksheet: echoWorksheet,
-          technician: ultrasoundReportAssist.sonographerName,
-          title: reportForm.title,
-        })
-      : null;
-    const presetMeasurementLines = isUltrasoundTemplate(reportForm.templateKind)
-      ? buildPresetMeasurementLines(
-          reportForm.templateKind,
-          ultrasoundReportAssist,
-        )
-      : [];
-    const compiledMeasurements = [
-      ultrasoundReportAssist.measurementsText.trim(),
-      ...presetMeasurementLines,
-    ].filter(Boolean);
-    const baseNarrativeDocument = echoReportContent
-      ? ""
-      : narrativeReportDocumentHtml;
-    const findings = echoReportContent
-      ? echoReportContent.findings
-      : isUltrasoundTemplate(reportForm.templateKind)
-      ? joinRichTextSections(
-          ultrasoundReportAssist.technique
-            ? buildRichTextTextBlock(
-                `Technique: ${ultrasoundReportAssist.technique}`,
-              )
-            : "",
-          ultrasoundReportAssist.sonographerName
-            ? buildRichTextTextBlock(
-                `Prepared by: ${ultrasoundReportAssist.sonographerName}`,
-              )
-            : "",
-          ensureRichTextHtml(baseNarrativeDocument),
-          compiledMeasurements.length > 0
-            ? buildRichTextTextBlock(
-                `Measurements:\n${compiledMeasurements.join("\n")}`,
-              )
-            : "",
-          ultrasoundReportAssist.recommendation
-            ? buildRichTextTextBlock(
-                `Recommendation: ${ultrasoundReportAssist.recommendation}`,
-              )
-            : "",
-        )
-      : ensureRichTextHtml(baseNarrativeDocument);
-    const impression = echoReportContent
-      ? echoReportContent.impression
-      : "";
+    const findings = ensureRichTextHtml(narrativeReportDocumentHtml);
 
-    if (
-      richTextToPlainText(findings).length < 3 ||
-      (echoReportContent && richTextToPlainText(impression).length < 3)
-    ) {
+    if (richTextToPlainText(findings).length < 3) {
       setStatusText(
-        echoReportContent
-          ? "Add the worksheet findings and conclusion before previewing, printing, or saving."
-          : "Add the report document content before previewing, printing, or saving.",
+        "Add the report document content before previewing, printing, or saving.",
       );
       return null;
     }
@@ -5631,14 +5605,10 @@ export default function App() {
       ...reportForm,
       title: reportForm.title.trim(),
       signedBy: reportForm.signedBy.trim(),
-      medicalHistory: echoReportContent
-        ? echoReportContent.medicalHistory
-        : "",
-      summary: echoReportContent
-        ? echoReportContent.summary
-        : reportForm.summary.trim() || reportForm.title.trim(),
+      medicalHistory: "",
+      summary: reportForm.summary.trim() || reportForm.title.trim(),
       findings,
-      impression,
+      impression: "",
       imagePaths: reportImagePathsText
         .split(",")
         .map((item) => item.trim())
@@ -5708,30 +5678,8 @@ export default function App() {
 
   async function handleSaveReportTemplate() {
     const templateName = reportTemplateName.trim() || reportForm.title.trim();
-    const echoReportContent = isEchoWorksheetTemplate
-      ? buildEchoWorksheetReportContent({
-          patient: selectedReportPatient,
-          traceCode:
-            selectedReportPatient?.traceCode ||
-            selectedReportOrder?.patientTraceCode ||
-            "",
-          worksheet: echoWorksheet,
-          technician: ultrasoundReportAssist.sonographerName,
-          title: reportForm.title,
-        })
-      : null;
-    const summaryText = echoReportContent
-      ? echoReportContent.summary
-      : reportForm.summary.trim();
-    const historyHtml = echoReportContent
-      ? echoReportContent.medicalHistory
-      : "";
-    const findingsHtml = echoReportContent
-      ? echoReportContent.findings
-      : ensureRichTextHtml(narrativeReportDocumentHtml);
-    const impressionHtml = echoReportContent
-      ? echoReportContent.impression
-      : "";
+    const summaryText = reportForm.summary.trim() || reportForm.title.trim();
+    const findingsHtml = ensureRichTextHtml(narrativeReportDocumentHtml);
 
     if (
       !templateName ||
@@ -5753,10 +5701,10 @@ export default function App() {
             name: templateName,
             templateKind: reportForm.templateKind,
             title: reportForm.title,
-            medicalHistory: historyHtml,
+            medicalHistory: "",
             summary: summaryText,
             findings: findingsHtml,
-            impression: impressionHtml,
+            impression: "",
             assist: {
               ...ultrasoundReportAssist,
               echoWorksheetJson: JSON.stringify(echoWorksheet),
@@ -5802,27 +5750,7 @@ export default function App() {
 
   async function handleExportCurrentTemplateDocument() {
     const templateName = reportTemplateName.trim() || reportForm.title.trim();
-    const echoReportContent = isEchoWorksheetTemplate
-      ? buildEchoWorksheetReportContent({
-          patient: selectedReportPatient,
-          traceCode:
-            selectedReportPatient?.traceCode ||
-            selectedReportOrder?.patientTraceCode ||
-            "",
-          worksheet: echoWorksheet,
-          technician: ultrasoundReportAssist.sonographerName,
-          title: reportForm.title,
-        })
-      : null;
-    const descriptionHtml = echoReportContent
-      ? echoReportContent.findings
-      : ensureRichTextHtml(narrativeReportDocumentHtml);
-    const impressionHtml = echoReportContent
-      ? echoReportContent.impression
-      : "";
-    const historyHtml = echoReportContent
-      ? echoReportContent.medicalHistory
-      : "";
+    const descriptionHtml = ensureRichTextHtml(narrativeReportDocumentHtml);
 
     if (!templateName || richTextToPlainText(descriptionHtml).length < 3) {
       setStatusText("Add a template name and document content before export.");
@@ -5899,6 +5827,40 @@ export default function App() {
       setStatusText(`Exported ${templateName} as a DOCX document`);
     } catch {
       setStatusText("DOCX export could not be completed right now.");
+    }
+  }
+
+  async function handleEditSavedReport(reportId: string) {
+    try {
+      const report = await requestJson<SavedReportPayload>(`/reports/${reportId}`);
+      setEditingReportId(report.id);
+      setSelectedPatientId(report.patientId);
+      setReportPatientQuery(`${report.patientTraceCode} · ${report.patientName}`);
+      setReportForm({
+        patientId: report.patientId,
+        orderId: report.orderId,
+        title: report.title,
+        medicalHistory: report.medicalHistory,
+        summary: report.summary,
+        findings: ensureRichTextHtml(report.findings),
+        impression: report.impression,
+        signedBy: report.signedBy || actorName,
+        status: report.status,
+        templateKind: report.templateKind,
+        criticalFlag: report.criticalFlag,
+        imagePaths: report.imagePaths,
+      });
+      setReportImagePathsText(report.imagePaths.join(", "));
+      setSelectedReportTemplateId("");
+      setReportTemplateName(report.title);
+      setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
+      setEchoWorksheet(buildDefaultEchoWorksheetState());
+      setActiveNav(
+        report.templateKind === "LAB_STANDARD" ? "labReports" : "scanReports",
+      );
+      setStatusText(`Loaded saved report ${report.title} for editing`);
+    } catch {
+      setStatusText("Saved report could not be opened right now.");
     }
   }
 
@@ -8386,6 +8348,60 @@ export default function App() {
                 </p>
               </div>
             </div>
+            <div className="surface-subsection">
+              <div className="section-head">
+                <div>
+                  <h3>Saved reports</h3>
+                  <p>Open, print, download, or edit any report already saved for this patient.</p>
+                </div>
+              </div>
+              <div className="list-stack">
+                {selectedPatientReports.length === 0 ? (
+                  <div className="chart-empty audit-log-empty-state">
+                    No saved reports are on file for this patient yet.
+                  </div>
+                ) : (
+                  selectedPatientReports.map((report) => (
+                    <div key={`patient-report-${report.id}`} className="report-card-row">
+                      <div>
+                        <strong>{report.title}</strong>
+                        <span>
+                          {report.patientTraceCode} · {formatDate(report.signedAt ?? report.createdAt)}
+                        </span>
+                      </div>
+                      <div className="inline-actions">
+                        <small className={`status-pill tone-${getOrderTone(report.status)}`}>
+                          {formatStatusLabel(report.status)}
+                        </small>
+                        {canWriteReports ? (
+                          <button
+                            type="button"
+                            className="ghost-action small"
+                            onClick={() => void handleEditSavedReport(report.id)}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => handlePreviewReport(report.id)}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-action small"
+                          onClick={() => handleDownloadPdf(report.id, report.title)}
+                        >
+                          PDF
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
             <div className="timeline-list compact-scroll">
               {selectedPatientTimeline.map((entry) => (
                 <article
@@ -9983,6 +9999,15 @@ export default function App() {
             </div>
           </div>
           <form className="form-grid" onSubmit={handleReportSubmit}>
+            {editingReportId ? (
+              <div className="summary-panel full-width">
+                <span>Editing saved report</span>
+                <strong>{reportForm.title}</strong>
+                <p className="muted-copy">
+                  This saved report will be updated in the patient record and remain printable whenever the patient returns.
+                </p>
+              </div>
+            ) : null}
             <label className="full-width">
               <span>Search patient or trace code</span>
               <input
@@ -10562,8 +10587,8 @@ export default function App() {
                     }
                     placeholder={
                       isLabReportWorkspace
-                        ? "Type or paste the full laboratory report here, including history, findings, results, and impression in one document"
-                        : "Type or paste the full scan report here, including history, description, and impression in one document"
+                        ? "Type or paste the full laboratory report here, including results, comments, and impression in one document"
+                        : "Type or paste the full scan report here, or load any Word-style template and edit it directly"
                     }
                     disabled={!canWriteReports}
                     documentMode
@@ -10571,7 +10596,7 @@ export default function App() {
                 </Suspense>
                 {isUltrasoundTemplate(reportForm.templateKind) ? (
                   <label className="full-width">
-                    <span>Measurements</span>
+                    <span>Measurements notes</span>
                     <textarea
                       rows={3}
                       value={ultrasoundReportAssist.measurementsText}

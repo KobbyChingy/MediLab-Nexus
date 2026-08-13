@@ -61,6 +61,7 @@ import {
   type PrintableAnalyticsPayload,
   type PrintableInvoicePayload,
   type ReportInput,
+  type SavedReportPayload,
   type PrintableReportPayload,
   type PrintableReceiptPayload,
   type ReportTemplatePayload,
@@ -327,6 +328,95 @@ function serializeReportTemplate(template: {
     createdByRole: template.createdByRole,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
+  };
+}
+
+function isImagingReportLabel(value: string) {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("ultrasound") ||
+    normalized.includes("scan") ||
+    normalized.includes("doppler") ||
+    normalized.includes("echo") ||
+    normalized.includes("echocardi") ||
+    normalized.includes("ecg")
+  );
+}
+
+function resolveSavedReportTemplateKind(labels: string[]) {
+  const normalized = labels.join(" ").toLowerCase();
+  if (normalized.includes("obstetric") || normalized.includes("pregnan")) {
+    return "ULTRASOUND_OBSTETRIC" as const;
+  }
+  if (normalized.includes("pelvic")) {
+    return "ULTRASOUND_PELVIC" as const;
+  }
+  if (normalized.includes("abdominal") || normalized.includes("abdomen")) {
+    return "ULTRASOUND_ABDOMINAL" as const;
+  }
+  if (
+    normalized.includes("echo") ||
+    normalized.includes("echocardi") ||
+    normalized.includes("cardiac")
+  ) {
+    return "ULTRASOUND_ECHOCARDIOGRAPHY" as const;
+  }
+
+  return labels.some(isImagingReportLabel)
+    ? ("ULTRASOUND_STANDARD" as const)
+    : ("LAB_STANDARD" as const);
+}
+
+function serializeSavedReport(report: {
+  id: string;
+  patientId: string;
+  orderId: string;
+  title: string;
+  status: SavedReportPayload["status"];
+  medicalHistory: string | null;
+  summary: string;
+  findings: string;
+  impression: string;
+  signedBy: string | null;
+  signedAt: Date | null;
+  criticalFlag: boolean;
+  imagePathsJson: string;
+  createdAt: Date;
+  updatedAt: Date;
+  patient: {
+    traceCode: string;
+    firstName: string;
+    lastName: string;
+  };
+  order: {
+    items: Array<{
+      catalogItem: {
+        name: string;
+      };
+    }>;
+  };
+}): SavedReportPayload {
+  const orderLabels = report.order.items.map((item) => item.catalogItem.name);
+
+  return {
+    id: report.id,
+    patientId: report.patientId,
+    orderId: report.orderId,
+    patientTraceCode: report.patient.traceCode,
+    patientName: `${report.patient.firstName} ${report.patient.lastName}`,
+    title: report.title,
+    status: report.status,
+    signedBy: report.signedBy,
+    signedAt: report.signedAt?.toISOString() ?? null,
+    criticalFlag: report.criticalFlag,
+    medicalHistory: report.medicalHistory ?? "",
+    summary: report.summary,
+    findings: report.findings,
+    impression: report.impression,
+    imagePaths: JSON.parse(report.imagePathsJson || "[]"),
+    templateKind: resolveSavedReportTemplateKind([report.title, ...orderLabels]),
+    createdAt: report.createdAt.toISOString(),
+    updatedAt: report.updatedAt.toISOString(),
   };
 }
 
@@ -4479,6 +4569,122 @@ app.post("/api/reports", async (request, reply) => {
   return reply
     .code(201)
     .send(await prisma.report.findUniqueOrThrow({ where: { id: report.id } }));
+});
+
+app.get("/api/reports/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const { id } = request.params as { id: string };
+  const report = await prisma.report.findUnique({
+    where: { id },
+    include: {
+      patient: true,
+      order: {
+        include: {
+          items: {
+            include: {
+              catalogItem: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!report || report.patient.facilityId !== request.actor.facilityId) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+
+  return serializeSavedReport(report);
+});
+
+app.put("/api/reports/:id", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:write")) {
+    return deny(reply, "report:write");
+  }
+
+  const { id } = request.params as { id: string };
+  const payload = reportInputSchema.parse(request.body);
+  const existing = await prisma.report.findUnique({
+    where: { id },
+    include: {
+      patient: true,
+      order: true,
+    },
+  });
+
+  if (!existing || existing.patient.facilityId !== request.actor.facilityId) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+
+  if (
+    payload.patientId !== existing.patientId ||
+    payload.orderId !== existing.orderId
+  ) {
+    return reply.code(400).send({
+      message: "Saved reports can only be edited against their original patient and order.",
+    });
+  }
+
+  const reportLifecycle = resolveReportLifecycle(payload.status, payload.signedBy);
+  const updated = await prisma.report.update({
+    where: { id: existing.id },
+    data: {
+      title: payload.title,
+      medicalHistory: payload.medicalHistory,
+      summary: payload.summary,
+      findings: payload.findings,
+      impression: payload.impression,
+      signedBy: reportLifecycle.signedBy,
+      signedAt: reportLifecycle.signedAt,
+      status: reportLifecycle.status,
+      criticalFlag: payload.criticalFlag,
+      imagePathsJson: JSON.stringify(payload.imagePaths),
+      pdfPath: null,
+    },
+    include: {
+      patient: true,
+      order: {
+        include: {
+          items: {
+            include: {
+              catalogItem: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (reportLifecycle.requiresPdf) {
+    await ensureReportPdf(prisma, updated.id);
+  }
+
+  await prisma.diagnosticOrder.update({
+    where: { id: existing.orderId },
+    data: {
+      status: payload.criticalFlag
+        ? "READY_FOR_REVIEW"
+        : reportLifecycle.orderStatus,
+    },
+  });
+
+  await recordDispatchEvent("Report", updated.id, updated);
+  await recordAudit(prisma, request.actor, {
+    action: "REPORT_UPDATED",
+    entityType: "Report",
+    entityId: updated.id,
+    traceCode: existing.patient.traceCode,
+    summary: `Report ${updated.title} updated for ${existing.patient.traceCode}`,
+    payload,
+  });
+
+  return reply.send(serializeSavedReport(updated));
 });
 
 app.post(

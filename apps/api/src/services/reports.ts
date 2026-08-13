@@ -220,6 +220,10 @@ function getFacilityLogoSrc(facility: FacilityProfile) {
   return facility.logoDataUrl || brandSvgDataUri;
 }
 
+function getFacilityWatermarkSrc(facility: FacilityProfile) {
+  return facility.logoDataUrl || "";
+}
+
 function getFacilityContactLine(facility: FacilityProfile) {
   return [facility.location, facility.phone, facility.email]
     .filter(Boolean)
@@ -268,11 +272,11 @@ function isEchoWorksheetReport(report: {
   title: string;
   findings: string;
 }) {
-  const title = report.title.toLowerCase();
   const findings = report.findings.toLowerCase();
   return (
-    title.includes("echocardi") ||
-    findings.includes("adult echocardiography worksheet")
+    findings.includes("adult echocardiography worksheet") ||
+    (findings.includes("doppler measurements") &&
+      findings.includes("m-mode/2d measurements"))
   );
 }
 
@@ -465,6 +469,7 @@ function composePrintableReportHtml(bundle: {
   const description = report.findings.trim();
   const impression = report.impression.trim();
   const reportedBy = report.signedBy?.trim() || "Pending sign-off";
+  const facilityWatermarkSrc = getFacilityWatermarkSrc(facility);
   const standardReportNarrativeHtml =
     history !== "Not provided." || impression
       ? [
@@ -512,6 +517,8 @@ function composePrintableReportHtml(bundle: {
       .echo-paper .echo-print-content { padding: 18px 20px 20px; }
       .echo-section { padding: 16px 20px 18px; border-top: 1px solid #d1d5db; }
       .echo-footer { background: #fff; border: 1px solid #1f2937; padding: 16px 20px 18px; display: grid; gap: 12px; }
+      .echo-watermark-wrap { position: relative; }
+      .echo-watermark { position: absolute; right: 22px; top: 170px; width: 180px; opacity: 0.05; pointer-events: none; }
       .echo-footer h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
       .echo-footer .body-copy { font-size: 15px; line-height: 1.65; }
       .echo-print-content .body-copy { font-size: 15px; line-height: 1.6; }
@@ -538,7 +545,8 @@ function composePrintableReportHtml(bundle: {
       <div class="actions">
         <button class="print-button" type="button" onclick="window.print()">Print report</button>
       </div>
-      <article class="echo-sheet">
+      <article class="echo-sheet echo-watermark-wrap">
+        ${facilityWatermarkSrc ? `<img class="echo-watermark" src="${facilityWatermarkSrc}" alt="" />` : ""}
         <header class="echo-header">
           <div class="letterhead">
             <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
@@ -658,7 +666,7 @@ function composePrintableReportHtml(bundle: {
   </head>
   <body>
     <div class="sheet-wrap">
-    <img class="watermark" src="${getFacilityLogoSrc(facility)}" alt="" />
+    ${facilityWatermarkSrc ? `<img class="watermark" src="${facilityWatermarkSrc}" alt="" />` : ""}
     <article class="sheet">
       <header class="hero">
         <div class="brand-row">

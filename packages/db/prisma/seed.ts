@@ -1,11 +1,9 @@
 import { prisma } from "../src/index.js";
+import "../../../scripts/bootstrap-requested-services.ts";
 
 async function main() {
   console.log(
-    "MediLab Nexus seed: no demo or sample data is inserted by default.",
-  );
-  console.log(
-    "Use first-run sign up for the initial administrator, then add live operational data from the app.",
+    "MediLab Nexus seed: requested services and named report templates have been bootstrapped without demo patient data.",
   );
 }
 
