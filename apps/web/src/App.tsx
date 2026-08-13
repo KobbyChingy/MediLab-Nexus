@@ -238,6 +238,8 @@ type ServiceFormState = {
   specimenType: string;
   modality: string;
   priceCents: string;
+  tatDays: string;
+  tatHours: string;
   tatMinutes: string;
   isActive: boolean;
 };
@@ -1338,6 +1340,75 @@ function buildAnalyticsQueryString(
     }
   }
   return params.toString();
+}
+
+function splitTurnaroundMinutes(totalMinutes: number) {
+  const safeTotal = Math.max(0, Math.trunc(totalMinutes));
+  const tatDays = Math.floor(safeTotal / (24 * 60));
+  const remainingMinutes = safeTotal % (24 * 60);
+  const tatHours = Math.floor(remainingMinutes / 60);
+  const tatMinutes = remainingMinutes % 60;
+
+  return {
+    tatDays: String(tatDays),
+    tatHours: String(tatHours),
+    tatMinutes: String(tatMinutes),
+  };
+}
+
+function buildTurnaroundMinutes(parts: {
+  tatDays: string;
+  tatHours: string;
+  tatMinutes: string;
+}) {
+  const tatDays = Number(parts.tatDays || "0");
+  const tatHours = Number(parts.tatHours || "0");
+  const tatMinutes = Number(parts.tatMinutes || "0");
+
+  if (
+    !Number.isInteger(tatDays) ||
+    !Number.isInteger(tatHours) ||
+    !Number.isInteger(tatMinutes) ||
+    tatDays < 0 ||
+    tatHours < 0 ||
+    tatMinutes < 0
+  ) {
+    return { error: "Turnaround time must use whole numbers only." } as const;
+  }
+
+  if (tatHours > 23) {
+    return { error: "Hours must be between 0 and 23." } as const;
+  }
+
+  if (tatMinutes > 59) {
+    return { error: "Minutes must be between 0 and 59." } as const;
+  }
+
+  const totalMinutes = tatDays * 24 * 60 + tatHours * 60 + tatMinutes;
+  if (totalMinutes <= 0) {
+    return {
+      error: "Turnaround time must be above zero. Use days, hours, or minutes.",
+    } as const;
+  }
+
+  return { totalMinutes } as const;
+}
+
+function formatTurnaroundMinutes(totalMinutes: number) {
+  const { tatDays, tatHours, tatMinutes } = splitTurnaroundMinutes(totalMinutes);
+  const parts: string[] = [];
+
+  if (tatDays !== "0") {
+    parts.push(`${tatDays}d`);
+  }
+  if (tatHours !== "0") {
+    parts.push(`${tatHours}h`);
+  }
+  if (tatMinutes !== "0" || parts.length === 0) {
+    parts.push(`${tatMinutes}m`);
+  }
+
+  return parts.join(" ");
 }
 
 function stripFileExtension(fileName: string) {
@@ -2735,7 +2806,9 @@ export default function App() {
     specimenType: "Whole Blood",
     modality: "Ultrasound",
     priceCents: "0",
-    tatMinutes: "60",
+    tatDays: "0",
+    tatHours: "1",
+    tatMinutes: "0",
     isActive: true,
   });
   const [serviceEditorOpen, setServiceEditorOpen] = useState(false);
@@ -3461,7 +3534,7 @@ export default function App() {
       specimenType: selectedService.specimenType ?? "",
       modality: selectedService.modality ?? "",
       priceCents: String(selectedService.priceCents),
-      tatMinutes: String(selectedService.tatMinutes),
+      ...splitTurnaroundMinutes(selectedService.tatMinutes),
       isActive: selectedService.isActive ?? true,
     });
   }, [selectedServiceId, services]);
@@ -6527,6 +6600,12 @@ export default function App() {
   async function handleServiceSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const turnaround = buildTurnaroundMinutes(serviceForm);
+    if (turnaround.error) {
+      setStatusText(turnaround.error);
+      return;
+    }
+
     const payload: ServiceInput = {
       code: serviceForm.code,
       name: serviceForm.name,
@@ -6534,7 +6613,7 @@ export default function App() {
       specimenType: serviceForm.kind === "TEST" ? serviceForm.specimenType : "",
       modality: serviceForm.kind === "IMAGING" ? serviceForm.modality : "",
       priceCents: Number(serviceForm.priceCents),
-      tatMinutes: Number(serviceForm.tatMinutes),
+      tatMinutes: turnaround.totalMinutes,
       isActive: serviceForm.isActive,
     };
 
@@ -6554,8 +6633,12 @@ export default function App() {
           ? "Service updated and pricing refreshed"
           : "New service added and available for ordering",
       );
-    } catch {
-      setStatusText("Service could not be saved right now");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Service could not be saved right now",
+      );
     }
   }
 
@@ -6773,7 +6856,9 @@ export default function App() {
       specimenType: "Whole Blood",
       modality: "Ultrasound",
       priceCents: "0",
-      tatMinutes: "60",
+      tatDays: "0",
+      tatHours: "1",
+      tatMinutes: "0",
       isActive: true,
     });
   }
@@ -6788,7 +6873,9 @@ export default function App() {
       specimenType: "Whole Blood",
       modality: "Ultrasound",
       priceCents: "0",
-      tatMinutes: "60",
+      tatDays: "0",
+      tatHours: "1",
+      tatMinutes: "0",
       isActive: true,
     });
   }
@@ -6911,7 +6998,7 @@ export default function App() {
                   </td>
                   <td>{service.kind === "IMAGING" ? "Scan" : "Lab"}</td>
                   <td>{formatMoney(service.priceCents)}</td>
-                  <td>{service.tatMinutes} min</td>
+                  <td>{formatTurnaroundMinutes(service.tatMinutes)}</td>
                   <td>
                     <span
                       className={`status-pill${service.isActive === false ? " muted" : " success"}`}
@@ -8530,7 +8617,7 @@ export default function App() {
                     </div>
                     <div className="service-option-meta">
                       <small>{formatMoney(item.priceCents)}</small>
-                      <small>{item.tatMinutes} min TAT</small>
+                      <small>{formatTurnaroundMinutes(item.tatMinutes)} TAT</small>
                     </div>
                   </label>
                 );
@@ -9022,7 +9109,7 @@ export default function App() {
                   </div>
                   <div className="service-option-meta">
                     <small>{formatMoney(item.priceCents)}</small>
-                    <small>{item.tatMinutes} min TAT</small>
+                    <small>{formatTurnaroundMinutes(item.tatMinutes)} TAT</small>
                   </div>
                 </label>
               );
@@ -11919,19 +12006,56 @@ export default function App() {
                 />
               </label>
               <label>
-                <span>Turnaround time (minutes)</span>
-                <input
-                  type="number"
-                  value={serviceForm.tatMinutes}
-                  onChange={(event) =>
-                    setServiceForm((current) => ({
-                      ...current,
-                      tatMinutes: event.target.value,
-                    }))
-                  }
-                  disabled={!canManageServices}
-                  required
-                />
+                <span>Turnaround time</span>
+                <div className="inline-split-fields">
+                  <input
+                    type="number"
+                    min={0}
+                    value={serviceForm.tatDays}
+                    onChange={(event) =>
+                      setServiceForm((current) => ({
+                        ...current,
+                        tatDays: event.target.value,
+                      }))
+                    }
+                    disabled={!canManageServices}
+                    aria-label="Turnaround days"
+                    placeholder="Days"
+                    required
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={serviceForm.tatHours}
+                    onChange={(event) =>
+                      setServiceForm((current) => ({
+                        ...current,
+                        tatHours: event.target.value,
+                      }))
+                    }
+                    disabled={!canManageServices}
+                    aria-label="Turnaround hours"
+                    placeholder="Hours"
+                    required
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={serviceForm.tatMinutes}
+                    onChange={(event) =>
+                      setServiceForm((current) => ({
+                        ...current,
+                        tatMinutes: event.target.value,
+                      }))
+                    }
+                    disabled={!canManageServices}
+                    aria-label="Turnaround minutes"
+                    placeholder="Minutes"
+                    required
+                  />
+                </div>
               </label>
               <label className="full-width inline-toggle">
                 <input
@@ -12152,7 +12276,7 @@ export default function App() {
                   </div>
                   <small>
                     {formatMoney(entry.service.priceCents)} ·{" "}
-                    {entry.service.tatMinutes} min
+                    {formatTurnaroundMinutes(entry.service.tatMinutes)}
                   </small>
                 </div>
               ))}
