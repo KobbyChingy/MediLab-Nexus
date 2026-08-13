@@ -311,6 +311,40 @@ export async function changeOwnPin(
   return rotateUserPin(prisma, userId, newPin);
 }
 
+export async function updateOwnProfile(
+  prisma: PrismaClient,
+  userId: string,
+  input: {
+    username: string;
+    displayName: string;
+  },
+) {
+  const username = normalizeUsername(input.username);
+  const displayName = input.displayName.trim();
+
+  const conflictingUser = await prisma.appUser.findFirst({
+    where: {
+      username,
+      NOT: { id: userId },
+    },
+    select: { id: true },
+  });
+
+  if (conflictingUser) {
+    throw new Error("That username is already in use.");
+  }
+
+  const nextUser = await prisma.appUser.update({
+    where: { id: userId },
+    data: {
+      username,
+      displayName,
+    },
+  });
+
+  return nextUser;
+}
+
 export async function setUserActiveState(
   prisma: PrismaClient,
   userId: string,

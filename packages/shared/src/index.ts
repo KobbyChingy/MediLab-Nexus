@@ -110,7 +110,7 @@ export const patientInputSchema = z.object({
   medicalHistory: z.string().optional(),
   referralDoctorId: z.string().optional().default(""),
   referralName: z.string().optional().default(""),
-  referralCommissionPercent: z.number().int().min(0).max(100).optional(),
+  referralAmountCents: z.number().int().min(0).optional(),
   consentAccepted: z.boolean().default(false),
   photoPath: z.string().optional(),
 });
@@ -119,7 +119,7 @@ export const referralDoctorInputSchema = z.object({
   fullName: z.string().min(3),
   phone: z.string().optional().default(""),
   email: z.string().email().optional().or(z.literal("")).default(""),
-  commissionPercent: z.number().int().min(0).max(100),
+  referralAmountCents: z.number().int().min(0),
   isActive: z.boolean().default(true),
 });
 
@@ -295,6 +295,19 @@ export const changeOwnPinInputSchema = z.object({
   newPin: z.string().min(4).max(12),
 });
 
+export const ownProfileInputSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(40)
+    .refine(
+      (value) => /^[a-z0-9._-]+$/iu.test(value),
+      "Username must use letters, numbers, dots, underscores, or hyphens.",
+    ),
+  displayName: z.string().trim().min(3),
+});
+
 export const userStatusInputSchema = z.object({
   isActive: z.boolean(),
 });
@@ -422,6 +435,7 @@ export type LoginInput = z.infer<typeof loginInputSchema>;
 export type AdminUserInput = z.infer<typeof adminUserInputSchema>;
 export type RotatePinInput = z.infer<typeof rotatePinInputSchema>;
 export type ChangeOwnPinInput = z.infer<typeof changeOwnPinInputSchema>;
+export type OwnProfileInput = z.infer<typeof ownProfileInputSchema>;
 export type UserStatusInput = z.infer<typeof userStatusInputSchema>;
 export type FacilitySettingsInput = z.infer<typeof facilitySettingsInputSchema>;
 export type AttendanceHolidayInput = z.infer<typeof attendanceHolidayInputSchema>;
@@ -442,7 +456,7 @@ export type ReferralDoctorSummaryPayload = {
   fullName: string;
   phone: string | null;
   email: string | null;
-  commissionPercent: number;
+  referralAmountCents: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -793,13 +807,14 @@ export const roleCapabilities: Record<
     "settings:view",
     "notify:queue",
   ],
-  PHLEBOTOMIST: ["order:write"],
+  PHLEBOTOMIST: ["order:write", "settings:view"],
   SONOGRAPHER: [
     "patient:write",
     "order:write",
     "report:view",
     "report:write",
     "notify:queue",
+    "settings:view",
   ],
   DOCTOR: [
     "patient:write",
@@ -807,9 +822,23 @@ export const roleCapabilities: Record<
     "report:view",
     "report:write",
     "notify:queue",
+    "settings:view",
   ],
-  LAB_TECH: ["order:write", "report:write", "qc:manage", "inventory:manage"],
-  RADIOLOGIST: ["order:write", "report:view", "report:write", "notify:queue"],
+  LAB_TECH: [
+    "order:write",
+    "report:view",
+    "report:write",
+    "qc:manage",
+    "inventory:manage",
+    "settings:view",
+  ],
+  RADIOLOGIST: [
+    "order:write",
+    "report:view",
+    "report:write",
+    "notify:queue",
+    "settings:view",
+  ],
   MANAGER: [
     "patient:write",
     "order:write",
@@ -827,8 +856,14 @@ export const roleCapabilities: Record<
     "user:manage",
     "integration:manage",
   ],
-  FINANCE: ["finance:manage", "notify:queue"],
-  QA: ["qc:manage", "admin:view", "notify:queue", "integration:manage"],
+  FINANCE: ["finance:manage", "notify:queue", "settings:view"],
+  QA: [
+    "qc:manage",
+    "admin:view",
+    "notify:queue",
+    "integration:manage",
+    "settings:view",
+  ],
   ADMIN: [
     "patient:write",
     "order:write",
@@ -922,9 +957,9 @@ export type WorkflowPayload = {
     traceCode: string;
     accessionNumber: string;
     referralDoctorName: string | null;
-    referralDoctorCommissionPercent: number | null;
-    referralCommissionDueCents: number;
-    referralCommissionOutstandingCents: number;
+    referralAmountCents: number | null;
+    referralDueCents: number;
+    referralOutstandingCents: number;
     payerType: (typeof payerTypes)[number];
     payerName: string | null;
     payerCoveragePercent: number;
@@ -1001,6 +1036,16 @@ export type AdminUserSummaryPayload = {
   lastLoginAt: string | null;
   pinChangedAt: string;
   createdAt: string;
+};
+
+export type OwnProfilePayload = {
+  id: string;
+  facilityId: string;
+  username: string;
+  displayName: string;
+  role: (typeof userRoles)[number];
+  pinChangedAt: string;
+  lastLoginAt: string | null;
 };
 
 export type UserDirectoryEntryPayload = {
@@ -1146,8 +1191,8 @@ export type AdminOverviewPayload = {
     revenueTodayCents: number;
     outstandingCents: number;
     invoicesOpen: number;
-    referralCommissionEarnedCents: number;
-    referralCommissionOutstandingCents: number;
+    referralAmountEarnedCents: number;
+    referralAmountOutstandingCents: number;
     paymentMix: Array<{
       method: string;
       totalCents: number;
@@ -1155,11 +1200,11 @@ export type AdminOverviewPayload = {
     }>;
     referralLeaders: Array<{
       doctorName: string;
-      commissionPercent: number;
+      defaultReferralAmountCents: number;
       invoicesCount: number;
       revenueCents: number;
-      commissionDueCents: number;
-      commissionOutstandingCents: number;
+      referralDueCents: number;
+      referralOutstandingCents: number;
     }>;
   };
   notifications: {
@@ -1214,8 +1259,8 @@ export type FinanceAnalyticsPayload = {
     averageInvoiceCents: number;
     averagePaymentCents: number;
     collectionRatePercent: number;
-    referralCommissionDueCents: number;
-    referralCommissionOutstandingCents: number;
+    referralAmountDueCents: number;
+    referralAmountOutstandingCents: number;
   };
   invoiceStatus: Array<{
     status: string;
@@ -1279,12 +1324,12 @@ export type FinanceAnalyticsPayload = {
   }>;
   topReferrers: Array<{
     doctorName: string;
-    commissionPercent: number;
+    defaultReferralAmountCents: number;
     invoicesCount: number;
     billedCents: number;
     collectedCents: number;
     outstandingCents: number;
-    commissionDueCents: number;
+    referralDueCents: number;
   }>;
   expenseCategories: Array<{
     category: string;

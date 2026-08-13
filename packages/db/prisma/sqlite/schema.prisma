@@ -189,7 +189,7 @@ model ReferralDoctor {
   fullName          String
   phone             String?
   email             String?
-  commissionPercent Float?
+  referralAmountCents Int     @default(0)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -275,6 +275,7 @@ model Patient {
   updatedAt                       DateTime @updatedAt
   referralDoctorId                String?
   referralName                    String?
+  referralAmountCents             Int?
 
   referralDoctor                  ReferralDoctor? @relation(fields: [referralDoctorId], references: [id])
   orders                          DiagnosticOrder[]

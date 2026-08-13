@@ -82,6 +82,7 @@ Desktop runtime notes:
 - Set `hostedUrl` in `apps/desktop/desktop.config.json` before running `npm run desktop:dist`, or set `MEDILAB_DESKTOP_HOSTED_URL` when launching the desktop app.
 - The installed app loads the configured hosted URL directly and does not start a bundled local API, worker, or SQLite database.
 - The unpacked desktop build is also available at `dist-desktop/installer/win-unpacked/`.
+- If a reinstall reports that MediLab Nexus cannot be closed, end any `MediLab Nexus.exe` processes in Task Manager and remove the old per-user install from `%LocalAppData%\Programs\MediLab Nexus` before rerunning the installer.
 
 ## Deploy online
 

@@ -24,6 +24,8 @@ import {
   type ImagingStudyUpdateInput,
   type InitialSetupInput,
   type NotificationInput,
+  type OwnProfileInput,
+  type OwnProfilePayload,
   type OrderInput,
   type PatientInput,
   type PatientReferralUpdateInput,
@@ -146,6 +148,7 @@ type NavKey =
   | "orders"
   | "tracking"
   | "sonography"
+  | "labReports"
   | "scanReports"
   | "inventory"
   | "billing"
@@ -176,7 +179,7 @@ type PatientRecord = {
   referralDoctorId: string | null;
   referralName: string | null;
   referralDoctorName: string | null;
-  referralDoctorCommissionPercent: number | null;
+  referralAmountCents: number | null;
   consentAccepted: boolean;
   photoPath: string | null;
   createdAt: string;
@@ -197,7 +200,7 @@ type PatientIntakeFormState = {
   medicalHistory: string;
   referralDoctorId: string;
   referralName: string;
-  referralCommissionPercent?: number;
+  referralAmountCents?: number;
   consentAccepted: boolean;
   photoPath?: string;
 };
@@ -245,7 +248,7 @@ type ReferralDoctorFormState = {
   fullName: string;
   phone: string;
   email: string;
-  commissionPercent: string;
+  referralAmount: string;
   isActive: boolean;
 };
 
@@ -386,8 +389,7 @@ function buildPatientDraft(
     medicalHistory: patient?.medicalHistory ?? "",
     referralDoctorId: patient?.referralDoctorId ?? "",
     referralName: patient?.referralName ?? "",
-    referralCommissionPercent:
-      patient?.referralDoctorCommissionPercent ?? undefined,
+    referralAmountCents: patient?.referralAmountCents ?? undefined,
     consentAccepted: patient?.consentAccepted ?? true,
     photoPath: patient?.photoPath ?? "",
   };
@@ -538,7 +540,7 @@ const analyticsQuickRangeKeys: Array<FinanceAnalyticsPayload["range"]> = [
 ];
 
 const reportTemplateLabels: Record<ReportInput["templateKind"], string> = {
-  LAB_STANDARD: "Scan standard",
+  LAB_STANDARD: "Lab standard",
   ULTRASOUND_STANDARD: "Ultrasound general",
   ULTRASOUND_ABDOMINAL: "Ultrasound abdominal",
   ULTRASOUND_PELVIC: "Ultrasound pelvic",
@@ -727,6 +729,7 @@ const navItems: Array<{ key: NavKey; label: string; short: string }> = [
   { key: "patientRecords", label: "Patient Records", short: "PR" },
   { key: "orders", label: "Orders & Requests", short: "OR" },
   { key: "sonography", label: "Sonography Worklist", short: "SG" },
+  { key: "labReports", label: "Lab Reports", short: "LR" },
   { key: "scanReports", label: "Scan Reports", short: "SR" },
   { key: "analytics", label: "Operations Report", short: "RP" },
   { key: "expenses", label: "Expenses", short: "EX" },
@@ -745,6 +748,7 @@ const navDescriptions: Record<NavKey, string> = {
   orders: "Create requests, capture intake, and control handoff.",
   tracking: "Specimen movement, collection visibility, and lab flow.",
   sonography: "Scheduled imaging, room status, and scan progression.",
+  labReports: "Compose, preview, and finalize typed laboratory reports.",
   scanReports: "Preview finalized scan reports or write new interpretations.",
   inventory: "Supplies, stock movement, and controlled availability.",
   billing: "Invoices, payments, and outstanding balance follow-up.",
@@ -771,6 +775,7 @@ const navSections: NavSectionDef[] = [
       "patientRecords",
       "orders",
       "sonography",
+      "labReports",
       "scanReports",
       "analytics",
       "expenses",
@@ -891,7 +896,7 @@ const roleHome: Record<(typeof userRoles)[number], NavKey> = {
   PHLEBOTOMIST: "dashboard",
   SONOGRAPHER: "sonography",
   DOCTOR: "sonography",
-  LAB_TECH: "dashboard",
+  LAB_TECH: "labReports",
   RADIOLOGIST: "sonography",
   MANAGER: "dashboard",
   FINANCE: "dashboard",
@@ -913,7 +918,7 @@ const roleCopy: Record<
   },
   SONOGRAPHER: {
     title: "Ultrasound worklist",
-    subtitle: "Move scheduled scans through image capture and scan reporting.",
+    subtitle: "Move scheduled studies through image capture, room turnover, and report handoff.",
   },
   DOCTOR: {
     title: "Doctor reading desk",
@@ -922,7 +927,8 @@ const roleCopy: Record<
   },
   LAB_TECH: {
     title: "Bench operations",
-    subtitle: "Watch TAT, run QC, and keep the lab moving.",
+    subtitle:
+      "Watch TAT, run QC, and complete typed lab reports without losing bench visibility.",
   },
   RADIOLOGIST: {
     title: "Scan review desk",
@@ -931,7 +937,7 @@ const roleCopy: Record<
   MANAGER: {
     title: "Operational overview",
     subtitle:
-      "Monitor performance, staffing load, and revenue from one calm workspace.",
+      "Monitor lab flow, imaging throughput, staffing load, and revenue from one calm workspace.",
   },
   FINANCE: {
     title: "Billing desk",
@@ -945,7 +951,7 @@ const roleCopy: Record<
   ADMIN: {
     title: "System control room",
     subtitle:
-      "Oversee every module, user, and integration workflow from a single shell.",
+      "Oversee lab, imaging, billing, users, and integrations from a single shell.",
   },
 };
 
@@ -971,6 +977,7 @@ const navCapabilityRequirements: Partial<Record<NavKey, Capability[]>> = {
   orders: ["order:write"],
   tracking: ["order:write"],
   sonography: ["order:write"],
+  labReports: ["report:view"],
   scanReports: ["report:view"],
   inventory: ["inventory:manage"],
   billing: ["finance:manage"],
@@ -1058,19 +1065,21 @@ const portalProfiles: Partial<
   ADMIN: {
     label: "Admin portal",
     summary:
-      "Own user access, scan setup, and operational controls from one workspace.",
+      "Own user access, lab and imaging setup, and operational controls from one workspace.",
     spotlight:
-      "This portal keeps the scan service, sonography worklist, and system controls in view together.",
+      "This portal keeps service setup, lab reporting, imaging workflow, and system controls in view together.",
     navKeys: navItems.map((item) => item.key),
     highlights: [
       "User access",
-      "Scan services",
-      "Sonography flow",
+      "Service catalog",
+      "Lab workflow",
+      "Imaging flow",
       "Facility controls",
     ],
     steps: [
-      "Start from Dashboard for queue pressure, alerts, and scan flow.",
-      "Use Sonography Worklist to monitor room movement and pending reads.",
+      "Start from Dashboard for queue pressure, alerts, and cross-department flow.",
+      "Use Sonography Worklist to monitor imaging room movement and pending reads.",
+      "Use Lab Reports to keep typed bench reports moving toward release.",
       "Keep Services current before operational changes.",
       "Use Settings for users, backups, and facility configuration.",
     ],
@@ -1082,14 +1091,15 @@ const portalProfiles: Partial<
   MANAGER: {
     label: "Manager portal",
     summary:
-      "Run the day-to-day scan operation with one view of queue pressure, staff activity, and operating results.",
+      "Run the day-to-day lab and imaging operation with one view of queue pressure, staff activity, and operating results.",
     spotlight:
-      "Use this portal to balance patient flow, room pressure, report handoff, expenses, and staff performance.",
+      "Use this portal to balance patient flow, lab bench pressure, imaging room pressure, report handoff, expenses, and staff performance.",
     navKeys: [
       "dashboard",
       "patients",
       "patientRecords",
       "sonography",
+      "labReports",
       "scanReports",
       "analytics",
       "expenses",
@@ -1102,15 +1112,16 @@ const portalProfiles: Partial<
     highlights: [
       "Operations pulse",
       "Staff performance",
-      "Scan queue",
+      "Lab queue",
+      "Imaging queue",
       "Expenses",
       "Critical findings",
     ],
     steps: [
-      "Read Dashboard first for queue pressure and critical flags.",
+      "Read Dashboard first for queue pressure and critical flags across lab and imaging.",
       "Open Operations Report to compare collections, expenses, and stock activity by user.",
-      "Use Sonography Worklist to spot room bottlenecks early.",
-      "Open Scan Reports when reception needs finalized print previews.",
+      "Use Sonography Worklist to spot imaging bottlenecks early.",
+      "Open Lab Reports and Scan Reports when release or printing is delayed.",
       "Keep Users, Services, and Alerts aligned with active daily operations.",
     ],
     actions: [
@@ -1173,11 +1184,12 @@ const portalProfiles: Partial<
       "Register the patient and confirm the Trace Code.",
       "Use Patients to attach the correct scan service and complete intake.",
       "Record front-desk expenses when they happen.",
+      "Open Lab Reports only after the lab technologist finishes the report, then preview or print it.",
       "Open Scan Reports only after the doctor or sonographer finishes the report, then preview or print it.",
     ],
     actions: [
       { label: "Register patient", target: "patients", tone: "primary" },
-      { label: "Open reports", target: "scanReports", tone: "ghost" },
+      { label: "Open lab reports", target: "labReports", tone: "ghost" },
     ],
   },
   SONOGRAPHER: {
@@ -1291,6 +1303,28 @@ function buildEmptyAttendanceWorkspace(
 
 function formatMoney(cents: number) {
   return `GHc ${(cents / 100).toFixed(2)}`;
+}
+
+function formatMoneyInput(cents: number | null | undefined) {
+  if (cents == null) {
+    return "";
+  }
+
+  return (cents / 100).toFixed(2);
+}
+
+function parseMoneyInputToCents(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const amount = Number(trimmed);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return Number.NaN;
+  }
+
+  return Math.round(amount * 100);
 }
 
 function formatPercent(value: number) {
@@ -2006,6 +2040,11 @@ function getRoleMetricCards(
   adminOverview: AdminOverviewPayload,
   workflow: WorkflowPayload,
 ) {
+  const readyReports = workflow.reports.filter(
+    (report) =>
+      report.status === "APPROVED" || report.status === "RELEASED",
+  ).length;
+
   if (role === "RECEPTION") {
     return [
       {
@@ -2014,20 +2053,16 @@ function getRoleMetricCards(
         note: "Registrations started",
       },
       {
-        label: "Open scans",
-        value: workflow.imaging.filter(
-          (study) => study.appointmentStatus !== "COMPLETED",
-        ).length,
-        note: "Waiting for arrival or scan completion",
+        label: "Open diagnostics",
+        value:
+          workflow.samples.filter((sample) => sample.status !== "STORED").length +
+          workflow.imaging.filter((study) => study.appointmentStatus !== "COMPLETED").length,
+        note: "Lab and imaging requests still moving",
       },
       {
         label: "Ready to report",
-        value: workflow.imaging.filter(
-          (study) =>
-            study.appointmentStatus === "REPORTED" ||
-            study.appointmentStatus === "COMPLETED",
-        ).length,
-        note: "Ultrasound studies awaiting interpretation",
+        value: readyReports,
+        note: "Results ready for preview or clinician handoff",
       },
       {
         label: "Recent patients",
@@ -2096,25 +2131,19 @@ function getRoleMetricCards(
 
   return [
     {
-      label: "Today's scans",
-      value: workflow.imaging.length,
-      note: "Sonography-focused workload",
+      label: "Lab queue",
+      value: workflow.samples.length,
+      note: "Specimens and bench work in motion",
     },
     {
-      label: "Waiting arrivals",
-      value: workflow.imaging.filter(
-        (study) => study.appointmentStatus === "SCHEDULED",
-      ).length,
-      note: "Scheduled patients not yet arrived",
+      label: "Imaging queue",
+      value: workflow.imaging.length,
+      note: "Scheduled studies and room activity",
     },
     {
       label: "Ready to report",
-      value: workflow.imaging.filter(
-        (study) =>
-          study.appointmentStatus === "REPORTED" ||
-          study.appointmentStatus === "COMPLETED",
-      ).length,
-      note: "Ultrasound studies awaiting release",
+      value: readyReports,
+      note: "Lab and scan reports nearing release",
     },
     {
       label: "Revenue",
@@ -2519,8 +2548,7 @@ export default function App() {
   const [registrationServiceQuery, setRegistrationServiceQuery] = useState("");
   const [orderServiceQuery, setOrderServiceQuery] = useState("");
   const [registrationItemIds, setRegistrationItemIds] = useState<string[]>([]);
-  const [patientReferralCommission, setPatientReferralCommission] =
-    useState("");
+  const [patientReferralAmount, setPatientReferralAmount] = useState("");
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedReferralDoctorId, setSelectedReferralDoctorId] = useState("");
   const [selectedPatientReferralDoctorId, setSelectedPatientReferralDoctorId] =
@@ -2668,6 +2696,11 @@ export default function App() {
   const [reportTemplates, setReportTemplates] = useState<
     ReportTemplatePayload[]
   >([]);
+  const [ownProfile, setOwnProfile] = useState<OwnProfilePayload | null>(null);
+  const [ownProfileForm, setOwnProfileForm] = useState<OwnProfileInput>({
+    username: "",
+    displayName: "",
+  });
   const [selectedReportTemplateId, setSelectedReportTemplateId] = useState("");
   const [reportTemplateName, setReportTemplateName] = useState("");
   const [serviceForm, setServiceForm] = useState<ServiceFormState>({
@@ -2686,7 +2719,7 @@ export default function App() {
       fullName: "",
       phone: "",
       email: "",
-      commissionPercent: "10",
+      referralAmount: "0.00",
       isActive: true,
     });
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>({
@@ -2756,6 +2789,27 @@ export default function App() {
   const [incomingAlerts, setIncomingAlerts] = useState<InternalAlertPayload[]>(
     [],
   );
+  useEffect(() => {
+    if (!authSession) {
+      setOwnProfile(null);
+      setOwnProfileForm({ username: "", displayName: "" });
+      return;
+    }
+
+    setOwnProfile((current) => ({
+      id: authSession.user.id,
+      facilityId: authSession.user.facilityId,
+      username: authSession.user.username,
+      displayName: authSession.user.displayName,
+      role: authSession.user.role,
+      pinChangedAt: current?.pinChangedAt ?? new Date().toISOString(),
+      lastLoginAt: current?.lastLoginAt ?? null,
+    }));
+    setOwnProfileForm({
+      username: authSession.user.username,
+      displayName: authSession.user.displayName,
+    });
+  }, [authSession]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const heardAlertIdsRef = useRef<Set<string>>(new Set());
   const alertAudioContextRef = useRef<AudioContext | null>(null);
@@ -3018,6 +3072,7 @@ export default function App() {
         bootstrapPayload,
         patientList,
         workflowPayload,
+        ownProfilePayload,
         overview,
         financeAnalyticsPayload,
         backupList,
@@ -3031,6 +3086,7 @@ export default function App() {
         requestJson<BootstrapPayload>("/bootstrap"),
         requestJson<PatientRecord[]>("/patients"),
         requestJson<WorkflowPayload>("/workflow"),
+        requestJson<OwnProfilePayload>("/auth/profile"),
         allowedActions.includes("admin:view")
           ? requestJson<AdminOverviewPayload>("/admin/overview")
           : Promise.resolve(baseOverview),
@@ -3071,6 +3127,11 @@ export default function App() {
         setBootstrap(bootstrapPayload);
         setPatients(patientList);
         setWorkflow(workflowPayload);
+        setOwnProfile(ownProfilePayload);
+        setOwnProfileForm({
+          username: ownProfilePayload.username,
+          displayName: ownProfilePayload.displayName,
+        });
         setAdminOverview(overview);
         setFinanceAnalytics(financeAnalyticsPayload);
         setBackups(backupList);
@@ -3109,6 +3170,10 @@ export default function App() {
       setReferralDoctors([]);
       setReportTemplates([]);
       setSyncStatus(emptySyncStatus);
+      setOwnProfileForm({
+        username: authSession.user.username,
+        displayName: authSession.user.displayName,
+      });
       setStatusText(
         `Some MediLab Nexus workspace panels could not be refreshed for ${authSession.user.displayName}. Existing patient and workflow data has been kept.`,
       );
@@ -3352,7 +3417,7 @@ export default function App() {
       fullName: selectedDoctor.fullName,
       phone: selectedDoctor.phone ?? "",
       email: selectedDoctor.email ?? "",
-      commissionPercent: String(selectedDoctor.commissionPercent),
+      referralAmount: formatMoneyInput(selectedDoctor.referralAmountCents),
       isActive: selectedDoctor.isActive,
     });
   }, [selectedReferralDoctorId, referralDoctors]);
@@ -3945,8 +4010,36 @@ export default function App() {
       ),
     [workflow.orders, workflow.reports],
   );
+  const labReportOrderIds = useMemo(
+    () => new Set(workflow.samples.map((sample) => sample.orderId)),
+    [workflow.samples],
+  );
+  const scanReportOrderIds = useMemo(
+    () =>
+      new Set(
+        workflow.orders
+          .filter(
+            (order) =>
+              workflow.imaging.some((study) => study.orderId === order.id) ||
+              orderIncludesSonography(order.items),
+          )
+          .map((order) => order.id),
+      ),
+    [workflow.imaging, workflow.orders],
+  );
+  const isLabReportWorkspace = activeNav === "labReports";
+  const activeReportOrderIds = isLabReportWorkspace
+    ? labReportOrderIds
+    : scanReportOrderIds;
+  const activeReportableOrders = useMemo(
+    () => reportableOrders.filter((order) => activeReportOrderIds.has(order.id)),
+    [activeReportOrderIds, reportableOrders],
+  );
   const filteredReportPatients = useMemo(() => {
     const normalizedQuery = reportPatientQuery.trim().toLowerCase();
+    const reportPatientIds = new Set(
+      activeReportableOrders.map((order) => order.patientId),
+    );
     const sortedPatients = [...patients].sort((left, right) => {
       const leftLabel = `${left.firstName} ${left.lastName}`.trim();
       const rightLabel = `${right.firstName} ${right.lastName}`.trim();
@@ -3958,7 +4051,7 @@ export default function App() {
     });
 
     if (!normalizedQuery) {
-      return sortedPatients;
+      return sortedPatients.filter((patient) => reportPatientIds.has(patient.id));
     }
 
     return sortedPatients.filter((patient) => {
@@ -3967,14 +4060,17 @@ export default function App() {
         .toLowerCase();
 
       return (
-        patient.traceCode.toLowerCase().includes(normalizedQuery) ||
-        fullName.includes(normalizedQuery)
+        reportPatientIds.has(patient.id) &&
+        (
+          patient.traceCode.toLowerCase().includes(normalizedQuery) ||
+          fullName.includes(normalizedQuery)
+        )
       );
     });
-  }, [patients, reportPatientQuery]);
+  }, [activeReportableOrders, patients, reportPatientQuery]);
   const reportOrdersForSelectedPatient = useMemo(
     () =>
-      reportableOrders
+      activeReportableOrders
         .filter(
           (order) =>
             !reportForm.patientId || order.patientId === reportForm.patientId,
@@ -3984,16 +4080,16 @@ export default function App() {
             new Date(right.createdAt).getTime() -
             new Date(left.createdAt).getTime(),
         ),
-    [reportForm.patientId, reportableOrders],
+    [activeReportableOrders, reportForm.patientId],
   );
   const selectedReportOrder = useMemo(
     () =>
       reportOrdersForSelectedPatient.find(
         (order) => order.id === reportForm.orderId,
       ) ??
-      reportableOrders.find((order) => order.id === reportForm.orderId) ??
+      activeReportableOrders.find((order) => order.id === reportForm.orderId) ??
       null,
-    [reportForm.orderId, reportOrdersForSelectedPatient, reportableOrders],
+    [activeReportableOrders, reportForm.orderId, reportOrdersForSelectedPatient],
   );
   const selectedReportPatient = useMemo(
     () => patients.find((patient) => patient.id === reportForm.patientId) ?? null,
@@ -4021,6 +4117,54 @@ export default function App() {
   );
   const isEchoWorksheetTemplate =
     reportForm.templateKind === "ULTRASOUND_ECHOCARDIOGRAPHY";
+  const visibleReportTemplateKinds = useMemo(
+    () =>
+      isLabReportWorkspace
+        ? reportTemplateKinds.filter((templateKind) => templateKind === "LAB_STANDARD")
+        : reportTemplateKinds.filter((templateKind) => templateKind !== "LAB_STANDARD"),
+    [isLabReportWorkspace],
+  );
+  const visibleSavedReportTemplates = useMemo(
+    () =>
+      reportTemplates.filter((template) =>
+        isLabReportWorkspace
+          ? template.templateKind === "LAB_STANDARD"
+          : template.templateKind !== "LAB_STANDARD",
+      ),
+    [isLabReportWorkspace, reportTemplates],
+  );
+  useEffect(() => {
+    if (!selectedReportTemplateId) {
+      return;
+    }
+
+    if (!visibleSavedReportTemplates.some((template) => template.id === selectedReportTemplateId)) {
+      setSelectedReportTemplateId("");
+    }
+  }, [selectedReportTemplateId, visibleSavedReportTemplates]);
+  useEffect(() => {
+    if (!reportForm.orderId) {
+      setReportForm((current) => {
+        const nextTitle = isLabReportWorkspace ? "Lab Report" : "Scan Report";
+        const nextTemplateKind = isLabReportWorkspace
+          ? "LAB_STANDARD"
+          : current.templateKind;
+
+        if (
+          current.title === nextTitle &&
+          current.templateKind === nextTemplateKind
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          title: nextTitle,
+          templateKind: nextTemplateKind,
+        };
+      });
+    }
+  }, [isLabReportWorkspace, reportForm.orderId]);
   useEffect(() => {
     if (!reportForm.patientId) {
       if (!reportForm.orderId) {
@@ -4365,9 +4509,11 @@ export default function App() {
   const pickupReports = useMemo(
     () =>
       workflow.reports.filter(
-        (report) => !["DRAFT", "IN_REVIEW"].includes(report.status),
+        (report) =>
+          !["DRAFT", "IN_REVIEW"].includes(report.status) &&
+          activeReportOrderIds.has(report.orderId),
       ),
-    [workflow.reports],
+    [activeReportOrderIds, workflow.reports],
   );
   const canEditPrintSettings =
     currentRole === "DOCTOR" ||
@@ -4409,9 +4555,11 @@ export default function App() {
   );
   const selectedSavedReportTemplate = useMemo(
     () =>
-      reportTemplates.find((template) => template.id === selectedReportTemplateId) ??
+      visibleSavedReportTemplates.find(
+        (template) => template.id === selectedReportTemplateId,
+      ) ??
       null,
-    [reportTemplates, selectedReportTemplateId],
+    [selectedReportTemplateId, visibleSavedReportTemplates],
   );
   const filteredStudyPerformance = useMemo(
     () =>
@@ -4534,6 +4682,55 @@ export default function App() {
       )
       .slice(0, 4);
   }, [workflow.invoices, workflow.orders, workflow.reports]);
+  const dashboardCollectedCents = useMemo(
+    () =>
+      workflow.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
+    [workflow.payments],
+  );
+  const dashboardAveragePaymentCents =
+    workflow.payments.length > 0
+      ? Math.round(dashboardCollectedCents / workflow.payments.length)
+      : 0;
+  const dashboardPendingItems =
+    workflow.orders.length +
+    workflow.samples.length +
+    workflow.reports.filter((report) => !report.signedAt).length;
+  const dashboardLabPendingCount = useMemo(
+    () =>
+      workflow.samples.filter((sample) => sample.status === "PENDING").length,
+    [workflow.samples],
+  );
+  const dashboardLabBenchCount = useMemo(
+    () =>
+      workflow.samples.filter((sample) =>
+        ["COLLECTED", "RECEIVED", "PROCESSING"].includes(sample.status),
+      ).length,
+    [workflow.samples],
+  );
+  const dashboardImagingScheduledCount = useMemo(
+    () =>
+      workflow.imaging.filter((study) =>
+        ["SCHEDULED", "ARRIVED"].includes(study.appointmentStatus),
+      ).length,
+    [workflow.imaging],
+  );
+  const dashboardImagingActiveCount = useMemo(
+    () =>
+      workflow.imaging.filter((study) =>
+        ["SCANNING", "REPORTED"].includes(study.appointmentStatus),
+      ).length,
+    [workflow.imaging],
+  );
+  const dashboardReportsDraftCount = useMemo(
+    () =>
+      workflow.reports.filter((report) => report.status === "DRAFT").length,
+    [workflow.reports],
+  );
+  const dashboardReportsReviewCount = useMemo(
+    () =>
+      workflow.reports.filter((report) => report.status === "IN_REVIEW").length,
+    [workflow.reports],
+  );
 
   useEffect(() => {
     const firstVisibleNavItem = visibleNavItems[0];
@@ -4815,26 +5012,21 @@ export default function App() {
   async function handlePatientSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const referralName = patientForm.referralName.trim();
-    const referralCommissionInput = patientReferralCommission.trim();
-    const referralCommissionPercent =
-      referralCommissionInput === ""
-        ? undefined
-        : Number(referralCommissionInput);
+    const referralAmountInput = patientReferralAmount.trim();
+    const referralAmountCents = parseMoneyInputToCents(referralAmountInput);
 
-    if (referralCommissionInput !== "" && !referralName) {
+    if (referralAmountInput !== "" && !referralName) {
       setStatusText(
-        "Enter the referral name before adding a commission percentage",
+        "Enter the referral name before adding a referral amount",
       );
       return;
     }
 
     if (
-      referralCommissionPercent !== undefined &&
-      (!Number.isFinite(referralCommissionPercent) ||
-        referralCommissionPercent < 0 ||
-        referralCommissionPercent > 100)
+      referralAmountCents !== undefined &&
+      (!Number.isFinite(referralAmountCents) || referralAmountCents < 0)
     ) {
-      setStatusText("Commission percentage must be between 0 and 100");
+      setStatusText("Referral amount must be zero or higher");
       return;
     }
 
@@ -4844,7 +5036,7 @@ export default function App() {
         body: JSON.stringify({
           ...patientForm,
           referralName,
-          referralCommissionPercent,
+          referralAmountCents,
         } satisfies PatientInput),
       });
       setPatients((current) => [created, ...current]);
@@ -4930,7 +5122,7 @@ export default function App() {
       await refreshRegistrationWorkspaceData();
       openPatient(created);
       setPatientForm(buildPatientDraft());
-      setPatientReferralCommission("");
+      setPatientReferralAmount("");
       setRegistrationItemIds([]);
       setRegistrationServiceQuery("");
       setIntakeOrder({
@@ -6071,7 +6263,7 @@ export default function App() {
       ...financeAnalytics.topReferrers.map((referrer) => [
         "Top referrer",
         referrer.doctorName,
-        (referrer.commissionDueCents / 100).toFixed(2),
+        (referrer.referralDueCents / 100).toFixed(2),
         String(referrer.invoicesCount),
         (referrer.billedCents / 100).toFixed(2),
       ]),
@@ -6297,7 +6489,7 @@ export default function App() {
       fullName: "",
       phone: "",
       email: "",
-      commissionPercent: "10",
+      referralAmount: "0.00",
       isActive: true,
     });
   }
@@ -6307,11 +6499,23 @@ export default function App() {
   ) {
     event.preventDefault();
 
+    const referralAmountCents = parseMoneyInputToCents(
+      referralDoctorForm.referralAmount,
+    );
+    if (
+      referralAmountCents === undefined ||
+      !Number.isFinite(referralAmountCents) ||
+      referralAmountCents < 0
+    ) {
+      setStatusText("Enter a valid referral amount for this doctor");
+      return;
+    }
+
     const payload: ReferralDoctorInput = {
       fullName: referralDoctorForm.fullName,
       phone: referralDoctorForm.phone,
       email: referralDoctorForm.email,
-      commissionPercent: Number(referralDoctorForm.commissionPercent),
+      referralAmountCents,
       isActive: referralDoctorForm.isActive,
     };
 
@@ -6358,7 +6562,7 @@ export default function App() {
             fullName: doctor.fullName,
             phone: doctor.phone ?? "",
             email: doctor.email ?? "",
-            commissionPercent: doctor.commissionPercent,
+            referralAmountCents: doctor.referralAmountCents,
             isActive: nextActive,
           } satisfies ReferralDoctorInput),
         },
@@ -7127,6 +7331,41 @@ export default function App() {
     }
   }
 
+  async function handleOwnProfileSave(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    try {
+      const updated = await requestJson<OwnProfilePayload>("/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify(ownProfileForm satisfies OwnProfileInput),
+      });
+      setOwnProfile(updated);
+      setOwnProfileForm({
+        username: updated.username,
+        displayName: updated.displayName,
+      });
+      setAuthSession((current) =>
+        current
+          ? {
+              ...current,
+              user: {
+                ...current.user,
+                username: updated.username,
+                displayName: updated.displayName,
+              },
+            }
+          : current,
+      );
+      setStatusText("Your account details were updated");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error ? error.message : "Account update failed",
+      );
+    }
+  }
+
   async function handleToggleUser(userId: string, isActive: boolean) {
     try {
       await requestJson(`/admin/users/${userId}/status`, {
@@ -7208,6 +7447,7 @@ export default function App() {
       <section className="dashboard-shell">
         <div className="dashboard-heading-row">
           <div>
+            <p className="dashboard-kicker">Operations overview</p>
             <h1>Dashboard</h1>
             <p className="hero-copy">
               {portalProfile?.summary ?? roleCopy[currentRole].subtitle}
@@ -7219,17 +7459,20 @@ export default function App() {
             </span>
             <button
               type="button"
-              className="icon-button"
+              className="ghost-action small"
               onClick={() => void loadOperationalData()}
             >
-              Sync
+              Refresh data
             </button>
           </div>
         </div>
 
         <section className="dashboard-summary-grid">
-          {metrics.map((metric) => (
-            <article key={metric.label} className="dashboard-stat-card">
+          {metrics.map((metric, index) => (
+            <article
+              key={metric.label}
+              className={`dashboard-stat-card accent-${(index % 4) + 1}`}
+            >
               <div className="dashboard-stat-top">
                 <div>
                   <span>{metric.label}</span>
@@ -7254,6 +7497,141 @@ export default function App() {
               Outstanding balances:{" "}
               {formatMoney(adminOverview.finance.outstandingCents)}
             </p>
+          </article>
+          <article className="surface-card dashboard-performance-card">
+            <div className="section-head compact-head">
+              <div>
+                <h3>Performance snapshot</h3>
+                <p>Collections and workflow movement in the current workspace.</p>
+              </div>
+            </div>
+            <div className="dashboard-performance-metrics">
+              <div className="dashboard-performance-metric">
+                <span>Collections</span>
+                <strong>{formatMoney(dashboardCollectedCents)}</strong>
+              </div>
+              <div className="dashboard-performance-metric">
+                <span>Transactions</span>
+                <strong>{workflow.payments.length}</strong>
+              </div>
+              <div className="dashboard-performance-metric">
+                <span>Avg. payment</span>
+                <strong>{formatMoney(dashboardAveragePaymentCents)}</strong>
+              </div>
+              <div className="dashboard-performance-metric">
+                <span>Pending items</span>
+                <strong>{dashboardPendingItems}</strong>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section className="dashboard-workstream-grid">
+          <article className="surface-card dashboard-workstream-card">
+            <div className="dashboard-workstream-head">
+              <div>
+                <span className="dashboard-workstream-tag">Lab workflow</span>
+                <h3>Bench queue</h3>
+              </div>
+              <span className="dashboard-workstream-total">
+                {workflow.samples.length}
+              </span>
+            </div>
+            <div className="dashboard-workstream-stats">
+              <div>
+                <span>Awaiting collection</span>
+                <strong>{dashboardLabPendingCount}</strong>
+              </div>
+              <div>
+                <span>Active on bench</span>
+                <strong>{dashboardLabBenchCount}</strong>
+              </div>
+            </div>
+            <p>Specimen movement, bench load, and result turnaround stay visible here.</p>
+            {visibleNavKeys.has("labReports") ? (
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={() => setActiveNav("labReports")}
+              >
+                Open lab reports
+              </button>
+            ) : null}
+          </article>
+
+          <article className="surface-card dashboard-workstream-card">
+            <div className="dashboard-workstream-head">
+              <div>
+                <span className="dashboard-workstream-tag">Imaging workflow</span>
+                <h3>Room flow</h3>
+              </div>
+              <span className="dashboard-workstream-total">
+                {workflow.imaging.length}
+              </span>
+            </div>
+            <div className="dashboard-workstream-stats">
+              <div>
+                <span>Scheduled or arrived</span>
+                <strong>{dashboardImagingScheduledCount}</strong>
+              </div>
+              <div>
+                <span>Scanning or reported</span>
+                <strong>{dashboardImagingActiveCount}</strong>
+              </div>
+            </div>
+            <p>Track study arrivals, room throughput, and reporting handoff from one card.</p>
+            {visibleNavKeys.has("sonography") ? (
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={() => setActiveNav("sonography")}
+              >
+                Open imaging worklist
+              </button>
+            ) : null}
+          </article>
+
+          <article className="surface-card dashboard-workstream-card">
+            <div className="dashboard-workstream-head">
+              <div>
+                <span className="dashboard-workstream-tag">Reporting queue</span>
+                <h3>Result release</h3>
+              </div>
+              <span className="dashboard-workstream-total">
+                {workflow.reports.length}
+              </span>
+            </div>
+            <div className="dashboard-workstream-stats">
+              <div>
+                <span>Draft reports</span>
+                <strong>{dashboardReportsDraftCount}</strong>
+              </div>
+              <div>
+                <span>In review</span>
+                <strong>{dashboardReportsReviewCount}</strong>
+              </div>
+            </div>
+            <p>Keep typed lab reports and scan interpretations moving toward final release.</p>
+            <div className="dashboard-workstream-actions">
+              {visibleNavKeys.has("labReports") ? (
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() => setActiveNav("labReports")}
+                >
+                  Lab reports
+                </button>
+              ) : null}
+              {visibleNavKeys.has("scanReports") ? (
+                <button
+                  type="button"
+                  className="ghost-action small"
+                  onClick={() => setActiveNav("scanReports")}
+                >
+                  Scan reports
+                </button>
+              ) : null}
+            </div>
           </article>
         </section>
 
@@ -7377,13 +7755,14 @@ export default function App() {
   );
 
   const patientRecordsPanel = (
-    <article className="surface-card">
+    <article className="surface-card workspace-feature-card">
       <div className="section-head">
         <div>
+          <p className="eyebrow">Patient intelligence</p>
           <h2>Patient records</h2>
           <p>
-            All patient records in the lab, including their ordered tests and
-            scan history.
+            Review the full diagnostic journey for each patient, including
+            ordered tests, imaging history, reports, and billing status.
           </p>
         </div>
         {canEditPatientRecords ? (
@@ -7408,6 +7787,28 @@ export default function App() {
             placeholder="Search by trace code, patient name, phone, or ordered test"
           />
         </label>
+      </div>
+      <div className="workspace-mini-grid bordered-top">
+        <div className="workspace-mini-card">
+          <span>Total records</span>
+          <strong>{patients.length}</strong>
+          <p>Patients currently visible to this facility.</p>
+        </div>
+        <div className="workspace-mini-card">
+          <span>Filtered results</span>
+          <strong>{filteredPatientRecords.length}</strong>
+          <p>Matches for the current patient search.</p>
+        </div>
+        <div className="workspace-mini-card">
+          <span>Active orders</span>
+          <strong>{workflow.orders.length}</strong>
+          <p>Diagnostic requests linked to patient records.</p>
+        </div>
+        <div className="workspace-mini-card">
+          <span>Reports on file</span>
+          <strong>{workflow.reports.length}</strong>
+          <p>Lab and imaging result documents in the system.</p>
+        </div>
       </div>
       <div className="list-stack compact-scroll bordered-top">
         {filteredPatientRecords.length === 0 ? (
@@ -7752,7 +8153,7 @@ export default function App() {
                 </strong>
                 <p className="muted-copy">
                   {selectedPatient.referralDoctorName
-                    ? `Current referral: ${selectedPatient.referralDoctorName} · ${selectedPatient.referralDoctorCommissionPercent}%`
+                    ? `Current referral: ${selectedPatient.referralDoctorName} · ${formatMoney(selectedPatient.referralAmountCents ?? 0)}`
                     : "No referral doctor linked yet."}
                 </p>
               </div>
@@ -7767,7 +8168,7 @@ export default function App() {
                   <option value="">No referral doctor</option>
                   {availableReferralDoctors.map((doctor) => (
                     <option key={`selected-${doctor.id}`} value={doctor.id}>
-                      {doctor.fullName} · {doctor.commissionPercent}%
+                      {doctor.fullName} · {formatMoney(doctor.referralAmountCents)}
                     </option>
                   ))}
                 </select>
@@ -7800,9 +8201,10 @@ export default function App() {
 
   const patientSection = showPatientIntakeTools ? (
     <section className="content-grid">
-      <article className="surface-card form-card">
+      <article className="surface-card form-card workspace-feature-card">
         <div className="section-head">
           <div>
+            <p className="eyebrow">Front desk workflow</p>
             <h2>Reception intake</h2>
             <p>
               Register the patient, assign a trace code when needed, attach
@@ -7811,6 +8213,23 @@ export default function App() {
             </p>
           </div>
           <span className="trace-preview">{patientTracePreview}</span>
+        </div>
+        <div className="workspace-mini-grid intake-mini-grid">
+          <div className="workspace-mini-card">
+            <span>Patients today</span>
+            <strong>{bootstrap.metrics.patientsToday}</strong>
+            <p>Registrations already started in this session.</p>
+          </div>
+          <div className="workspace-mini-card">
+            <span>Services selected</span>
+            <strong>{registrationItemIds.length}</strong>
+            <p>Items attached before the order is created.</p>
+          </div>
+          <div className="workspace-mini-card">
+            <span>Collect now</span>
+            <strong>{intakePayment.collectNow ? "Yes" : "No"}</strong>
+            <p>Choose whether payment is captured during intake.</p>
+          </div>
         </div>
         <form className="form-grid" onSubmit={handlePatientSubmit}>
           <div className="full-width intake-progress">
@@ -7951,16 +8370,16 @@ export default function App() {
                 />
               </label>
               <label>
-                <span>Commission %</span>
+                <span>Referral amount</span>
                 <input
                   type="number"
                   min="0"
-                  max="100"
-                  value={patientReferralCommission}
+                  step="0.01"
+                  value={patientReferralAmount}
                   onChange={(event) =>
-                    setPatientReferralCommission(event.target.value)
+                    setPatientReferralAmount(event.target.value)
                   }
-                  placeholder="Optional"
+                  placeholder="Optional amount"
                 />
               </label>
               <label className="full-width">
@@ -8907,13 +9326,14 @@ export default function App() {
 
   const sonographySection = (
     <section className="content-grid two-wide">
-      <article className="surface-card">
+      <article className="surface-card workspace-feature-card">
         <div className="section-head">
           <div>
-            <h2>Sonography worklist</h2>
+            <p className="eyebrow">Imaging operations</p>
+            <h2>Imaging worklist</h2>
             <p>
-              Scheduled ultrasound scans with slot time, assigned staff, and
-              immediate scan reporting context.
+              Scheduled ultrasound studies with slot time, assigned staff, and
+              direct reporting context for the diagnostic team.
             </p>
           </div>
         </div>
@@ -8995,13 +9415,14 @@ export default function App() {
         </div>
       </article>
 
-      <article className="surface-card form-card">
+      <article className="surface-card form-card workspace-feature-card">
         <div className="section-head">
           <div>
-            <h2>Scan desk</h2>
+            <p className="eyebrow">Study handoff</p>
+            <h2>Imaging desk</h2>
             <p>
               Assign staff, confirm the appointment slot, and hand the study off
-              to scan reports.
+              to the reporting queue.
             </p>
           </div>
         </div>
@@ -9109,13 +9530,13 @@ export default function App() {
                 className="ghost-action"
                 onClick={openUltrasoundReportDraft}
               >
-                Open scan report draft
+                Open imaging report draft
               </button>
             </div>
           </form>
         ) : (
           <p className="section-note">
-            Select an ultrasound study from the worklist to assign staff and
+            Select an imaging study from the worklist to assign staff and
             slot time.
           </p>
         )}
@@ -9124,7 +9545,7 @@ export default function App() {
             <div>
               <h3>Patient notice</h3>
               <p>
-                Queue WhatsApp, SMS, or email updates straight from the scan
+                Queue WhatsApp, SMS, or email updates straight from the imaging
                 desk.
               </p>
             </div>
@@ -9233,14 +9654,33 @@ export default function App() {
   const scanReportsSection = (
     <section className="content-grid">
       {canWriteReports ? (
-        <article className="surface-card form-card report-compose-card">
+        <article className="surface-card form-card report-compose-card workspace-feature-card">
           <div className="section-head">
             <div>
-              <h2>Scan Reports</h2>
+              <p className="eyebrow">Reporting workspace</p>
+              <h2>{isLabReportWorkspace ? "Lab Reports" : "Scan Reports"}</h2>
               <p>
-                Single-sheet scan reporting with a dedicated worksheet for
-                echocardiography and printable previews.
+                {isLabReportWorkspace
+                  ? "Type patient lab reports, preview them, and release a clean printable result."
+                  : "Single-sheet scan reporting with a dedicated worksheet for echocardiography and printable previews."}
               </p>
+            </div>
+          </div>
+          <div className="workspace-mini-grid bordered-top report-workspace-grid">
+            <div className="workspace-mini-card">
+              <span>Patients in queue</span>
+              <strong>{filteredReportPatients.length}</strong>
+              <p>Patients available for report preparation from this workspace.</p>
+            </div>
+            <div className="workspace-mini-card">
+              <span>Reports on file</span>
+              <strong>{workflow.reports.length}</strong>
+              <p>Existing result documents already saved in the system.</p>
+            </div>
+            <div className="workspace-mini-card">
+              <span>Saved templates</span>
+              <strong>{visibleSavedReportTemplates.length}</strong>
+              <p>Reusable report layouts for faster diagnostic reporting.</p>
             </div>
           </div>
           <form className="form-grid" onSubmit={handleReportSubmit}>
@@ -9316,7 +9756,7 @@ export default function App() {
                 }
                 disabled={!canWriteReports}
               >
-                {reportTemplateKinds.map((templateKind) => (
+                {visibleReportTemplateKinds.map((templateKind) => (
                   <option key={templateKind} value={templateKind}>
                     {reportTemplateLabels[templateKind]}
                   </option>
@@ -9333,7 +9773,7 @@ export default function App() {
                 disabled={!canWriteReports}
               >
                 <option value="">Choose saved template</option>
-                {reportTemplates.map((template) => (
+                {visibleSavedReportTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name} · {reportTemplateLabels[template.templateKind]}
                   </option>
@@ -9352,10 +9792,13 @@ export default function App() {
             <div className="summary-panel full-width template-library-panel">
               <div className="template-library-copy">
                 <span className="eyebrow">Reusable templates</span>
-                <strong>Save a scan or test template and load it any time</strong>
+                <strong>
+                  {isLabReportWorkspace
+                    ? "Save a lab report template and load it any time"
+                    : "Save a scan report template and load it any time"}
+                </strong>
                 <p>
-                  Load a saved template, import one from your device, or save
-                  the current report for reuse.
+                  Load a saved template, import one from your device, or save the current report for reuse.
                 </p>
               </div>
               <input
@@ -9816,7 +10259,11 @@ export default function App() {
                         medicalHistory: value,
                       }))
                     }
-                    placeholder="Type the clinical history for this scan report"
+                    placeholder={
+                      isLabReportWorkspace
+                        ? "Type the clinical notes, specimen context, or relevant patient history"
+                        : "Type the clinical history for this scan report"
+                    }
                     disabled={!canWriteReports}
                   />
                 </Suspense>
@@ -9830,7 +10277,11 @@ export default function App() {
                         findings: value,
                       }))
                     }
-                    placeholder="Type or paste the report description here, then format it as needed"
+                    placeholder={
+                      isLabReportWorkspace
+                        ? "Type or paste the typed laboratory findings, result values, and interpretive notes here"
+                        : "Type or paste the report description here, then format it as needed"
+                    }
                     disabled={!canWriteReports}
                     documentMode
                   />
@@ -9884,7 +10335,11 @@ export default function App() {
                         impression: value,
                       }))
                     }
-                    placeholder="Summarize the report impression"
+                    placeholder={
+                      isLabReportWorkspace
+                        ? "Summarize the laboratory conclusion or interpretation"
+                        : "Summarize the report impression"
+                    }
                     disabled={!canWriteReports}
                   />
                 </Suspense>
@@ -9979,10 +10434,11 @@ export default function App() {
         <article className="surface-card report-pickup-card">
           <div className="section-head">
             <div>
-              <h2>Scan report pickup</h2>
+              <h2>{isLabReportWorkspace ? "Lab report pickup" : "Scan report pickup"}</h2>
               <p>
-                Completed reports appear here after the doctor or sonographer
-                finishes them. Preview the report and print it for the patient.
+                {isLabReportWorkspace
+                  ? "Completed lab reports appear here after the lab technologist finishes them. Preview the report and print it for the patient."
+                  : "Completed reports appear here after the doctor or sonographer finishes them. Preview the report and print it for the patient."}
               </p>
             </div>
           </div>
@@ -9990,14 +10446,15 @@ export default function App() {
             <span>Reception access</span>
             <strong>Preview and print only</strong>
             <p className="muted-copy">
-              Reception can open finished reports here, but only clinical staff
-              can write or approve them.
+              Reception can open finished reports here, but only clinical staff can write or approve them.
             </p>
           </div>
           <div className="list-stack">
             {pickupReports.length === 0 ? (
               <div className="chart-empty audit-log-empty-state">
-                No finished reports are ready for reception pickup yet.
+                {isLabReportWorkspace
+                  ? "No finished lab reports are ready for reception pickup yet."
+                  : "No finished reports are ready for reception pickup yet."}
               </div>
             ) : (
               pickupReports.map((report) => (
@@ -10228,14 +10685,14 @@ export default function App() {
           <div className="metric-mini">
             <span>Referral earned</span>
             <strong>
-              {formatMoney(adminOverview.finance.referralCommissionEarnedCents)}
+              {formatMoney(adminOverview.finance.referralAmountEarnedCents)}
             </strong>
           </div>
           <div className="metric-mini">
             <span>Referral outstanding</span>
             <strong>
               {formatMoney(
-                adminOverview.finance.referralCommissionOutstandingCents,
+                adminOverview.finance.referralAmountOutstandingCents,
               )}
             </strong>
           </div>
@@ -10255,13 +10712,13 @@ export default function App() {
           <div className="section-head">
             <div>
               <h3>Top referrers</h3>
-              <p>Commission exposure by referring doctor.</p>
+              <p>Referral exposure by referring doctor.</p>
             </div>
           </div>
           <div className="list-stack compact-scroll">
             {adminOverview.finance.referralLeaders.length === 0 ? (
               <div className="list-row">
-                <span>No referral commission data yet.</span>
+                <span>No referral data yet.</span>
                 <small>Awaiting linked invoices</small>
               </div>
             ) : null}
@@ -10270,15 +10727,15 @@ export default function App() {
                 <div>
                   <strong>{leader.doctorName}</strong>
                   <span>
-                    {leader.commissionPercent}% commission ·{" "}
+                    Default {formatMoney(leader.defaultReferralAmountCents)} ·{" "}
                     {leader.invoicesCount} invoice(s)
                   </span>
                   <small>
                     Paid base {formatMoney(leader.revenueCents)} · Outstanding
-                    commission {formatMoney(leader.commissionOutstandingCents)}
+                    referral {formatMoney(leader.referralOutstandingCents)}
                   </small>
                 </div>
-                <small>{formatMoney(leader.commissionDueCents)}</small>
+                <small>{formatMoney(leader.referralDueCents)}</small>
               </div>
             ))}
           </div>
@@ -10304,8 +10761,8 @@ export default function App() {
                     {invoice.referralDoctorName ? (
                       <small>
                         {invoice.referralDoctorName} ·{" "}
-                        {invoice.referralDoctorCommissionPercent}% commission ·
-                        Due {formatMoney(invoice.referralCommissionDueCents)}
+                        Referral {formatMoney(invoice.referralAmountCents ?? 0)} ·
+                        Due {formatMoney(invoice.referralDueCents)}
                       </small>
                     ) : null}
                     <small>
@@ -10404,9 +10861,7 @@ export default function App() {
                     {invoice.referralDoctorName ? (
                       <small>
                         {invoice.referralDoctorName} · Referral outstanding{" "}
-                        {formatMoney(
-                          invoice.referralCommissionOutstandingCents,
-                        )}
+                        {formatMoney(invoice.referralOutstandingCents)}
                       </small>
                     ) : null}
                     <small>
@@ -10818,7 +11273,7 @@ export default function App() {
           <div className="metric-mini">
             <span>Referral payments</span>
             <strong>
-              {formatMoney(financeAnalytics.summary.referralCommissionDueCents)}
+              {formatMoney(financeAnalytics.summary.referralAmountDueCents)}
             </strong>
           </div>
         </div>
@@ -11742,16 +12197,16 @@ export default function App() {
             />
           </label>
           <label>
-            <span>Commission percentage</span>
+            <span>Default referral amount</span>
             <input
               type="number"
               min="0"
-              max="100"
-              value={referralDoctorForm.commissionPercent}
+              step="0.01"
+              value={referralDoctorForm.referralAmount}
               onChange={(event) =>
                 setReferralDoctorForm((current) => ({
                   ...current,
-                  commissionPercent: event.target.value,
+                  referralAmount: event.target.value,
                 }))
               }
               disabled={!canManageServices}
@@ -11813,7 +12268,7 @@ export default function App() {
                 <div>
                   <strong>{doctor.fullName}</strong>
                   <span>
-                    {doctor.commissionPercent}% commission
+                    {formatMoney(doctor.referralAmountCents)} referral amount
                     {doctor.phone ? ` · ${doctor.phone}` : ""}
                   </span>
                   <small>{doctor.email || "No email saved"}</small>
@@ -12034,6 +12489,21 @@ export default function App() {
 
   const settingsSection = (
     <SystemSettingsSection
+      statusText={statusText}
+      ownProfileForm={ownProfileForm}
+      setOwnProfileForm={setOwnProfileForm}
+      currentUserRole={ownProfile?.role ?? authSession?.user.role ?? currentRole}
+      currentUsername={ownProfile?.username ?? authSession?.user.username ?? ""}
+      currentDisplayName={ownProfile?.displayName ?? authSession?.user.displayName ?? ""}
+      currentPinChangedAt={ownProfile?.pinChangedAt ?? null}
+      currentLastLoginAt={ownProfile?.lastLoginAt ?? null}
+      handleOwnProfileSave={handleOwnProfileSave}
+      selfPinChange={selfPinChange}
+      setSelfPinChange={setSelfPinChange}
+      handleChangeOwnPin={handleChangeOwnPin}
+      passwordVisibility={passwordVisibility}
+      togglePasswordVisibility={togglePasswordVisibility}
+      formatDate={formatDate}
       facilityForm={facilityForm}
       setFacilityForm={setFacilityForm}
       handleFacilitySave={handleFacilitySave}
@@ -12065,6 +12535,7 @@ export default function App() {
     orders: ordersSection,
     tracking: trackingSection,
     sonography: sonographySection,
+    labReports: scanReportsSection,
     scanReports: scanReportsSection,
     inventory: inventorySection,
     billing: billingSection,
@@ -12100,25 +12571,54 @@ export default function App() {
             <div className="login-dna login-dna-left" />
             <div className="login-dna login-dna-right" />
           </div>
-          <section
-            className="login-glass-card"
-            aria-label="Set up MediLab Nexus"
-          >
-            <div className="login-brand-heading">
-              <h1>MediLab</h1>
-              <p>First administrator setup</p>
+          <section className="login-stage" aria-label="Set up MediLab Nexus">
+            <div className="login-window-chrome" aria-hidden="true">
+              <span className="chrome-dot" />
+              <span className="chrome-dot" />
+              <span className="chrome-dot" />
             </div>
-            <div className="inline-actions">
-              <button
-                type="button"
-                className="ghost-action small"
-                onClick={() => setShowInitialSetupForm(false)}
-              >
-                Back to sign in
-              </button>
-            </div>
-            <form className="login-glass-form" onSubmit={handleInitialSetup}>
-              <label className="login-field">
+            <div className="login-window-body">
+              <aside className="login-showcase">
+                <div className="login-showcase-brand">
+                  <img src={logoSrc} alt="MediLab Nexus logo" className="login-stage-logo" />
+                </div>
+                <p className="eyebrow">First-time setup</p>
+                <h1>Register the first administrator and secure the workspace.</h1>
+                <p className="login-showcase-copy">
+                  This setup creates the initial administrator account for lab, imaging,
+                  billing, and system operations.
+                </p>
+                <div className="login-showcase-pills">
+                  <span>Role-based access</span>
+                  <span>Audit-ready setup</span>
+                  <span>Hosted desktop shell</span>
+                  <span>Facility profile defaults</span>
+                </div>
+                <div className="login-support-card">
+                  <div className="login-support-note">
+                    <img src={omniWeaveMarkSrc} alt="OmniWeave mark" className="login-support-logo" />
+                    <small>Administrator access can add the remaining staff accounts after setup.</small>
+                  </div>
+                </div>
+              </aside>
+              <section className="login-panel">
+                <div className="section-head compact-head">
+                  <div>
+                    <h2>First administrator setup</h2>
+                    <p className="login-status">
+                      Use a secure username and PIN for the primary operations account.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => setShowInitialSetupForm(false)}
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+                <form className="login-form" onSubmit={handleInitialSetup}>
+                  <label className="login-field">
                 <span>Full name</span>
                 <input
                   value={setupForm.admin.displayName}
@@ -12135,7 +12635,7 @@ export default function App() {
                   required
                 />
               </label>
-              <label className="login-field">
+                  <label className="login-field">
                 <span>Username</span>
                 <input
                   value={setupForm.admin.username}
@@ -12152,7 +12652,7 @@ export default function App() {
                   required
                 />
               </label>
-              <label className="login-field">
+                  <label className="login-field">
                 <span>PIN</span>
                 <div className="password-field">
                   <input
@@ -12179,21 +12679,25 @@ export default function App() {
                     {passwordVisibility.login ? "Hide" : "Show"}
                   </button>
                 </div>
-              </label>
-              <button
-                type="submit"
-                className="primary-action full-width login-submit"
-              >
-                Create administrator and open workspace
-              </button>
-            </form>
-            <p className="login-status glass-status">
-              This first registration creates the initial administrator account
-              and uses the configured facility defaults for the workspace.
-            </p>
-            {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
-              <p className="login-status glass-status">{statusText}</p>
-            ) : null}
+                  </label>
+                  <button
+                    type="submit"
+                    className="primary-action full-width login-submit"
+                  >
+                    Create administrator and open workspace
+                  </button>
+                </form>
+                <p className="login-status">
+                  This first registration uses the configured facility defaults for
+                  the workspace and unlocks user management.
+                </p>
+                {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+                  <div className="inline-status-panel" role="status" aria-live="polite">
+                    {statusText}
+                  </div>
+                ) : null}
+              </section>
+            </div>
           </section>
         </div>
       );
@@ -12205,16 +12709,48 @@ export default function App() {
           <div className="login-dna login-dna-left" />
           <div className="login-dna login-dna-right" />
         </div>
-        <section
-          className="login-glass-card"
-          aria-label="Sign in to MediLab Nexus"
-        >
-          <div className="login-brand-heading">
-            <h1>MediLab</h1>
-            <p>Nexus</p>
+        <section className="login-stage" aria-label="Sign in to MediLab Nexus">
+          <div className="login-window-chrome" aria-hidden="true">
+            <span className="chrome-dot" />
+            <span className="chrome-dot" />
+            <span className="chrome-dot" />
           </div>
-          <form className="login-glass-form" onSubmit={handleLogin}>
-            <label className="login-field">
+          <div className="login-window-body">
+            <aside className="login-showcase">
+              <div className="login-showcase-brand">
+                <img src={logoSrc} alt="MediLab Nexus logo" className="login-stage-logo" />
+              </div>
+              <p className="eyebrow">Diagnostic operations portal</p>
+              <h1>Run lab, imaging, billing, and system workflows from one portal.</h1>
+              <p className="login-showcase-copy">
+                Sign in to continue with patient intake, report drafting, collections,
+                attendance, and audit-ready administration.
+              </p>
+              <div className="login-showcase-pills">
+                <span>Lab reports</span>
+                <span>Imaging workflow</span>
+                <span>Billing and referrals</span>
+                <span>System controls</span>
+              </div>
+              <div className="login-support-card">
+                <div className="login-support-note">
+                  <img src={omniWeaveMarkSrc} alt="OmniWeave mark" className="login-support-logo" />
+                  <small>
+                    Desktop installs open the hosted MediLab workspace, so the live
+                    deployment stays in sync across web and desktop.
+                  </small>
+                </div>
+              </div>
+            </aside>
+            <section className="login-panel">
+              <div>
+                <h2>Sign in</h2>
+                <p className="login-status">
+                  Continue where your role-specific portal left off.
+                </p>
+              </div>
+              <form className="login-form" onSubmit={handleLogin}>
+                <label className="login-field">
               <span>Username</span>
               <input
                 value={loginForm.username}
@@ -12227,8 +12763,8 @@ export default function App() {
                 placeholder="Username"
                 required
               />
-            </label>
-            <label className="login-field">
+                </label>
+                <label className="login-field">
               <span>PIN</span>
               <div className="password-field">
                 <input
@@ -12252,57 +12788,61 @@ export default function App() {
                   {passwordVisibility.login ? "Hide" : "Show"}
                 </button>
               </div>
-            </label>
-            <div className="login-glass-meta">
-              <label className="inline-toggle">
-                <input type="checkbox" defaultChecked />
-                <span>Remember me</span>
-              </label>
-              <button
-                type="button"
-                className="login-link-button"
-                onClick={() =>
-                  setStatusText(
-                    "Contact your administrator to reset or rotate your PIN.",
-                  )
-                }
-              >
-                Forgot PIN?
-              </button>
-            </div>
-            <button
-              type="submit"
-              className="primary-action full-width login-submit"
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              className="ghost-action full-width"
-              onClick={() => {
-                if (setupStatus?.requiresSetup) {
-                  setShowInitialSetupForm(true);
-                  return;
-                }
+                </label>
+                <div className="login-panel-meta">
+                  <label className="inline-toggle">
+                    <input type="checkbox" defaultChecked />
+                    <span>Remember me</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="login-link-button"
+                    onClick={() =>
+                      setStatusText(
+                        "Contact your administrator to reset or rotate your PIN.",
+                      )
+                    }
+                  >
+                    Forgot PIN?
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  className="primary-action full-width login-submit"
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  className="ghost-action full-width"
+                  onClick={() => {
+                    if (setupStatus?.requiresSetup) {
+                      setShowInitialSetupForm(true);
+                      return;
+                    }
 
-                if (!setupStatus) {
-                  setStatusText(
-                    "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
-                  );
-                  return;
-                }
+                    if (!setupStatus) {
+                      setStatusText(
+                        "Database setup is not ready. Confirm the PostgreSQL connection and run the schema push before registering the first administrator.",
+                      );
+                      return;
+                    }
 
-                setStatusText(
-                  "Initial administrator setup is already complete. Sign in as an administrator to create or manage user accounts.",
-                );
-              }}
-            >
-              Sign up
-            </button>
-          </form>
-          {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
-            <p className="login-status glass-status">{statusText}</p>
-          ) : null}
+                    setStatusText(
+                      "Initial administrator setup is already complete. Sign in as an administrator to create or manage user accounts.",
+                    );
+                  }}
+                >
+                  Register first admin
+                </button>
+              </form>
+              {statusText !== "Ready to connect" && statusText !== "Signed out" ? (
+                <div className="inline-status-panel" role="status" aria-live="polite">
+                  {statusText}
+                </div>
+              ) : null}
+            </section>
+          </div>
         </section>
       </div>
     );
@@ -12328,9 +12868,13 @@ export default function App() {
               alt="MediLab Nexus logo"
               className="brand-logo topbar-logo"
             />
-            <div>
+            <div className="brand-meta">
               <strong>MediLab Nexus</strong>
-              <span>{bootstrap.facility.name}</span>
+              <span>
+                {visibleNavItems.find((item) => item.key === activeNav)?.label ??
+                  "Workspace"}
+              </span>
+              <small>Powered by OmniWeave Softwares</small>
             </div>
           </div>
           <div className="search-shell">
@@ -12356,7 +12900,7 @@ export default function App() {
               aria-haspopup="dialog"
               onClick={() => setBellOpen((current) => !current)}
             >
-              Bell
+              Alerts
               {incomingAlerts.length > 0 ? (
                 <span className="bell-count">{incomingAlerts.length}</span>
               ) : null}
@@ -12382,7 +12926,7 @@ export default function App() {
               setTheme((current) => (current === "light" ? "dark" : "light"))
             }
           >
-            {theme === "light" ? "Dark" : "Light"}
+            {theme === "light" ? "Dark mode" : "Light mode"}
           </button>
           <div className="user-pill">
             <div className="avatar-badge">
@@ -12421,6 +12965,28 @@ export default function App() {
           <div className="sidebar-portal-card">
             <p className="eyebrow">{portalProfile?.label ?? "Workspace"}</p>
             <strong>{roleCopy[currentRole].title}</strong>
+            <span className="sidebar-status-line">{bootstrap.facility.name}</span>
+          </div>
+          <div className="sidebar-user-card">
+            <div className="avatar-badge">
+              {actorName
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </div>
+            <div className="sidebar-user-main">
+              <strong>{actorName}</strong>
+              <span>{currentRole}</span>
+            </div>
+            <button
+              type="button"
+              className="ghost-action small"
+              onClick={handleLogout}
+            >
+              Sign out
+            </button>
           </div>
           <nav className="nav-list grouped" aria-label="Portal navigation">
             {visibleNavSections.map((section) => (
@@ -12468,13 +13034,6 @@ export default function App() {
                 <small>Weaving Digital Solutions for Africa</small>
               </div>
             </div>
-            <button
-              type="button"
-              className="ghost-action small"
-              onClick={handleLogout}
-            >
-              Sign out
-            </button>
           </div>
         </aside>
 
@@ -12487,6 +13046,7 @@ export default function App() {
                   navItems.find((item) => item.key === activeNav)?.label}
               </p>
               <h2>{portalProfile?.label ?? roleCopy[currentRole].title}</h2>
+              <p className="page-head-support">{bootstrap.facility.name}</p>
             </div>
             <div className="quick-actions">
               {(portalQuickActions.length > 0

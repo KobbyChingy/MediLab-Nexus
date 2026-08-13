@@ -26,6 +26,7 @@ import {
   inventoryTransactionInputSchema,
   loginInputSchema,
   notificationInputSchema,
+  ownProfileInputSchema,
   orderInputSchema,
   patientInputSchema,
   patientReferralUpdateInputSchema,
@@ -67,6 +68,7 @@ import {
   type IntegrationDispatchRunPayload,
   type IntegrationDispatchStatusPayload,
   type NotificationInput,
+  type OwnProfilePayload,
   type WorkflowPayload,
 } from "@medilab/shared";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -93,6 +95,7 @@ import {
   rotateUserPin,
   setUserActiveState,
   unlockUser,
+  updateOwnProfile,
 } from "./services/auth.js";
 import {
   createEncryptedBackup,
@@ -401,6 +404,26 @@ function buildSessionPayload(session: {
   };
 }
 
+function buildOwnProfilePayload(user: {
+  id: string;
+  facilityId: string;
+  username: string;
+  displayName: string;
+  role: ActorContext["role"];
+  pinChangedAt: Date;
+  lastLoginAt: Date | null;
+}): OwnProfilePayload {
+  return {
+    id: user.id,
+    facilityId: user.facilityId,
+    username: user.username,
+    displayName: user.displayName,
+    role: user.role,
+    pinChangedAt: user.pinChangedAt.toISOString(),
+    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+  };
+}
+
 function sendSetupDatabaseUnavailable(reply: FastifyReply) {
   return reply.code(503).send({
     message:
@@ -441,7 +464,7 @@ function serializeReferralDoctor(doctor: {
   fullName: string;
   phone: string | null;
   email: string | null;
-  commissionPercent: number;
+  referralAmountCents: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -451,7 +474,7 @@ function serializeReferralDoctor(doctor: {
     fullName: doctor.fullName,
     phone: doctor.phone,
     email: doctor.email,
-    commissionPercent: doctor.commissionPercent,
+    referralAmountCents: doctor.referralAmountCents,
     isActive: doctor.isActive,
     createdAt: doctor.createdAt.toISOString(),
     updatedAt: doctor.updatedAt.toISOString(),
@@ -476,10 +499,10 @@ function serializePatient(patient: {
   createdAt: Date;
   referralDoctorId: string | null;
   referralName?: string | null;
-  referralCommissionPercent?: number | null;
+  referralAmountCents?: number | null;
   referralDoctor?: {
     fullName: string;
-    commissionPercent: number;
+    referralAmountCents: number;
   } | null;
 }) {
   return {
@@ -504,11 +527,45 @@ function serializePatient(patient: {
     referralName: patient.referralName ?? "",
     referralDoctorName:
       patient.referralDoctor?.fullName ?? patient.referralName ?? null,
-    referralDoctorCommissionPercent:
-      patient.referralDoctor?.commissionPercent ??
-      patient.referralCommissionPercent ??
+    referralAmountCents:
+      patient.referralDoctor?.referralAmountCents ??
+      patient.referralAmountCents ??
       null,
   };
+}
+
+function resolveReferralAmountCents(invoice: {
+  patient: {
+    referralDoctor?: { referralAmountCents: number } | null;
+    referralAmountCents?: number | null;
+  };
+}) {
+  return (
+    invoice.patient.referralDoctor?.referralAmountCents ??
+    invoice.patient.referralAmountCents ??
+    null
+  );
+}
+
+function prorateReferralAmountCents(
+  referralAmountCents: number | null,
+  numeratorCents: number,
+  denominatorCents: number,
+) {
+  if (
+    referralAmountCents == null ||
+    referralAmountCents <= 0 ||
+    denominatorCents <= 0 ||
+    numeratorCents <= 0
+  ) {
+    return 0;
+  }
+
+  if (numeratorCents >= denominatorCents) {
+    return referralAmountCents;
+  }
+
+  return Math.round((referralAmountCents * numeratorCents) / denominatorCents);
 }
 
 function normalizeOptionalString(value?: string | null) {
@@ -1215,39 +1272,35 @@ async function buildAdminOverview(
       sum + Math.max(0, invoice.amountDueCents - invoice.amountPaidCents),
     0,
   );
-  const referralCommissionEarnedCents = invoices.reduce((sum, invoice) => {
-    const commissionPercent = invoice.patient.referralDoctor?.commissionPercent;
-    if (commissionPercent == null) {
-      return sum;
-    }
-
-    return (
-      sum + Math.round(invoice.amountPaidCents * (commissionPercent / 100))
-    );
-  }, 0);
-  const referralCommissionOutstandingCents = invoices.reduce((sum, invoice) => {
-    const commissionPercent = invoice.patient.referralDoctor?.commissionPercent;
-    if (commissionPercent == null) {
-      return sum;
-    }
-
-    return (
+  const referralAmountEarnedCents = invoices.reduce(
+    (sum, invoice) =>
       sum +
-      Math.round(
-        Math.max(0, invoice.amountDueCents - invoice.amountPaidCents) *
-          (commissionPercent / 100),
-      )
-    );
-  }, 0);
+      prorateReferralAmountCents(
+        resolveReferralAmountCents(invoice),
+        invoice.amountPaidCents,
+        invoice.amountDueCents,
+      ),
+    0,
+  );
+  const referralAmountOutstandingCents = invoices.reduce(
+    (sum, invoice) =>
+      sum +
+      prorateReferralAmountCents(
+        resolveReferralAmountCents(invoice),
+        Math.max(0, invoice.amountDueCents - invoice.amountPaidCents),
+        invoice.amountDueCents,
+      ),
+    0,
+  );
   const referralLeaderMap = new Map<
     string,
     {
       doctorName: string;
-      commissionPercent: number;
+      defaultReferralAmountCents: number;
       invoicesCount: number;
       revenueCents: number;
-      commissionDueCents: number;
-      commissionOutstandingCents: number;
+      referralDueCents: number;
+      referralOutstandingCents: number;
     }
   >();
   for (const invoice of invoices) {
@@ -1256,25 +1309,24 @@ async function buildAdminOverview(
       continue;
     }
 
-    const commissionDueCents = Math.round(
-      invoice.amountDueCents * (doctor.commissionPercent / 100),
-    );
-    const commissionOutstandingForInvoice = Math.round(
-      Math.max(0, invoice.amountDueCents - invoice.amountPaidCents) *
-        (doctor.commissionPercent / 100),
+    const referralDueCents = resolveReferralAmountCents(invoice) ?? 0;
+    const referralOutstandingForInvoice = prorateReferralAmountCents(
+      referralDueCents,
+      Math.max(0, invoice.amountDueCents - invoice.amountPaidCents),
+      invoice.amountDueCents,
     );
     const current = referralLeaderMap.get(doctor.id) ?? {
       doctorName: doctor.fullName,
-      commissionPercent: doctor.commissionPercent,
+      defaultReferralAmountCents: doctor.referralAmountCents,
       invoicesCount: 0,
       revenueCents: 0,
-      commissionDueCents: 0,
-      commissionOutstandingCents: 0,
+      referralDueCents: 0,
+      referralOutstandingCents: 0,
     };
     current.invoicesCount += 1;
     current.revenueCents += invoice.amountPaidCents;
-    current.commissionDueCents += commissionDueCents;
-    current.commissionOutstandingCents += commissionOutstandingForInvoice;
+    current.referralDueCents += referralDueCents;
+    current.referralOutstandingCents += referralOutstandingForInvoice;
     referralLeaderMap.set(doctor.id, current);
   }
   const pendingReview = qcBreaches.length;
@@ -1343,15 +1395,15 @@ async function buildAdminOverview(
       invoicesOpen: invoices.filter(
         (invoice) => invoice.status !== "PAID" && invoice.status !== "VOID",
       ).length,
-      referralCommissionEarnedCents,
-      referralCommissionOutstandingCents,
+      referralAmountEarnedCents,
+      referralAmountOutstandingCents,
       paymentMix: [...paymentMixMap.entries()].map(([method, data]) => ({
         method,
         ...data,
       })),
       referralLeaders: [...referralLeaderMap.values()]
         .sort(
-          (left, right) => right.commissionDueCents - left.commissionDueCents,
+          (left, right) => right.referralDueCents - left.referralDueCents,
         )
         .slice(0, 5),
     },
@@ -1570,29 +1622,22 @@ async function buildFinanceAnalytics(
   const collectionRatePercent = netDueCents
     ? Number(((collectedCents / netDueCents) * 100).toFixed(2))
     : 0;
-  const referralCommissionDueCents = invoices.reduce((sum, invoice) => {
-    const commissionPercent = invoice.patient.referralDoctor?.commissionPercent;
-    if (commissionPercent == null) {
-      return sum;
-    }
+  const referralAmountDueCents = invoices.reduce((sum, invoice) => {
+    const settlement = invoiceSettlementMap.get(invoice.id);
     return (
       sum +
-      Math.round(
-        (invoiceSettlementMap.get(invoice.id)?.totalDueCents ?? 0) *
-          (commissionPercent / 100),
-      )
+      (resolveReferralAmountCents(invoice) ?? 0) *
+        Number(Boolean(settlement && settlement.totalDueCents > 0))
     );
   }, 0);
-  const referralCommissionOutstandingCents = invoices.reduce((sum, invoice) => {
-    const commissionPercent = invoice.patient.referralDoctor?.commissionPercent;
-    if (commissionPercent == null) {
-      return sum;
-    }
+  const referralAmountOutstandingCents = invoices.reduce((sum, invoice) => {
+    const settlement = invoiceSettlementMap.get(invoice.id);
     return (
       sum +
-      Math.round(
-        (invoiceSettlementMap.get(invoice.id)?.totalBalanceCents ?? 0) *
-          (commissionPercent / 100),
+      prorateReferralAmountCents(
+        resolveReferralAmountCents(invoice),
+        settlement?.totalBalanceCents ?? 0,
+        settlement?.totalDueCents ?? 0,
       )
     );
   }, 0);
@@ -1912,12 +1957,12 @@ async function buildFinanceAnalytics(
     string,
     {
       doctorName: string;
-      commissionPercent: number;
+      defaultReferralAmountCents: number;
       invoicesCount: number;
       billedCents: number;
       collectedCents: number;
       outstandingCents: number;
-      commissionDueCents: number;
+      referralDueCents: number;
     }
   >();
   for (const invoice of invoices) {
@@ -1928,20 +1973,18 @@ async function buildFinanceAnalytics(
     const settlement = invoiceSettlementMap.get(invoice.id);
     const current = referrerMap.get(doctor.id) ?? {
       doctorName: doctor.fullName,
-      commissionPercent: doctor.commissionPercent,
+      defaultReferralAmountCents: doctor.referralAmountCents,
       invoicesCount: 0,
       billedCents: 0,
       collectedCents: 0,
       outstandingCents: 0,
-      commissionDueCents: 0,
+      referralDueCents: 0,
     };
     current.invoicesCount += 1;
     current.billedCents += settlement?.totalDueCents ?? 0;
     current.collectedCents += settlement?.totalPaidCents ?? 0;
     current.outstandingCents += settlement?.totalBalanceCents ?? 0;
-    current.commissionDueCents += Math.round(
-      (settlement?.totalDueCents ?? 0) * (doctor.commissionPercent / 100),
-    );
+    current.referralDueCents += resolveReferralAmountCents(invoice) ?? 0;
     referrerMap.set(doctor.id, current);
   }
 
@@ -2064,8 +2107,8 @@ async function buildFinanceAnalytics(
       averageInvoiceCents,
       averagePaymentCents,
       collectionRatePercent,
-      referralCommissionDueCents,
-      referralCommissionOutstandingCents,
+      referralAmountDueCents,
+      referralAmountOutstandingCents,
     },
     invoiceStatus: [...invoiceStatusMap.values()].sort(
       (left, right) => right.totalDueCents - left.totalDueCents,
@@ -2092,7 +2135,7 @@ async function buildFinanceAnalytics(
       .slice(0, 8),
     studyPerformance,
     topReferrers: [...referrerMap.values()]
-      .sort((left, right) => right.commissionDueCents - left.commissionDueCents)
+      .sort((left, right) => right.referralDueCents - left.referralDueCents)
       .slice(0, 6),
     expenseCategories: [...expenseCategoryMap.values()]
       .sort((left, right) => right.totalCents - left.totalCents)
@@ -2286,6 +2329,45 @@ app.get("/api/auth/session", async (request, reply) => {
       allowedActions: session.user.allowedActions,
     },
   };
+});
+
+app.get("/api/auth/profile", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const user = await prisma.appUser.findUniqueOrThrow({
+    where: { id: request.actor.id },
+  });
+
+  return buildOwnProfilePayload(user);
+});
+
+app.patch("/api/auth/profile", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const payload = ownProfileInputSchema.parse(request.body);
+
+  try {
+    const user = await updateOwnProfile(prisma, request.actor.id, payload);
+
+    await recordAudit(prisma, request.actor, {
+      action: "PROFILE_UPDATED",
+      entityType: "AppUser",
+      entityId: user.id,
+      summary: `${user.username} updated their own profile`,
+      payload,
+    });
+
+    return reply.code(200).send(buildOwnProfilePayload(user));
+  } catch (error) {
+    if (error instanceof Error && error.message === "That username is already in use.") {
+      return reply.code(400).send({ message: error.message });
+    }
+    throw error;
+  }
 });
 
 app.post("/api/auth/logout", async (request, reply) => {
@@ -2893,7 +2975,7 @@ app.post("/api/admin/referral-doctors", async (request, reply) => {
       fullName: payload.fullName.trim(),
       phone: payload.phone || null,
       email: payload.email || null,
-      commissionPercent: payload.commissionPercent,
+      referralAmountCents: payload.referralAmountCents,
       isActive: payload.isActive,
     },
   });
@@ -2902,7 +2984,7 @@ app.post("/api/admin/referral-doctors", async (request, reply) => {
     action: "REFERRAL_DOCTOR_CREATED",
     entityType: "ReferralDoctor",
     entityId: created.id,
-    summary: `Referral doctor ${created.fullName} added at ${created.commissionPercent}%`,
+    summary: `Referral doctor ${created.fullName} added at GHc ${(created.referralAmountCents / 100).toFixed(2)}`,
     payload,
   });
   await recordDispatchEvent("ReferralDoctor", created.id, created);
@@ -2940,7 +3022,7 @@ app.put("/api/admin/referral-doctors/:id", async (request, reply) => {
       fullName: payload.fullName.trim(),
       phone: payload.phone || null,
       email: payload.email || null,
-      commissionPercent: payload.commissionPercent,
+      referralAmountCents: payload.referralAmountCents,
       isActive: payload.isActive,
     },
   });
@@ -2949,7 +3031,7 @@ app.put("/api/admin/referral-doctors/:id", async (request, reply) => {
     action: "REFERRAL_DOCTOR_UPDATED",
     entityType: "ReferralDoctor",
     entityId: updated.id,
-    summary: `Referral doctor ${updated.fullName} updated to ${updated.commissionPercent}%`,
+    summary: `Referral doctor ${updated.fullName} updated to GHc ${(updated.referralAmountCents / 100).toFixed(2)}`,
     payload,
   });
   await recordDispatchEvent("ReferralDoctor", updated.id, updated);
@@ -3232,7 +3314,7 @@ app.get("/api/patients", async (request, reply) => {
       referralDoctor: {
         select: {
           fullName: true,
-          commissionPercent: true,
+          referralAmountCents: true,
         },
       },
     },
@@ -3262,7 +3344,7 @@ app.put("/api/patients/:id/referral", async (request, reply) => {
       referralDoctor: {
         select: {
           fullName: true,
-          commissionPercent: true,
+          referralAmountCents: true,
         },
       },
     },
@@ -3292,12 +3374,13 @@ app.put("/api/patients/:id/referral", async (request, reply) => {
     where: { id: patient.id },
     data: {
       referralDoctorId: referralDoctor?.id ?? null,
+      referralAmountCents: referralDoctor?.referralAmountCents ?? null,
     },
     include: {
       referralDoctor: {
         select: {
           fullName: true,
-          commissionPercent: true,
+          referralAmountCents: true,
         },
       },
     },
@@ -3337,7 +3420,7 @@ app.put("/api/patients/:id", async (request, reply) => {
       referralDoctor: {
         select: {
           fullName: true,
-          commissionPercent: true,
+          referralAmountCents: true,
         },
       },
     },
@@ -3386,7 +3469,10 @@ app.put("/api/patients/:id", async (request, reply) => {
       data: {
         referralDoctorId: referralDoctor?.id ?? null,
         referralName: normalizeOptionalString(payload.referralName),
-        referralCommissionPercent: payload.referralCommissionPercent ?? null,
+        referralAmountCents:
+          payload.referralAmountCents ??
+          referralDoctor?.referralAmountCents ??
+          null,
         traceCode: trace.traceCode,
         traceSequence: trace.traceSequence,
         initials: trace.initials,
@@ -3408,7 +3494,7 @@ app.put("/api/patients/:id", async (request, reply) => {
         referralDoctor: {
           select: {
             fullName: true,
-            commissionPercent: true,
+            referralAmountCents: true,
           },
         },
       },
@@ -3453,7 +3539,7 @@ app.delete("/api/patients/:id", async (request, reply) => {
       referralDoctor: {
         select: {
           fullName: true,
-          commissionPercent: true,
+          referralAmountCents: true,
         },
       },
     },
@@ -3563,7 +3649,7 @@ app.delete("/api/patients", async (request, reply) => {
       medicalHistory: true,
       consentAccepted: true,
       referralName: true,
-      referralCommissionPercent: true,
+      referralAmountCents: true,
       photoPath: true,
       syncStatus: true,
       traceSequence: true,
@@ -3695,7 +3781,10 @@ app.post("/api/patients", async (request, reply) => {
         facilityId: trace.facilityId,
         referralDoctorId: referralDoctor?.id ?? null,
         referralName: normalizeOptionalString(payload.referralName),
-        referralCommissionPercent: payload.referralCommissionPercent ?? null,
+        referralAmountCents:
+          payload.referralAmountCents ??
+          referralDoctor?.referralAmountCents ??
+          null,
         traceCode: trace.traceCode,
         traceSequence: trace.traceSequence,
         initials: trace.initials,
@@ -3717,7 +3806,7 @@ app.post("/api/patients", async (request, reply) => {
         referralDoctor: {
           select: {
             fullName: true,
-            commissionPercent: true,
+            referralAmountCents: true,
           },
         },
       },
@@ -4073,8 +4162,7 @@ app.get("/api/workflow", async (request, reply) => {
     })),
     invoices: invoices.map((invoice) => {
       const settlement = summarizeInvoiceSettlement(invoice);
-      const commissionPercent =
-        invoice.patient.referralDoctor?.commissionPercent ?? null;
+      const referralAmountCents = resolveReferralAmountCents(invoice);
 
       return {
         id: invoice.id,
@@ -4083,13 +4171,13 @@ app.get("/api/workflow", async (request, reply) => {
         traceCode: invoice.patient.traceCode,
         accessionNumber: invoice.order.accessionNumber,
         referralDoctorName: invoice.patient.referralDoctor?.fullName ?? null,
-        referralDoctorCommissionPercent: commissionPercent,
-        referralCommissionDueCents: commissionPercent
-          ? Math.round(settlement.totalDueCents * (commissionPercent / 100))
-          : 0,
-        referralCommissionOutstandingCents: commissionPercent
-          ? Math.round(
-              settlement.totalBalanceCents * (commissionPercent / 100),
+        referralAmountCents,
+        referralDueCents: referralAmountCents ?? 0,
+        referralOutstandingCents: referralAmountCents
+          ? prorateReferralAmountCents(
+              referralAmountCents,
+              settlement.totalBalanceCents,
+              settlement.totalDueCents,
             )
           : 0,
         payerType: invoice.payerType,

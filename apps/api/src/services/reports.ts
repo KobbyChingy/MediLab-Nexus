@@ -1266,7 +1266,7 @@ export async function renderPrintableFinanceAnalyticsHtml(
           <div class="metric-card"><div class="label">Expenses</div><div class="value">GHc ${(analytics.summary.expenseCents / 100).toFixed(2)}</div></div>
           <div class="metric-card"><div class="label">Collected</div><div class="value">GHc ${(analytics.summary.collectedCents / 100).toFixed(2)}</div></div>
           <div class="metric-card"><div class="label">Payer cover</div><div class="value">GHc ${(analytics.summary.insuranceCoveredCents / 100).toFixed(2)}</div></div>
-          <div class="metric-card"><div class="label">Referral payments</div><div class="value">GHc ${(analytics.summary.referralCommissionDueCents / 100).toFixed(2)}</div></div>
+          <div class="metric-card"><div class="label">Referral payments</div><div class="value">GHc ${(analytics.summary.referralAmountDueCents / 100).toFixed(2)}</div></div>
         </div>
       </section>
       <section class="section">

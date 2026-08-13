@@ -8,6 +8,7 @@ import {
   type FacilitySettingsInput,
   type IntegrationDispatchStatusPayload,
   type InternalAlertPayload,
+  type OwnProfileInput,
   type UserDirectoryEntryPayload,
   printFontSizes,
   userRoles,
@@ -322,13 +323,13 @@ export function SystemUserManagementSection(props: {
 
   return (
     <section className="content-grid">
-      <article className="surface-card workspace-table-card">
-        <div className="section-head">
+      <article className="surface-card workspace-table-card audit-match-card user-management-card">
+        <div className="section-head audit-match-head">
           <div>
-            <h2>Users and access</h2>
-            <p>Create accounts, change your PIN, recover user PINs, and reset lockouts.</p>
+            <h2>User Management</h2>
+            <p>Manage staff access, role assignment, and account recovery.</p>
           </div>
-          <div className="inline-actions">
+          <div className="inline-actions user-management-hero-actions">
             <button
               type="button"
               className="ghost-action"
@@ -342,12 +343,167 @@ export function SystemUserManagementSection(props: {
               onClick={() => setShowCreateUserForm((current) => !current)}
               disabled={!canManageUsers}
             >
-              {showCreateUserForm ? "Close add user" : "Add user"}
+              {showCreateUserForm ? "Close add user" : "Add User"}
             </button>
           </div>
         </div>
+        <div className="audit-log-toolbar audit-match-toolbar">
+          <label className="audit-log-search audit-match-search">
+            <span>Search users</span>
+            <input
+              value={userSearchQuery}
+              onChange={(event) => setUserSearchQuery(event.target.value)}
+              placeholder="Search by display name, username, or role"
+            />
+          </label>
+          <div className="study-filter-row audit-log-filter-row audit-match-filter-row">
+            <div className="pill-filter-group">
+              <button
+                type="button"
+                className={`pill-filter${selectedUserRole === "ALL" ? " active" : ""}`}
+                onClick={() => setSelectedUserRole("ALL")}
+              >
+                All roles
+              </button>
+              {userRoles.map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  className={`pill-filter${selectedUserRole === role ? " active" : ""}`}
+                  onClick={() => setSelectedUserRole(role)}
+                >
+                  {role}
+                </button>
+              ))}
+            </div>
+            <div className="pill-filter-group">
+              {(["ALL", "ACTIVE", "LOCKED", "INACTIVE"] as const).map(
+                (state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    className={`pill-filter${selectedUserState === state ? " active" : ""}`}
+                    onClick={() => setSelectedUserState(state)}
+                  >
+                    {state}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+          <div className="audit-log-metrics audit-match-metrics user-management-metrics">
+            <div className="metric-mini audit-log-metric audit-match-metric">
+              <span>Visible users</span>
+              <strong>{filteredUsers.length}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric audit-match-metric">
+              <span>Active accounts</span>
+              <strong>{activeCount}</strong>
+            </div>
+            <div className="metric-mini audit-log-metric audit-match-metric">
+              <span>Locked accounts</span>
+              <strong>{lockedCount}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="audit-log-table-shell compact-scroll admin-table-shell audit-match-table-shell">
+          <table className="audit-log-table admin-table audit-match-table user-management-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>PIN status</th>
+                <th>Account status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((user) => (
+                <tr key={user.id}>
+                  <td>
+                    <strong>{user.displayName}</strong>
+                    <div className="admin-table-subcopy">{user.username}</div>
+                  </td>
+                  <td>
+                    <span
+                      className={`audit-action-badge ${
+                        user.role === "ADMIN"
+                          ? "tag-critical"
+                          : user.role === "MANAGER"
+                            ? "status-pill"
+                            : "tag-good"
+                      }`}
+                    >
+                      {user.role}
+                    </span>
+                  </td>
+                  <td>
+                    {user.lockedUntil
+                      ? `Locked until ${formatDate(user.lockedUntil)}`
+                      : `PIN changed ${formatDate(user.pinChangedAt)}`}
+                  </td>
+                  <td>
+                    {user.isActive ? "Active" : "Inactive"}
+                    {user.lockedUntil ? " · Locked" : ""}
+                  </td>
+                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <div className="inline-actions admin-table-actions user-row-actions">
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() =>
+                          setPinRecovery({ userId: user.id, newPin: "" })
+                        }
+                        disabled={!canManageUsers}
+                      >
+                        Recover PIN
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() => handleToggleUser(user.id, !user.isActive)}
+                        disabled={!canManageUsers}
+                      >
+                        {user.isActive ? "Deactivate" : "Activate"}
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-action small"
+                        onClick={() => handleUnlockUser(user.id)}
+                        disabled={!canManageUsers || !user.lockedUntil}
+                      >
+                        Unlock
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() => handleDeleteUser(user.id)}
+                        disabled={!canManageUsers || user.username === currentUsername}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>No users match the current filters.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
         {showCreateUserForm ? (
-          <form className="form-grid bordered-top" onSubmit={handleUserCreate}>
+          <form className="form-grid bordered-top secondary-system-card" onSubmit={handleUserCreate}>
+            <div className="full-width section-head compact-head">
+              <div>
+                <h3>Add user</h3>
+                <p>Create a staff account and assign access in one step.</p>
+              </div>
+            </div>
             <label>
               <span>Username</span>
               <input
@@ -429,7 +585,7 @@ export function SystemUserManagementSection(props: {
           </form>
         ) : null}
         {showChangeOwnPinForm ? (
-          <form className="form-grid bordered-top" onSubmit={handleChangeOwnPin}>
+          <form className="form-grid bordered-top secondary-system-card" onSubmit={handleChangeOwnPin}>
             <div className="full-width section-head compact-head">
               <div>
                 <h3>Change my PIN</h3>
@@ -486,7 +642,7 @@ export function SystemUserManagementSection(props: {
           </form>
         ) : null}
         {recoveryUser ? (
-          <form className="form-grid bordered-top" onSubmit={handleRecoverPin}>
+          <form className="form-grid bordered-top secondary-system-card" onSubmit={handleRecoverPin}>
             <div className="full-width section-head compact-head">
               <div>
                 <h3>PIN recovery</h3>
@@ -534,141 +690,6 @@ export function SystemUserManagementSection(props: {
             </div>
           </form>
         ) : null}
-        <div className="audit-log-toolbar">
-          <label className="audit-log-search">
-            <span>Search users</span>
-            <input
-              value={userSearchQuery}
-              onChange={(event) => setUserSearchQuery(event.target.value)}
-              placeholder="Search by display name, username, or role"
-            />
-          </label>
-          <div className="study-filter-row audit-log-filter-row">
-            <div className="pill-filter-group">
-              <button
-                type="button"
-                className={`pill-filter${selectedUserRole === "ALL" ? " active" : ""}`}
-                onClick={() => setSelectedUserRole("ALL")}
-              >
-                All roles
-              </button>
-              {userRoles.map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  className={`pill-filter${selectedUserRole === role ? " active" : ""}`}
-                  onClick={() => setSelectedUserRole(role)}
-                >
-                  {role}
-                </button>
-              ))}
-            </div>
-            <div className="pill-filter-group">
-              {(["ALL", "ACTIVE", "LOCKED", "INACTIVE"] as const).map(
-                (state) => (
-                  <button
-                    key={state}
-                    type="button"
-                    className={`pill-filter${selectedUserState === state ? " active" : ""}`}
-                    onClick={() => setSelectedUserState(state)}
-                  >
-                    {state}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-          <div className="audit-log-metrics">
-            <div className="metric-mini audit-log-metric">
-              <span>Visible users</span>
-              <strong>{filteredUsers.length}</strong>
-            </div>
-            <div className="metric-mini audit-log-metric">
-              <span>Active accounts</span>
-              <strong>{activeCount}</strong>
-            </div>
-            <div className="metric-mini audit-log-metric">
-              <span>Locked accounts</span>
-              <strong>{lockedCount}</strong>
-            </div>
-          </div>
-        </div>
-        <div className="audit-log-table-shell compact-scroll admin-table-shell">
-          <table className="audit-log-table admin-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>PIN status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id}>
-                  <td>
-                    <strong>{user.displayName}</strong>
-                    <div className="admin-table-subcopy">{user.username}</div>
-                  </td>
-                  <td>{user.role}</td>
-                  <td>
-                    {user.isActive ? "Active" : "Inactive"}
-                    {user.lockedUntil ? " · Locked" : ""}
-                  </td>
-                  <td>
-                    {user.lockedUntil
-                      ? `Locked until ${formatDate(user.lockedUntil)}`
-                      : `PIN changed ${formatDate(user.pinChangedAt)}`}
-                  </td>
-                  <td>
-                    <div className="inline-actions admin-table-actions">
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() =>
-                          setPinRecovery({ userId: user.id, newPin: "" })
-                        }
-                        disabled={!canManageUsers}
-                      >
-                        Recover PIN
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() => handleToggleUser(user.id, !user.isActive)}
-                        disabled={!canManageUsers}
-                      >
-                        {user.isActive ? "Deactivate" : "Activate"}
-                      </button>
-                      <button
-                        type="button"
-                        className="primary-action small"
-                        onClick={() => handleUnlockUser(user.id)}
-                        disabled={!canManageUsers || !user.lockedUntil}
-                      >
-                        Unlock
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() => handleDeleteUser(user.id)}
-                        disabled={!canManageUsers || user.username === currentUsername}
-                      >
-                        Delete user
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>No users match the current filters.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
       </article>
     </section>
   );
@@ -743,6 +764,19 @@ export function SystemAttendanceSection(props: {
   const formatTimestamp = (value?: string | null) =>
     value ? formatDate(value) : "-";
 
+  const statusLabel = (
+    status: AttendanceWorkspacePayload["entries"][number]["status"],
+  ) => {
+    if (status === "OFF_DAY") {
+      return "Off day";
+    }
+    if (status === "HOLIDAY") {
+      return "Holiday";
+    }
+
+    return status;
+  };
+
   const statusTone = (status: AttendanceWorkspacePayload["entries"][number]["status"]) => {
     if (status === "CLOSED") {
       return "tag-good";
@@ -757,40 +791,37 @@ export function SystemAttendanceSection(props: {
   };
 
   return (
-    <section className="content-grid admin-workspace-layout">
-      <article className="surface-card workspace-table-card attendance-overview-card">
-        <div className="section-head compact-head">
+    <section className="content-grid attendance-page-layout">
+      <article className="surface-card workspace-table-card attendance-overview-card audit-match-card">
+        <div className="section-head compact-head audit-match-head">
           <div>
-            <h2>Attendance register</h2>
-            <p>
-              Morning sign-in marks the user present. Evening logout records the
-              closing time and marks the day as closed.
-            </p>
+            <h2>Attendance Register</h2>
+            <p>Track staff login, activity, closing time, and day status.</p>
           </div>
         </div>
-        <div className="audit-log-toolbar attendance-toolbar">
-          <label className="audit-log-search attendance-day-picker">
-            <span>Attendance day</span>
+        <div className="audit-log-toolbar attendance-toolbar audit-match-toolbar">
+          <label className="audit-log-search attendance-day-picker audit-match-search">
+            <span>Date</span>
             <input
               type="date"
               value={attendanceDate}
               onChange={(event) => setAttendanceDate(event.target.value)}
             />
           </label>
-          <div className="audit-log-metrics">
-            <div className="metric-mini audit-log-metric">
+          <div className="audit-log-metrics audit-match-metrics attendance-match-metrics">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Present</span>
               <strong>{attendance.summary.presentCount}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Closed</span>
               <strong>{attendance.summary.closedCount}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Absent</span>
               <strong>{attendance.summary.absentCount}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Off / Holiday</span>
               <strong>
                 {attendance.summary.offDayCount + attendance.summary.holidayCount}
@@ -803,17 +834,16 @@ export function SystemAttendanceSection(props: {
             No active users are available for this attendance day.
           </div>
         ) : (
-          <div className="audit-log-table-shell compact-scroll admin-table-shell">
-            <table className="audit-log-table admin-table">
+          <div className="audit-log-table-shell compact-scroll admin-table-shell audit-match-table-shell">
+            <table className="audit-log-table admin-table audit-match-table">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Role</th>
+                  <th>Staff</th>
                   <th>Status</th>
+                  <th>Details</th>
                   <th>Opened</th>
                   <th>Last activity</th>
                   <th>Closed</th>
-                  <th>Note</th>
                 </tr>
               </thead>
               <tbody>
@@ -823,32 +853,30 @@ export function SystemAttendanceSection(props: {
                       <strong>{entry.displayName}</strong>
                       <div className="admin-table-subcopy">{entry.username}</div>
                     </td>
-                    <td>{entry.role}</td>
                     <td>
                       <div className="attendance-status-cell">
-                        <span className={`tag ${statusTone(entry.status)}`}>
-                          {entry.status === "OFF_DAY"
-                            ? "Off day"
-                            : entry.status === "HOLIDAY"
-                              ? "Holiday"
-                              : entry.status}
+                        <span className={`audit-action-badge ${statusTone(entry.status)}`}>
+                          {statusLabel(entry.status)}
                         </span>
+                      </div>
+                    </td>
+                    <td>
+                      <strong>{entry.role}</strong>
+                      <div className="admin-table-subcopy">
+                        {entry.status === "HOLIDAY"
+                          ? entry.holidayLabel ?? "Holiday"
+                          : entry.status === "OFF_DAY"
+                            ? "Configured off day"
+                            : entry.status === "ABSENT"
+                              ? "No login activity"
+                              : entry.status === "CLOSED"
+                                ? "Closed for the day"
+                                : "Currently open"}
                       </div>
                     </td>
                     <td>{formatTimestamp(entry.firstLoginAt)}</td>
                     <td>{formatTimestamp(entry.lastActivityAt)}</td>
                     <td>{formatTimestamp(entry.lastLogoutAt)}</td>
-                    <td>
-                      {entry.status === "HOLIDAY"
-                        ? entry.holidayLabel ?? "Holiday"
-                        : entry.status === "OFF_DAY"
-                          ? "Configured off day"
-                          : entry.status === "ABSENT"
-                            ? "No login activity"
-                            : entry.status === "CLOSED"
-                              ? "Closed for the day"
-                              : "Currently open"}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -857,10 +885,10 @@ export function SystemAttendanceSection(props: {
         )}
       </article>
 
-      <article className="surface-card form-card workspace-form-card attendance-calendar-card">
-        <div className="section-head compact-head">
+      <article className="surface-card form-card workspace-form-card attendance-calendar-card audit-match-card secondary-system-card">
+        <div className="section-head compact-head audit-match-head">
           <div>
-            <h2>Attendance calendar</h2>
+            <h2>Attendance Calendar</h2>
             <p>Configure off days and holiday dates used when absent staff are evaluated.</p>
           </div>
         </div>
@@ -1033,115 +1061,120 @@ export function SystemAlertsSection(props: {
 
   return (
     <section className="content-grid admin-workspace-layout">
-      <article className="surface-card workspace-form-card">
-        <InternalBellComposer
-          bellForm={bellForm}
-          setBellForm={setBellForm}
-          bellRecipientOptions={bellRecipientOptions}
-          handleBellSubmit={handleBellSubmit}
-          title="Internal alerts"
-          description="Send an internal bell and review alerts that reached this session."
-        />
-      </article>
-
-      <article className="surface-card workspace-table-card">
-        <div className="section-head compact-head">
+      <article className="surface-card workspace-form-card audit-match-card alerts-compose-card">
+        <div className="section-head audit-match-head">
           <div>
-            <h2>Alert operations</h2>
-            <p>Monitor internal bells and outbound notifications from one workspace.</p>
+            <h2>Internal Alerts</h2>
+            <p>Route internal bells quickly and keep active session alerts visible.</p>
           </div>
         </div>
-        <div className="audit-log-metrics">
-          <div className="metric-mini audit-log-metric">
+        <div className="audit-log-metrics audit-match-metrics alerts-top-metrics">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Incoming alerts</span>
             <strong>{incomingAlerts.length}</strong>
           </div>
-          <div className="metric-mini audit-log-metric">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Queued notifications</span>
             <strong>{notificationItems.length}</strong>
           </div>
-          <div className="metric-mini audit-log-metric">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Queued recipients</span>
             <strong>{queuedRecipientCount}</strong>
           </div>
         </div>
-        <div className="admin-split-panels">
-          <div className="surface-subpanel">
+        <div className="alerts-stack">
+          <div className="surface-subpanel settings-subpanel alerts-compose-body">
+            <InternalBellComposer
+              bellForm={bellForm}
+              setBellForm={setBellForm}
+              bellRecipientOptions={bellRecipientOptions}
+              handleBellSubmit={handleBellSubmit}
+              title="Send internal bell"
+              description="Target a staff member and deliver a short action-focused message."
+            />
+          </div>
+          <div className="surface-subpanel settings-subpanel alerts-inbox-panel">
             <InternalBellInbox
               incomingAlerts={incomingAlerts}
               dismissIncomingAlert={dismissIncomingAlert}
+              headingLevel="h3"
             />
           </div>
-          <div className="surface-subpanel">
-            <div className="section-head compact-head">
-              <div>
-                <h3>Queued notifications</h3>
-                <p>Outbound notices waiting in the system queue.</p>
-              </div>
-            </div>
-            <div className="audit-log-toolbar">
-              <label className="audit-log-search">
-                <span>Search queue</span>
-                <input
-                  value={notificationSearchQuery}
-                  onChange={(event) => setNotificationSearchQuery(event.target.value)}
-                  placeholder="Search recipient, channel, status, or message"
-                />
-              </label>
-              <div className="study-filter-row audit-log-filter-row">
-                <div className="pill-filter-group">
-                  <button
-                    type="button"
-                    className={`pill-filter${selectedNotificationStatus === "ALL" ? " active" : ""}`}
-                    onClick={() => setSelectedNotificationStatus("ALL")}
-                  >
-                    All statuses
-                  </button>
-                  {notificationStatusOptions.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      className={`pill-filter${selectedNotificationStatus === status ? " active" : ""}`}
-                      onClick={() => setSelectedNotificationStatus(status)}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {filteredNotifications.length === 0 ? (
-              <div className="chart-empty audit-log-empty-state">
-                No queued notifications match the current filters.
-              </div>
-            ) : (
-              <div className="audit-log-table-shell compact-scroll admin-table-shell">
-                <table className="audit-log-table admin-table">
-                  <thead>
-                    <tr>
-                      <th>Channel</th>
-                      <th>Recipient</th>
-                      <th>Status</th>
-                      <th>Message</th>
-                      <th>Created At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredNotifications.map((item, index) => (
-                      <tr key={`${item.recipient}-${item.createdAt}-${index}`}>
-                        <td>{item.channel}</td>
-                        <td>{item.recipient}</td>
-                        <td>{item.status}</td>
-                        <td>{item.message}</td>
-                        <td>{formatDate(item.createdAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        </div>
+      </article>
+
+      <article className="surface-card workspace-table-card audit-match-card alerts-queue-card">
+        <div className="section-head compact-head audit-match-head">
+          <div>
+            <h2>Notification Queue</h2>
+            <p>Review outbound messages, statuses, and queue pressure from one workspace.</p>
           </div>
         </div>
+        <div className="audit-log-toolbar audit-match-toolbar">
+          <label className="audit-log-search audit-match-search">
+            <span>Search queue</span>
+            <input
+              value={notificationSearchQuery}
+              onChange={(event) => setNotificationSearchQuery(event.target.value)}
+              placeholder="Search recipient, channel, status, or message"
+            />
+          </label>
+          <div className="study-filter-row audit-log-filter-row audit-match-filter-row">
+            <div className="pill-filter-group">
+              <button
+                type="button"
+                className={`pill-filter${selectedNotificationStatus === "ALL" ? " active" : ""}`}
+                onClick={() => setSelectedNotificationStatus("ALL")}
+              >
+                All statuses
+              </button>
+              {notificationStatusOptions.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`pill-filter${selectedNotificationStatus === status ? " active" : ""}`}
+                  onClick={() => setSelectedNotificationStatus(status)}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {filteredNotifications.length === 0 ? (
+          <div className="chart-empty audit-log-empty-state">
+            No queued notifications match the current filters.
+          </div>
+        ) : (
+          <div className="audit-log-table-shell compact-scroll admin-table-shell audit-match-table-shell">
+            <table className="audit-log-table admin-table audit-match-table alerts-queue-table">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th>Recipient</th>
+                  <th>Status</th>
+                  <th>Message</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNotifications.map((item, index) => (
+                  <tr key={`${item.recipient}-${item.createdAt}-${index}`}>
+                    <td>
+                      <span className="audit-action-badge status-pill">{item.channel}</span>
+                    </td>
+                    <td>{item.recipient}</td>
+                    <td>
+                      <span className="audit-action-badge tag-warn">{item.status}</span>
+                    </td>
+                    <td>{item.message}</td>
+                    <td>{formatDate(item.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
     </section>
   );
@@ -1192,17 +1225,31 @@ export function SystemAuditLogsSection(props: {
 
   const latestActivity = filteredAuditTrail[0]?.createdAt;
 
+  const getActionTone = (action: string) => {
+    if (/login|release|approve|restore|create|register/iu.test(action)) {
+      return "tag-good";
+    }
+    if (/delete|reject|lock|purge|fail/iu.test(action)) {
+      return "tag-critical";
+    }
+    if (/update|edit|reset|rotate|change|recover|dispatch/iu.test(action)) {
+      return "tag-warn";
+    }
+
+    return "status-pill";
+  };
+
   return (
     <section className="content-grid audit-log-layout">
-      <article className="surface-card audit-log-card">
-        <div className="section-head">
+      <article className="surface-card audit-log-card audit-match-card">
+        <div className="section-head audit-match-head">
           <div>
             <h2>System Audit Logs</h2>
             <p>Track all significant system activities.</p>
           </div>
         </div>
-        <div className="audit-log-toolbar">
-          <label className="audit-log-search">
+        <div className="audit-log-toolbar audit-match-toolbar">
+          <label className="audit-log-search audit-match-search">
             <span>Search activity</span>
             <input
               value={searchQuery}
@@ -1210,7 +1257,7 @@ export function SystemAuditLogsSection(props: {
               placeholder="Search action, summary, trace code, or role"
             />
           </label>
-          <div className="study-filter-row audit-log-filter-row">
+          <div className="study-filter-row audit-log-filter-row audit-match-filter-row">
             <div className="pill-filter-group">
               <button
                 type="button"
@@ -1231,16 +1278,16 @@ export function SystemAuditLogsSection(props: {
               ))}
             </div>
           </div>
-          <div className="audit-log-metrics">
-            <div className="metric-mini audit-log-metric">
+          <div className="audit-log-metrics audit-match-metrics">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Visible events</span>
               <strong>{filteredAuditTrail.length}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Actions covered</span>
               <strong>{visibleActionCount}</strong>
             </div>
-            <div className="metric-mini audit-log-metric">
+            <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Latest activity</span>
               <strong>{latestActivity ? formatDate(latestActivity) : "No activity"}</strong>
             </div>
@@ -1251,27 +1298,32 @@ export function SystemAuditLogsSection(props: {
             No audit events match the current filters.
           </div>
         ) : (
-          <div className="audit-log-table-shell compact-scroll audit-log-list">
-            <table className="audit-log-table">
+          <div className="audit-log-table-shell compact-scroll audit-log-list audit-match-table-shell">
+            <table className="audit-log-table audit-match-table">
               <thead>
                 <tr>
+                  <th>Time</th>
                   <th>Action</th>
-                  <th>Entity</th>
-                  <th>Trace Code</th>
-                  <th>Summary</th>
-                  <th>Role</th>
-                  <th>Occurred At</th>
+                  <th>Details</th>
+                  <th>Performed by</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAuditTrail.map((entry, index) => (
                   <tr key={`${entry.createdAt}-${entry.action}-${index}`}>
-                    <td>{entry.action}</td>
-                    <td>{entry.entityType}</td>
-                    <td>{entry.traceCode || "-"}</td>
-                    <td>{entry.summary}</td>
-                    <td>{entry.role}</td>
                     <td>{formatDate(entry.createdAt)}</td>
+                    <td>
+                      <span className={`audit-action-badge ${getActionTone(entry.action)}`}>
+                        {entry.action}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{entry.summary}</strong>
+                      <div className="admin-table-subcopy">
+                        {[entry.entityType, entry.traceCode].filter(Boolean).join(" · ") || "System event"}
+                      </div>
+                    </td>
+                    <td>{entry.role}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1284,6 +1336,27 @@ export function SystemAuditLogsSection(props: {
 }
 
 export function SystemSettingsSection(props: {
+  statusText: string;
+  ownProfileForm: OwnProfileInput;
+  setOwnProfileForm: Dispatch<SetStateAction<OwnProfileInput>>;
+  currentUserRole: string;
+  currentUsername: string;
+  currentDisplayName: string;
+  currentPinChangedAt?: string | null;
+  currentLastLoginAt?: string | null;
+  handleOwnProfileSave: FormEventHandler<HTMLFormElement>;
+  selfPinChange: ChangeOwnPinInput;
+  setSelfPinChange: Dispatch<SetStateAction<ChangeOwnPinInput>>;
+  handleChangeOwnPin: FormEventHandler<HTMLFormElement>;
+  passwordVisibility: PasswordVisibilityState;
+  togglePasswordVisibility: (
+    field:
+      | "userCreate"
+      | "recoverPin"
+      | "selfCurrentPin"
+      | "selfNewPin",
+  ) => void;
+  formatDate: (value?: string | null) => string;
   facilityForm: FacilitySettingsInput;
   setFacilityForm: Dispatch<SetStateAction<FacilitySettingsInput>>;
   handleFacilitySave: FormEventHandler<HTMLFormElement>;
@@ -1307,6 +1380,21 @@ export function SystemSettingsSection(props: {
   syncStatus: IntegrationDispatchStatusPayload;
 }) {
   const {
+    statusText,
+    ownProfileForm,
+    setOwnProfileForm,
+    currentUserRole,
+    currentUsername,
+    currentDisplayName,
+    currentPinChangedAt,
+    currentLastLoginAt,
+    handleOwnProfileSave,
+    selfPinChange,
+    setSelfPinChange,
+    handleChangeOwnPin,
+    passwordVisibility,
+    togglePasswordVisibility,
+    formatDate,
     facilityForm,
     setFacilityForm,
     handleFacilitySave,
@@ -1335,13 +1423,134 @@ export function SystemSettingsSection(props: {
     () => backups.filter((backup) => Boolean(backup.restoredAt)).length,
     [backups],
   );
+  const hasVisibleStatusMessage =
+    statusText !== "Ready to connect" && statusText !== "Signed out";
 
   return (
     <section className="content-grid admin-workspace-layout settings-workspace-layout">
-      <article className="surface-card form-card workspace-form-card settings-profile-card">
-        <div className="section-head">
+      <article className="surface-card form-card workspace-form-card settings-profile-card audit-match-card settings-card-shell">
+        <div className="section-head audit-match-head">
           <div>
-            <h2>Facility profile</h2>
+            <h2>My Account</h2>
+            <p>Update your sign-in details and rotate your PIN from this workspace.</p>
+          </div>
+        </div>
+        <div className="audit-log-metrics audit-match-metrics settings-top-metrics">
+          <div className="metric-mini audit-log-metric audit-match-metric">
+            <span>Role</span>
+            <strong>{currentUserRole}</strong>
+          </div>
+          <div className="metric-mini audit-log-metric audit-match-metric">
+            <span>Last login</span>
+            <strong>{formatDate(currentLastLoginAt)}</strong>
+          </div>
+          <div className="metric-mini audit-log-metric audit-match-metric">
+            <span>PIN updated</span>
+            <strong>{formatDate(currentPinChangedAt)}</strong>
+          </div>
+        </div>
+        <form className="form-grid bordered-top settings-card-body" onSubmit={handleOwnProfileSave}>
+          <label>
+            <span>Display name</span>
+            <input
+              value={ownProfileForm.displayName}
+              onChange={(event) =>
+                setOwnProfileForm((current) => ({
+                  ...current,
+                  displayName: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Username</span>
+            <input
+              value={ownProfileForm.username}
+              onChange={(event) =>
+                setOwnProfileForm((current) => ({
+                  ...current,
+                  username: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <div className="summary-panel full-width">
+            <span>Current identity</span>
+            <strong>{currentDisplayName || currentUsername}</strong>
+            <p className="muted-copy">
+              Usernames are lowercase and unique. Role changes remain admin-only.
+            </p>
+          </div>
+          <div className="full-width action-row">
+            <button type="submit">Save account details</button>
+          </div>
+        </form>
+        <form className="form-grid bordered-top settings-card-body" onSubmit={handleChangeOwnPin}>
+          <div className="full-width section-head compact-head">
+            <div>
+              <h3>Change PIN</h3>
+              <p>Signed in as {currentUsername || "current user"}.</p>
+            </div>
+          </div>
+          <label>
+            <span>Current PIN</span>
+            <div className="password-field">
+              <input
+                type={passwordVisibility.selfCurrentPin ? "text" : "password"}
+                value={selfPinChange.currentPin}
+                onChange={(event) =>
+                  setSelfPinChange((current) => ({
+                    ...current,
+                    currentPin: event.target.value,
+                  }))
+                }
+              />
+              <button
+                type="button"
+                className="field-action-button"
+                onClick={() => togglePasswordVisibility("selfCurrentPin")}
+              >
+                {passwordVisibility.selfCurrentPin ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+          <label>
+            <span>New PIN</span>
+            <div className="password-field">
+              <input
+                type={passwordVisibility.selfNewPin ? "text" : "password"}
+                value={selfPinChange.newPin}
+                onChange={(event) =>
+                  setSelfPinChange((current) => ({
+                    ...current,
+                    newPin: event.target.value,
+                  }))
+                }
+              />
+              <button
+                type="button"
+                className="field-action-button"
+                onClick={() => togglePasswordVisibility("selfNewPin")}
+              >
+                {passwordVisibility.selfNewPin ? "Hide" : "Show"}
+              </button>
+            </div>
+          </label>
+          <div className="full-width action-row">
+            <button type="submit">Change PIN</button>
+          </div>
+          {hasVisibleStatusMessage ? (
+            <div className="full-width inline-status-panel" role="status" aria-live="polite">
+              {statusText}
+            </div>
+          ) : null}
+        </form>
+      </article>
+
+      <article className="surface-card form-card workspace-form-card settings-profile-card audit-match-card settings-card-shell">
+        <div className="section-head audit-match-head">
+          <div>
+            <h2>Facility Profile</h2>
             <p>
               Set the lab name, logo, contacts, and footer shown on reports,
               receipts, and invoice printouts.
@@ -1359,7 +1568,7 @@ export function SystemSettingsSection(props: {
             </p>
           </div>
         ) : null}
-        <form className="form-grid" onSubmit={handleFacilitySave}>
+        <form className="form-grid settings-card-body" onSubmit={handleFacilitySave}>
           <label>
             <span>Lab name</span>
             <input
@@ -1517,28 +1726,28 @@ export function SystemSettingsSection(props: {
         </form>
       </article>
 
-      <article className="surface-card workspace-table-card settings-operations-card">
-        <div className="section-head compact-head">
+      <article className="surface-card workspace-table-card settings-operations-card audit-match-card settings-card-shell">
+        <div className="section-head compact-head audit-match-head">
           <div>
-            <h2>System operations</h2>
-            <p>Backups, integration dispatch, and runtime health.</p>
+            <h2>Data Management</h2>
+            <p>Backups, restore operations, and integration runtime controls.</p>
           </div>
         </div>
-        <div className="audit-log-metrics">
-          <div className="metric-mini audit-log-metric">
+        <div className="audit-log-metrics audit-match-metrics settings-top-metrics">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Backup snapshots</span>
             <strong>{backups.length}</strong>
           </div>
-          <div className="metric-mini audit-log-metric">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Restored snapshots</span>
             <strong>{restoredBackupCount}</strong>
           </div>
-          <div className="metric-mini audit-log-metric">
+          <div className="metric-mini audit-log-metric audit-match-metric">
             <span>Pending dispatches</span>
             <strong>{syncStatus.pending}</strong>
           </div>
         </div>
-        <div className="system-action-row admin-table-actions">
+        <div className="system-action-row admin-table-actions settings-action-stack">
           <input
             ref={backupImportInputRef}
             type="file"
@@ -1548,7 +1757,7 @@ export function SystemSettingsSection(props: {
           />
           <button
             type="button"
-            className="primary-action"
+            className="primary-action settings-wide-action"
             onClick={handleBackupCreate}
             disabled={!canManageBackups}
           >
@@ -1556,7 +1765,7 @@ export function SystemSettingsSection(props: {
           </button>
           <button
             type="button"
-            className="ghost-action"
+            className="ghost-action settings-wide-action"
             onClick={handleBackupExport}
             disabled={!canManageBackups || !selectedBackupId}
           >
@@ -1564,7 +1773,7 @@ export function SystemSettingsSection(props: {
           </button>
           <button
             type="button"
-            className="ghost-action"
+            className="primary-action settings-wide-action settings-restore-action"
             onClick={handleBackupImportPrompt}
             disabled={!canManageBackups}
           >
@@ -1572,7 +1781,7 @@ export function SystemSettingsSection(props: {
           </button>
           <button
             type="button"
-            className="ghost-action"
+            className="ghost-action settings-wide-action"
             onClick={handleRestoreLatest}
             disabled={!canManageBackups || !selectedBackupId}
           >
@@ -1580,14 +1789,14 @@ export function SystemSettingsSection(props: {
           </button>
           <button
             type="button"
-            className="ghost-action"
+            className="ghost-action settings-wide-action"
             onClick={handleRunIntegrationDispatch}
             disabled={!canManageIntegrations}
           >
             Run dispatch
           </button>
         </div>
-        <div className="admin-split-panels settings-split-panels">
+        <div className="admin-split-panels settings-split-panels settings-card-body">
           <div className="surface-subpanel settings-subpanel">
             <div className="section-head compact-head">
               <div>
