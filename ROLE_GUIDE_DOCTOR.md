@@ -10,6 +10,7 @@ Doctors and reporting specialists use MediLab Nexus to interpret sonography stud
 - Patients
 - Patient Records
 - Sonography Worklist
+- Lab Reports
 - Scan Reports
 
 > Screenshot placeholder: doctor reporting workspace.
@@ -25,15 +26,15 @@ Doctors and reporting specialists use MediLab Nexus to interpret sonography stud
 
 1. Confirm the correct patient and order.
 2. Review the history and study context.
-3. Open Scan Reports.
-4. Complete the title, findings, and impression.
-5. Use the right ultrasound template where needed.
+3. Open Lab Reports or Scan Reports for the study type.
+4. Complete the report in the single report document editor.
+5. Use the right ultrasound template or import a saved `.docx` or PDF template where needed.
 6. Preview the report.
 7. Release the report only when clinically complete.
 
 ## Clinical Discipline
 
-- Use precise wording in findings and impression.
+- Use precise wording throughout the report document, especially in findings and impression.
 - Ensure the final report belongs to the correct patient.
 - Flag critical findings promptly.
 - Avoid releasing partially reviewed reports.

@@ -19,12 +19,13 @@ Use this checklist to capture production-ready screenshots and drop them into th
 - Dashboard
 - Patients registration form
 - Patient Records search and history view
-- Orders & Requests form
+- Lab Reports editor with template import actions
 - Sonography Worklist
 - Scan Reports editor
+- Report template import result from drive
 - Printable report preview
 - Expenses page
-- Services page
+- Services page with turnaround days, hours, and minutes
 - Operations Report summary
 - Alerts page
 - User Management page

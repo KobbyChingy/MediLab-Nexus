@@ -17,7 +17,7 @@ This guide is for staff who need the shortest possible introduction before they 
 
 1. Register or find the patient.
 2. Confirm the patient's Trace Code.
-3. Attach the correct service or request.
+3. Attach the correct service during intake.
 4. Move the patient through the required workflow.
 5. Record payments, expenses, or updates at the time they happen.
 6. Preview or print finalized documents only after the responsible user completes them.
@@ -27,8 +27,9 @@ This guide is for staff who need the shortest possible introduction before they 
 - Dashboard: shift overview and urgent items.
 - Patients: registration and intake.
 - Patient Records: history, record lookup, reprints.
+- Lab Reports: typed laboratory report drafting and release.
 - Sonography Worklist: scan-room activity and status changes.
-- Scan Reports: reporting, preview, and release.
+- Scan Reports: single-document scan reporting, template import, preview, and release.
 - Expenses: daily operating costs and refunds.
 - Operations Report: finance and operational review.
 - Alerts: internal bell and notification monitoring.
@@ -39,6 +40,7 @@ This guide is for staff who need the shortest possible introduction before they 
 - Always search before registering a new patient.
 - Always confirm the Trace Code.
 - Do not release unfinished reports.
+- Use `.docx` when importing a report template from drive for the most reliable formatting.
 - Do not share user accounts.
 - Change temporary or recovered PINs immediately.
 - Record payments and expenses on the same day.

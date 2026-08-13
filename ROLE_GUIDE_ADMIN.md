@@ -20,7 +20,7 @@ Administrators maintain user access, system safety, facility settings, backups, 
 1. Create staff accounts.
 2. Assign the correct role to each user.
 3. Confirm facility profile details.
-4. Load or review services and pricing.
+4. Load or review services, pricing, and turnaround settings.
 5. Confirm backup and dispatch procedures.
 
 ## User Administration
@@ -32,6 +32,7 @@ Use User Management to:
 - Unlock accounts
 - Activate or deactivate users
 - Review role assignments
+- Confirm visible user counts and filters when staff report missing accounts
 
 ## Settings and System Operations
 
@@ -41,6 +42,14 @@ Use Settings to:
 - Adjust printable font size when needed
 - Create, export, import, and restore backups
 - Run dispatch when integration or notification processing must be triggered manually
+
+Use Services to:
+
+- Maintain pricing
+- Enter turnaround time in days, hours, and minutes
+- Bulk import service catalogs with turnaround values such as `1d 2h 30m`
+
+Use Lab Reports and Scan Reports to verify that shared templates and imported `.docx` or PDF templates load into the report document as intended.
 
 ## Audit and Oversight
 

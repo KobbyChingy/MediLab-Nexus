@@ -35,12 +35,12 @@ Reception users keep patient intake, service selection, front-desk payments, and
 
 1. From Patients, attach the required service.
 2. Capture payer details carefully.
-3. If payment is collected immediately, record it correctly.
+3. If payment is collected immediately, record it correctly. Use Employee Discount only when the patient should pay zero and the full patient amount must be discounted.
 4. Direct the patient to the next department.
 
 ## Report Pickup and Printing
 
-1. Open Scan Reports only after the reporting clinician finishes the report.
+1. Open Lab Reports or Scan Reports only after the reporting clinician finishes the report.
 2. Preview the report.
 3. Print only the final approved or released document according to facility policy.
 

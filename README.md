@@ -32,15 +32,16 @@ Additional user documentation:
 ## Core workflows included
 
 - Patient registration with auto-generated Patient Trace Code.
-- Test and imaging catalog with pricing and turnaround targets.
-- Order entry for lab and ultrasound studies.
+- Test and imaging catalog with pricing and turnaround targets entered in days, hours, and minutes.
+- Patient intake that attaches the required service directly from the registration and records workflow.
 - Sample tracking and imaging appointment creation.
-- Report authoring and approval metadata.
+- Lab Reports and Scan Reports with a single report document editor for narrative reporting.
+- Local template import for report authoring, including `.docx`, PDF, HTML, and text-based templates.
 - Printable HTML report layouts and generated PDF artifacts for web-based release.
-- Billing objects, payment capture, inventory monitoring, QC events, and dashboard summaries.
+- Billing objects, payment capture including employee discount write-offs, inventory monitoring, QC events, and dashboard summaries.
 - Westgard-rule QC evaluation and Levey-Jennings trending.
 - Instrument and ultrasound maintenance scheduling.
-- Role-aware admin overview, user administration, audit trail, notification queueing, integration dispatch controls, and encrypted backup snapshots.
+- Role-aware admin overview, user administration, self-service PIN management, audit trail, notification queueing, integration dispatch controls, and encrypted backup snapshots.
 
 ## Run locally
 
@@ -81,6 +82,7 @@ Desktop runtime notes:
 
 - Set `hostedUrl` in `apps/desktop/desktop.config.json` before running `npm run desktop:dist`, or set `MEDILAB_DESKTOP_HOSTED_URL` when launching the desktop app.
 - The installed app loads the configured hosted URL directly and does not start a bundled local API, worker, or SQLite database.
+- Because the desktop app is a hosted shell, user-facing feature changes appear there only after the hosted deployment is updated.
 - The unpacked desktop build is also available at `dist-desktop/installer/win-unpacked/`.
 - If a reinstall reports that MediLab Nexus cannot be closed, end any `MediLab Nexus.exe` processes in Task Manager and remove the old per-user install from `%LocalAppData%\Programs\MediLab Nexus` before rerunning the installer.
 
@@ -125,10 +127,10 @@ Recommended production settings:
 
 - Quality control: daily QC capture, Westgard rule detection, Levey-Jennings visualization, and traceable QC review state.
 - Inventory and reagents: stock movement recording, expiry watchlist, low-stock alerts, and reorder suggestions.
-- Billing and finance: invoice generation from orders plus capture of cash, MTN mobile money, Vodafone cash, card, and NHIS payments.
+- Billing and finance: invoice generation from patient-attached services plus capture of cash, MTN mobile money, Vodafone cash, card, NHIS, and employee discount settlements.
 - Notifications: queued SMS, email, and WhatsApp updates dispatched through configured gateways.
 - Security and compliance: PIN-backed login sessions, role-aware API actions, full audit logs, encrypted backup files, and operational alignment with Ghana Data Protection Act and ISO 15189-oriented workflows.
-- Credential administration: user creation, PIN rotation, failed-login tracking, temporary lockout, account activation control, and lock reset actions.
+- Credential administration: user creation, self-service PIN change, PIN recovery, failed-login tracking, temporary lockout, account activation control, and lock reset actions.
 - Maintenance and integrations: analyzer and ultrasound calibration scheduling, with hooks for HL7, ASTM, DICOM, PACS, EHR, and accounting integrations.
 - Printable diagnostics: report preview endpoints and PDF generation for browser printing, file sharing, and result handoff.
 

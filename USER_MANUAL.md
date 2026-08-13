@@ -78,7 +78,7 @@ The main menu is role-aware. Depending on your role, you may see some or all of 
 - Dashboard
 - Patients
 - Patient Records
-- Orders & Requests
+- Lab Reports
 - Sonography Worklist
 - Scan Reports
 - Operations Report
@@ -174,22 +174,7 @@ Use this page to:
 
 This page is especially useful for returning patients and for follow-up visits.
 
-## Orders & Requests
-
-> Screenshot placeholder: request form with patient, services, priority, and payer details.
-
-Orders & Requests is used when staff need to create or manage diagnostic requests beyond the basic front-desk flow.
-
-Use it to:
-
-- Select a patient
-- Attach one or more services
-- Set priority such as routine or urgent
-- Enter the requesting clinician or source
-- Record payer information
-- Add scheduling or study notes
-
-Use this page carefully. Make sure the patient and service list are correct before saving, because downstream reporting and billing depend on the request data.
+Diagnostic requests are now started from Patients and related workflow pages instead of a separate Orders & Requests page. Staff should attach the correct service during intake, then continue the case from Patient Records, Sonography Worklist, Lab Reports, or Scan Reports depending on the study type.
 
 ## Sonography Worklist
 
@@ -223,19 +208,19 @@ Recommended sonography flow:
 4. Enter the sonographer's name and related study notes.
 5. Hand off to the doctor or reporting user once the study is ready.
 
-## Scan Reports
+## Lab Reports and Scan Reports
 
-> Screenshot placeholder: report authoring screen with history, findings, impression, and preview action.
+> Screenshot placeholder: single-document report editor with template actions and preview.
 
-Scan Reports is used to draft, review, preview, and print final diagnostic reports.
+Lab Reports and Scan Reports are used to draft, review, preview, and print final diagnostic reports.
 
 Use it to:
 
 - Select the patient and related order
 - Enter the report title
-- Record medical history
-- Write summary, findings, and impression
-- Choose a report template where available
+- Write the full report inside one report document editor
+- Load a saved template or import a template from drive
+- Import `.docx`, PDF, HTML, or plain-text templates
 - Mark critical findings
 - Preview the report before release
 - Print or release the final report
@@ -251,12 +236,18 @@ The system supports ultrasound-oriented structured templates such as:
 Recommended reporting flow:
 
 1. Confirm the correct patient and order.
-2. Enter or review the history.
-3. Complete findings and impression clearly.
+2. Load a saved template or import a file if the report should follow a standard layout.
+3. Type or paste the full narrative into the single report document, including history, findings, measurements, and impression where appropriate.
 4. Preview the report.
 5. Release the report only after clinical review is complete.
 
 Reception users should only preview or print reports after the reporting clinician has finalized them.
+
+Template import notes:
+
+- Word `.docx` templates preserve document structure best.
+- PDF templates can be uploaded and mapped into the report document when the PDF text is readable.
+- Older `.doc` files should be re-saved as `.docx` before upload.
 
 ## Printing and Previews
 
@@ -301,10 +292,10 @@ Use it to:
 - Edit service name and code
 - Set whether it is a test or imaging service
 - Maintain pricing
-- Set turnaround time
+- Set turnaround time using days, hours, and minutes
 - Mark services active or inactive
 
-Bulk import support may be available for service setup. When using bulk import, check the preview carefully before confirming changes.
+Bulk import support is available for service setup. When using bulk import, check the preview carefully before confirming changes. Turnaround values can be entered as total minutes or combined values such as `1d 2h 30m`.
 
 Only authorized users should change pricing or deactivate services.
 
@@ -321,6 +312,7 @@ Use it to review:
 - Expenses
 - Net operational performance
 - Payment method mix
+- Employee discount activity where that payment method has been used
 - Claim status mix
 - Top services
 - Study performance trends
@@ -390,6 +382,8 @@ When creating a user, enter:
 - Initial PIN
 
 Share the initial PIN securely, then ask the user to change it after first sign-in.
+
+Visible user counts in this page depend on the signed-in facility. If users are missing, refresh the page and confirm you are signed into the correct facility workspace.
 
 ## Settings
 

@@ -9,7 +9,6 @@ Sonographers use MediLab Nexus to manage the imaging queue, update appointment s
 - Dashboard
 - Patients
 - Patient Records
-- Orders & Requests
 - Sonography Worklist
 - Scan Reports
 
@@ -37,8 +36,8 @@ Use Scan Reports when your workflow requires structured draft preparation before
 Focus on:
 
 - Correct patient and order selection
-- Clear history input
-- Accurate structured findings support
+- Clear document context for the reporting clinician
+- Accurate structured findings support inside the single report document
 - Timely critical flag escalation
 
 ## Common Mistakes to Avoid
