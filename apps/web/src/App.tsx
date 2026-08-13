@@ -1411,6 +1411,47 @@ function formatTurnaroundMinutes(totalMinutes: number) {
   return parts.join(" ");
 }
 
+function parseTurnaroundText(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d+$/u.test(normalized)) {
+    const totalMinutes = Number(normalized);
+    return Number.isInteger(totalMinutes) && totalMinutes > 0
+      ? totalMinutes
+      : null;
+  }
+
+  const tokenPattern = /(\d+)\s*(d|day|days|h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/giu;
+  let totalMinutes = 0;
+  let matched = false;
+  const remainder = normalized.replace(tokenPattern, (_, amountText: string, unit: string) => {
+    matched = true;
+    const amount = Number(amountText);
+    if (unit.startsWith("d")) {
+      totalMinutes += amount * 24 * 60;
+    } else if (unit.startsWith("h")) {
+      totalMinutes += amount * 60;
+    } else {
+      totalMinutes += amount;
+    }
+    return " ";
+  });
+
+  if (!matched) {
+    return null;
+  }
+
+  const leftover = remainder.replace(/[+,/\-]/gu, " ").replace(/\s+/gu, "").trim();
+  if (leftover) {
+    return null;
+  }
+
+  return totalMinutes > 0 ? totalMinutes : null;
+}
+
 function stripFileExtension(fileName: string) {
   return fileName.replace(/\.[^.]+$/u, "").trim();
 }
@@ -1842,10 +1883,10 @@ function parseBulkServiceText(source: string) {
       continue;
     }
 
-    const tatMinutes = Number(tatValue);
-    if (!Number.isInteger(tatMinutes) || tatMinutes <= 0) {
+    const tatMinutes = parseTurnaroundText(tatValue);
+    if (!tatMinutes) {
       errors.push(
-        `Line ${row.lineNumber}: TAT must be a whole number above zero.`,
+        `Line ${row.lineNumber}: TAT must be above zero using minutes or values like 1d 2h 30m.`,
       );
       continue;
     }
@@ -5823,6 +5864,7 @@ export default function App() {
     try {
       const lowerName = file.name.toLowerCase();
       let rawText = "";
+      let importedDocumentHtml = "";
 
       if (lowerName.endsWith(".pdf")) {
         const pdfjs = await import("pdfjs-dist/build/pdf.mjs");
@@ -5843,27 +5885,55 @@ export default function App() {
         }
 
         rawText = pages.join("\n\n");
-      } else if (lowerName.endsWith(".docx") || lowerName.endsWith(".doc")) {
+        importedDocumentHtml = ensureRichTextHtml(rawText);
+      } else if (lowerName.endsWith(".docx")) {
         const mammoth = await import("mammoth");
-        const result = await mammoth.extractRawText({
-          arrayBuffer: await file.arrayBuffer(),
-        });
-        rawText = result.value;
+        const arrayBuffer = await file.arrayBuffer();
+        const [htmlResult, textResult] = await Promise.all([
+          mammoth.convertToHtml({ arrayBuffer }),
+          mammoth.extractRawText({ arrayBuffer }),
+        ]);
+        rawText = textResult.value;
+        importedDocumentHtml = ensureRichTextHtml(
+          htmlResult.value.trim() || textResult.value,
+        );
+      } else if (lowerName.endsWith(".html") || lowerName.endsWith(".htm")) {
+        importedDocumentHtml = await file.text();
+        rawText = richTextToPlainText(importedDocumentHtml);
+      } else if (lowerName.endsWith(".txt")) {
+        rawText = await file.text();
+        importedDocumentHtml = ensureRichTextHtml(rawText);
+      } else if (lowerName.endsWith(".doc")) {
+        throw new Error(
+          "Legacy .doc templates are not supported reliably. Save the file as .docx or PDF and try again.",
+        );
       } else {
-        throw new Error("Unsupported template file. Use PDF or Word format.");
+        throw new Error(
+          "Unsupported template file. Use .docx, PDF, HTML, or plain text.",
+        );
       }
 
-      const parsed = extractStructuredTemplateSections(rawText);
+      const normalizedRawText = normalizeImportedTemplateText(rawText);
+      if (!normalizedRawText && !richTextToPlainText(importedDocumentHtml)) {
+        throw new Error("Template file did not contain readable report content.");
+      }
+
+      const parsed = extractStructuredTemplateSections(normalizedRawText);
+      const fallbackDocumentHtml = buildNarrativeReportDocumentHtml({
+        medicalHistory: parsed.medicalHistory,
+        findings: parsed.findings || normalizedRawText,
+        impression: parsed.impression,
+      });
+      const narrativeDocumentHtml = importedDocumentHtml.trim()
+        ? ensureRichTextHtml(importedDocumentHtml)
+        : fallbackDocumentHtml;
+
       setReportForm((current) => ({
         ...current,
-        title: parsed.title || current.title,
+        title: parsed.title || stripFileExtension(file.name) || current.title,
         medicalHistory: "",
         summary: parsed.summary || current.summary,
-        findings: buildNarrativeReportDocumentHtml({
-          medicalHistory: parsed.medicalHistory,
-          findings: parsed.findings || rawText,
-          impression: parsed.impression,
-        }),
+        findings: narrativeDocumentHtml,
         impression: "",
       }));
       setUltrasoundReportAssist((current) => ({
@@ -9982,7 +10052,7 @@ export default function App() {
               <input
                 ref={reportTemplateFileInputRef}
                 type="file"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".pdf,.docx,.html,.htm,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/html,text/plain"
                 className="sr-only"
                 onChange={(event) => void handleImportReportTemplateFile(event)}
                 disabled={!canWriteReports}
