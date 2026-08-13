@@ -1464,6 +1464,55 @@ function normalizeImportedTemplateText(value: string) {
     .trim();
 }
 
+function extractPdfPageText(
+  items: Array<{ str?: string; transform?: number[]; hasEOL?: boolean }>,
+) {
+  const lines: string[] = [];
+  let currentLine: string[] = [];
+  let currentY: number | null = null;
+
+  const flushLine = () => {
+    if (currentLine.length === 0) {
+      currentY = null;
+      return;
+    }
+
+    lines.push(
+      currentLine
+        .join(" ")
+        .replace(/\s+([,.;:!?])/gu, "$1")
+        .replace(/\s+/gu, " ")
+        .trim(),
+    );
+    currentLine = [];
+    currentY = null;
+  };
+
+  for (const item of items) {
+    const text = (item.str ?? "").replace(/\s+/gu, " ").trim();
+    const nextY = Array.isArray(item.transform) ? Number(item.transform[5] ?? 0) : null;
+
+    if (currentY !== null && nextY !== null && Math.abs(currentY - nextY) > 3) {
+      flushLine();
+    }
+
+    if (text) {
+      currentLine.push(text);
+    }
+
+    if (nextY !== null) {
+      currentY = nextY;
+    }
+
+    if (item.hasEOL) {
+      flushLine();
+    }
+  }
+
+  flushLine();
+  return lines.join("\n");
+}
+
 function escapeEditorHtml(value: string) {
   return value
     .replace(/&/gu, "&amp;")
@@ -5878,10 +5927,12 @@ export default function App() {
         for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
           const page = await document.getPage(pageNumber);
           const content = await page.getTextContent();
-          const textItems = content.items as Array<{ str?: string }>;
-          pages.push(
-            textItems.map((item) => item.str ?? "").join(" "),
-          );
+          const textItems = content.items as Array<{
+            str?: string;
+            transform?: number[];
+            hasEOL?: boolean;
+          }>;
+          pages.push(extractPdfPageText(textItems));
         }
 
         rawText = pages.join("\n\n");
