@@ -59,7 +59,6 @@ import {
 } from "@medilab/shared";
 import { Suspense, lazy, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import logoSrc from "./assets/medilab-nexus-logo.svg";
-import omniWeaveMarkSrc from "./assets/omniweave-mark.svg";
 import {
   fallbackAdminOverview,
   fallbackBootstrap,
@@ -145,7 +144,6 @@ type NavKey =
   | "dashboard"
   | "patients"
   | "patientRecords"
-  | "orders"
   | "tracking"
   | "sonography"
   | "labReports"
@@ -727,7 +725,6 @@ const navItems: Array<{ key: NavKey; label: string; short: string }> = [
   { key: "dashboard", label: "Dashboard", short: "DB" },
   { key: "patients", label: "Patients", short: "PT" },
   { key: "patientRecords", label: "Patient Records", short: "PR" },
-  { key: "orders", label: "Orders & Requests", short: "OR" },
   { key: "sonography", label: "Sonography Worklist", short: "SG" },
   { key: "labReports", label: "Lab Reports", short: "LR" },
   { key: "scanReports", label: "Scan Reports", short: "SR" },
@@ -745,7 +742,6 @@ const navDescriptions: Record<NavKey, string> = {
   dashboard: "Live operational picture across your current workload.",
   patients: "Registration, lookup, and traceable patient context.",
   patientRecords: "Patient history, payment records, and receipt reprints.",
-  orders: "Create requests, capture intake, and control handoff.",
   tracking: "Specimen movement, collection visibility, and lab flow.",
   sonography: "Scheduled imaging, room status, and scan progression.",
   labReports: "Compose, preview, and finalize typed laboratory reports.",
@@ -773,7 +769,6 @@ const navSections: NavSectionDef[] = [
       "dashboard",
       "patients",
       "patientRecords",
-      "orders",
       "sonography",
       "labReports",
       "scanReports",
@@ -974,7 +969,6 @@ const defaultPortalActions: PortalAction[] = [
 ];
 
 const navCapabilityRequirements: Partial<Record<NavKey, Capability[]>> = {
-  orders: ["order:write"],
   tracking: ["order:write"],
   sonography: ["order:write"],
   labReports: ["report:view"],
@@ -1202,7 +1196,6 @@ const portalProfiles: Partial<
       "dashboard",
       "patients",
       "patientRecords",
-      "orders",
       "sonography",
       "scanReports",
     ],
@@ -1405,6 +1398,28 @@ function joinRichTextSections(...sections: string[]) {
     .map((section) => section.trim())
     .filter(Boolean)
     .join("");
+}
+
+function buildNarrativeReportDocumentHtml(params: {
+  medicalHistory?: string | null;
+  findings?: string | null;
+  impression?: string | null;
+}) {
+  const sections = [
+    params.medicalHistory?.trim()
+      ? `<p><strong>History</strong></p>${ensureRichTextHtml(params.medicalHistory)}`
+      : "",
+    params.findings?.trim()
+      ? params.medicalHistory?.trim() || params.impression?.trim()
+        ? `<p><strong>Report</strong></p>${ensureRichTextHtml(params.findings)}`
+        : ensureRichTextHtml(params.findings)
+      : "",
+    params.impression?.trim()
+      ? `<p><strong>Impression</strong></p>${ensureRichTextHtml(params.impression)}`
+      : "",
+  ];
+
+  return joinRichTextSections(...sections);
 }
 
 function richTextToPlainText(value: string) {
@@ -1957,6 +1972,16 @@ function formatStatusLabel(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatPaymentMethodLabel(value: PaymentInput["method"]) {
+  return value === "MOBILE_MONEY_MTN"
+    ? "Mobile Money MTN"
+    : value === "MOBILE_MONEY_VODAFONE"
+      ? "Mobile Money Vodafone"
+      : value === "EMPLOYEE_DISCOUNT"
+        ? "Employee Discount"
+        : formatStatusLabel(value);
 }
 
 function getSampleTone(status: SampleRecord["status"]) {
@@ -3067,22 +3092,7 @@ export default function App() {
       },
     } satisfies AdminOverviewPayload;
 
-    try {
-      const [
-        bootstrapPayload,
-        patientList,
-        workflowPayload,
-        ownProfilePayload,
-        overview,
-        financeAnalyticsPayload,
-        backupList,
-        userList,
-        directoryList,
-        serviceList,
-        referralDoctorList,
-        reportTemplateList,
-        syncPayload,
-      ] = await Promise.all([
+    const results = await Promise.allSettled([
         requestJson<BootstrapPayload>("/bootstrap"),
         requestJson<PatientRecord[]>("/patients"),
         requestJson<WorkflowPayload>("/workflow"),
@@ -3123,61 +3133,112 @@ export default function App() {
           : Promise.resolve(emptySyncStatus),
       ]);
 
-      startTransition(() => {
-        setBootstrap(bootstrapPayload);
-        setPatients(patientList);
-        setWorkflow(workflowPayload);
-        setOwnProfile(ownProfilePayload);
-        setOwnProfileForm({
-          username: ownProfilePayload.username,
-          displayName: ownProfilePayload.displayName,
-        });
-        setAdminOverview(overview);
-        setFinanceAnalytics(financeAnalyticsPayload);
-        setBackups(backupList);
-        setUsers(userList);
-        setDirectoryUsers(directoryList);
-        setServices(serviceList);
-        setReferralDoctors(referralDoctorList);
-        setReportTemplates(reportTemplateList);
-        setSyncStatus(syncPayload);
-      });
+    const [
+      bootstrapResult,
+      patientResult,
+      workflowResult,
+      ownProfileResult,
+      overviewResult,
+      financeResult,
+      backupResult,
+      userResult,
+      directoryResult,
+      serviceResult,
+      referralDoctorResult,
+      reportTemplateResult,
+      syncResult,
+    ] = results;
 
-      if (!selectedBackupId && backupList[0]) {
-        setSelectedBackupId(backupList[0].id);
-      }
+    const didPartialRefreshFail = results.some(
+      (result) => result.status === "rejected",
+    );
 
-      setStatusText(`Connected as ${authSession.user.displayName}`);
-    } catch {
-      setAdminOverview(baseOverview);
-      setFinanceAnalytics({
-        ...fallbackFinanceAnalytics,
-        range: analyticsRange,
-        customStartDate:
-          analyticsRange === "CUSTOM" && analyticsCustomDateRange.startDate
-            ? new Date(analyticsCustomDateRange.startDate).toISOString()
-            : null,
-        customEndDate:
-          analyticsRange === "CUSTOM" && analyticsCustomDateRange.endDate
-            ? new Date(analyticsCustomDateRange.endDate).toISOString()
-            : null,
-        generatedAt: new Date().toISOString(),
-      });
-      setExpenseWorkspace(buildEmptyExpenseWorkspace(analyticsRange));
-      setBackups([]);
-      setUsers([]);
-      setDirectoryUsers([]);
-      setReferralDoctors([]);
-      setReportTemplates([]);
-      setSyncStatus(emptySyncStatus);
+    const bootstrapPayload =
+      bootstrapResult.status === "fulfilled" ? bootstrapResult.value : bootstrap;
+    const patientList =
+      patientResult.status === "fulfilled" ? patientResult.value : patients;
+    const workflowPayload =
+      workflowResult.status === "fulfilled" ? workflowResult.value : workflow;
+    const ownProfilePayload =
+      ownProfileResult.status === "fulfilled"
+        ? ownProfileResult.value
+        : ownProfile ?? {
+            id: authSession.user.id,
+            facilityId: authSession.user.facilityId,
+            username: authSession.user.username,
+            displayName: authSession.user.displayName,
+            role: authSession.user.role,
+            pinChangedAt: "",
+            lastLoginAt: null,
+          };
+    const overview =
+      overviewResult.status === "fulfilled" ? overviewResult.value : baseOverview;
+    const financeAnalyticsPayload =
+      financeResult.status === "fulfilled"
+        ? financeResult.value
+        : {
+            ...fallbackFinanceAnalytics,
+            range: analyticsRange,
+            customStartDate:
+              analyticsRange === "CUSTOM" && analyticsCustomDateRange.startDate
+                ? new Date(analyticsCustomDateRange.startDate).toISOString()
+                : null,
+            customEndDate:
+              analyticsRange === "CUSTOM" && analyticsCustomDateRange.endDate
+                ? new Date(analyticsCustomDateRange.endDate).toISOString()
+                : null,
+            generatedAt: new Date().toISOString(),
+          };
+    const backupList =
+      backupResult.status === "fulfilled" ? backupResult.value : backups;
+    const userList = userResult.status === "fulfilled" ? userResult.value : users;
+    const directoryList =
+      directoryResult.status === "fulfilled" ? directoryResult.value : directoryUsers;
+    const serviceList =
+      serviceResult.status === "fulfilled" ? serviceResult.value : services;
+    const referralDoctorList =
+      referralDoctorResult.status === "fulfilled"
+        ? referralDoctorResult.value
+        : referralDoctors;
+    const reportTemplateList =
+      reportTemplateResult.status === "fulfilled"
+        ? reportTemplateResult.value
+        : reportTemplates;
+    const syncPayload =
+      syncResult.status === "fulfilled" ? syncResult.value : syncStatus;
+
+    startTransition(() => {
+      setBootstrap(bootstrapPayload);
+      setPatients(patientList);
+      setWorkflow(workflowPayload);
+      setOwnProfile(ownProfilePayload);
       setOwnProfileForm({
-        username: authSession.user.username,
-        displayName: authSession.user.displayName,
+        username: ownProfilePayload.username,
+        displayName: ownProfilePayload.displayName,
       });
-      setStatusText(
-        `Some MediLab Nexus workspace panels could not be refreshed for ${authSession.user.displayName}. Existing patient and workflow data has been kept.`,
-      );
+      setAdminOverview(overview);
+      setFinanceAnalytics(financeAnalyticsPayload);
+      setBackups(backupList);
+      setUsers(userList);
+      setDirectoryUsers(directoryList);
+      setServices(serviceList);
+      setReferralDoctors(referralDoctorList);
+      setReportTemplates(reportTemplateList);
+      setSyncStatus(syncPayload);
+    });
+
+    if (!selectedBackupId && backupList[0]) {
+      setSelectedBackupId(backupList[0].id);
     }
+
+    if (didPartialRefreshFail) {
+      setStatusText(
+        `Some MediLab Nexus workspace panels could not be refreshed for ${authSession.user.displayName}. Existing user, patient, and workflow data has been kept.`,
+      );
+      return;
+    }
+
+    setStatusText(`Connected as ${authSession.user.displayName}`);
   }
 
   async function refreshRegistrationWorkspaceData() {
@@ -4117,6 +4178,15 @@ export default function App() {
   );
   const isEchoWorksheetTemplate =
     reportForm.templateKind === "ULTRASOUND_ECHOCARDIOGRAPHY";
+  const narrativeReportDocumentHtml = useMemo(
+    () =>
+      buildNarrativeReportDocumentHtml({
+        medicalHistory: reportForm.medicalHistory,
+        findings: reportForm.findings,
+        impression: reportForm.impression,
+      }),
+    [reportForm.findings, reportForm.impression, reportForm.medicalHistory],
+  );
   const visibleReportTemplateKinds = useMemo(
     () =>
       isLabReportWorkspace
@@ -5075,7 +5145,8 @@ export default function App() {
           if (
             canManageFinance &&
             intakePayment.collectNow &&
-            Number(intakePayment.amountCents) > 0
+            (intakePayment.method === "EMPLOYEE_DISCOUNT" ||
+              Number(intakePayment.amountCents) > 0)
           ) {
             try {
               const paymentResponse = await requestJson<{
@@ -5085,7 +5156,10 @@ export default function App() {
                 method: "POST",
                 body: JSON.stringify({
                   invoiceId: orderResponse.invoice.id,
-                  amountCents: Number(intakePayment.amountCents),
+                  amountCents:
+                    intakePayment.method === "EMPLOYEE_DISCOUNT"
+                      ? 0
+                      : Number(intakePayment.amountCents),
                   method: intakePayment.method,
                   responsibility: "PATIENT",
                   reference: intakePayment.reference,
@@ -5100,8 +5174,13 @@ export default function App() {
                 traceCode:
                   paymentResponse.payment.traceCode ?? created.traceCode,
               });
-              statusMessage = `Patient ${created.traceCode} registered, service request added, payment captured, and receipt generated`;
-              await handlePreviewReceipt(paymentResponse.payment.id);
+              statusMessage =
+                intakePayment.method === "EMPLOYEE_DISCOUNT"
+                  ? `Patient ${created.traceCode} registered, service request added, and employee discount applied with zero amount paid`
+                  : `Patient ${created.traceCode} registered, service request added, payment captured, and receipt generated`;
+              if (intakePayment.method !== "EMPLOYEE_DISCOUNT") {
+                await handlePreviewReceipt(paymentResponse.payment.id);
+              }
             } catch (error) {
               statusMessage =
                 error instanceof Error
@@ -5339,6 +5418,9 @@ export default function App() {
       ultrasoundReportAssist.measurementsText.trim(),
       ...presetMeasurementLines,
     ].filter(Boolean);
+    const baseNarrativeDocument = echoReportContent
+      ? ""
+      : narrativeReportDocumentHtml;
     const findings = echoReportContent
       ? echoReportContent.findings
       : isUltrasoundTemplate(reportForm.templateKind)
@@ -5353,33 +5435,31 @@ export default function App() {
                 `Prepared by: ${ultrasoundReportAssist.sonographerName}`,
               )
             : "",
-          ensureRichTextHtml(reportForm.findings),
+          ensureRichTextHtml(baseNarrativeDocument),
           compiledMeasurements.length > 0
             ? buildRichTextTextBlock(
                 `Measurements:\n${compiledMeasurements.join("\n")}`,
               )
             : "",
-        )
-      : ensureRichTextHtml(reportForm.findings);
-    const impression = echoReportContent
-      ? echoReportContent.impression
-      : isUltrasoundTemplate(reportForm.templateKind)
-      ? joinRichTextSections(
-          ensureRichTextHtml(reportForm.impression),
           ultrasoundReportAssist.recommendation
             ? buildRichTextTextBlock(
                 `Recommendation: ${ultrasoundReportAssist.recommendation}`,
               )
             : "",
         )
-      : ensureRichTextHtml(reportForm.impression);
+      : ensureRichTextHtml(baseNarrativeDocument);
+    const impression = echoReportContent
+      ? echoReportContent.impression
+      : "";
 
     if (
       richTextToPlainText(findings).length < 3 ||
-      richTextToPlainText(impression).length < 3
+      (echoReportContent && richTextToPlainText(impression).length < 3)
     ) {
       setStatusText(
-        "Add the test result or description and the impression before previewing, printing, or saving.",
+        echoReportContent
+          ? "Add the worksheet findings and conclusion before previewing, printing, or saving."
+          : "Add the report document content before previewing, printing, or saving.",
       );
       return null;
     }
@@ -5390,7 +5470,7 @@ export default function App() {
       signedBy: reportForm.signedBy.trim(),
       medicalHistory: echoReportContent
         ? echoReportContent.medicalHistory
-        : ensureRichTextHtml(reportForm.medicalHistory),
+        : "",
       summary: echoReportContent
         ? echoReportContent.summary
         : reportForm.summary.trim() || reportForm.title.trim(),
@@ -5482,13 +5562,13 @@ export default function App() {
       : reportForm.summary.trim();
     const historyHtml = echoReportContent
       ? echoReportContent.medicalHistory
-      : ensureRichTextHtml(reportForm.medicalHistory);
+      : "";
     const findingsHtml = echoReportContent
       ? echoReportContent.findings
-      : ensureRichTextHtml(reportForm.findings);
+      : ensureRichTextHtml(narrativeReportDocumentHtml);
     const impressionHtml = echoReportContent
       ? echoReportContent.impression
-      : ensureRichTextHtml(reportForm.impression);
+      : "";
 
     if (
       !templateName ||
@@ -5496,7 +5576,7 @@ export default function App() {
       richTextToPlainText(findingsHtml).length < 3
     ) {
       setStatusText(
-        "Add a template name plus report summary/findings before saving the template.",
+        "Add a template name plus report summary/document content before saving the template.",
       );
       return;
     }
@@ -5573,13 +5653,13 @@ export default function App() {
       : null;
     const descriptionHtml = echoReportContent
       ? echoReportContent.findings
-      : ensureRichTextHtml(reportForm.findings);
+      : ensureRichTextHtml(narrativeReportDocumentHtml);
     const impressionHtml = echoReportContent
       ? echoReportContent.impression
-      : ensureRichTextHtml(reportForm.impression);
+      : "";
     const historyHtml = echoReportContent
       ? echoReportContent.medicalHistory
-      : ensureRichTextHtml(reportForm.medicalHistory);
+      : "";
 
     if (!templateName || richTextToPlainText(descriptionHtml).length < 3) {
       setStatusText("Add a template name and document content before export.");
@@ -5624,10 +5704,8 @@ export default function App() {
         <p>${escapeHtml(templateName)}</p>
         ${facilityContact ? `<p>${escapeHtml(facilityContact)}</p>` : ""}
       </header>
-      ${historyHtml ? `<section class="section"><h2>History</h2>${historyHtml}</section>` : ""}
       ${reportForm.summary.trim() ? `<section class="section"><h2>Summary</h2><p>${escapeHtml(reportForm.summary.trim())}</p></section>` : ""}
-      <section class="section"><h2>Description</h2>${descriptionHtml}</section>
-      ${impressionHtml ? `<section class="section"><h2>Impression</h2>${impressionHtml}</section>` : ""}
+      <section class="section"><h2>Report</h2>${descriptionHtml}</section>
     </div>
   </body>
 </html>`;
@@ -5706,16 +5784,14 @@ export default function App() {
       setReportForm((current) => ({
         ...current,
         title: parsed.title || current.title,
-        medicalHistory: parsed.medicalHistory
-          ? plainTextToRichHtml(parsed.medicalHistory)
-          : current.medicalHistory,
+        medicalHistory: "",
         summary: parsed.summary || current.summary,
-        findings: parsed.findings
-          ? plainTextToRichHtml(parsed.findings)
-          : current.findings,
-        impression: parsed.impression
-          ? plainTextToRichHtml(parsed.impression)
-          : current.impression,
+        findings: buildNarrativeReportDocumentHtml({
+          medicalHistory: parsed.medicalHistory,
+          findings: parsed.findings || rawText,
+          impression: parsed.impression,
+        }),
+        impression: "",
       }));
       setUltrasoundReportAssist((current) => ({
         ...current,
@@ -6731,7 +6807,7 @@ export default function App() {
     const confirmed = window.confirm(
       nextActive
         ? `Reactivate ${service.name} and make it available for ordering again?`
-        : `Archive ${service.name}? It will stop appearing in Reception Intake and Orders & Requests.`,
+        : `Archive ${service.name}? It will stop appearing in Reception Intake and active workflow selections.`,
     );
     if (!confirmed) {
       return;
@@ -6811,7 +6887,6 @@ export default function App() {
           <thead>
             <tr>
               <th>Service</th>
-              <th>Code</th>
               <th>Type</th>
               <th>Price</th>
               <th>TAT</th>
@@ -6820,60 +6895,61 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((service) => (
-              <tr key={service.id ?? service.code}>
-                <td>
-                  <strong>{service.name}</strong>
-                  <div className="admin-table-subcopy">
-                    {service.kind === "IMAGING"
-                      ? service.modality ?? "Imaging"
-                      : service.specimenType ?? "Lab test"}
-                  </div>
-                </td>
-                <td>{service.code}</td>
-                <td>{service.kind === "IMAGING" ? "Imaging" : "Lab test"}</td>
-                <td>{formatMoney(service.priceCents)}</td>
-                <td>{service.tatMinutes} min</td>
-                <td>
-                  <span
-                    className={`tag ${service.isActive === false ? "tag-critical" : "tag-good"}`}
-                  >
-                    {service.isActive === false ? "Archived" : "Active"}
-                  </span>
-                </td>
-                <td>
-                  <div className="inline-actions admin-table-actions">
-                    <button
-                      type="button"
-                      className="ghost-action small"
-                      onClick={() =>
-                        service.id
-                          ? startEditServiceEditor(service.id)
-                          : setStatusText("This service cannot be edited yet.")
-                      }
+            {rows.map((service) => {
+              const descriptor =
+                service.kind === "IMAGING"
+                  ? service.modality || "Imaging"
+                  : service.specimenType || "General";
+
+              return (
+                <tr key={service.id ?? service.code}>
+                  <td>
+                    <strong>{service.name}</strong>
+                    <div className="table-subtext">
+                      {service.code} · {descriptor}
+                    </div>
+                  </td>
+                  <td>{service.kind === "IMAGING" ? "Scan" : "Lab"}</td>
+                  <td>{formatMoney(service.priceCents)}</td>
+                  <td>{service.tatMinutes} min</td>
+                  <td>
+                    <span
+                      className={`status-pill${service.isActive === false ? " muted" : " success"}`}
                     >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-action small"
-                      onClick={() => handleToggleServiceActive(service)}
-                      disabled={!canManageServices}
-                    >
-                      {service.isActive === false ? "Reactivate" : "Archive"}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-action small"
-                      onClick={() => void handleDeleteService(service)}
-                      disabled={!canManageServices}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      {service.isActive === false ? "Archived" : "Active"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="table-actions compact">
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() => startEditServiceEditor(service.id ?? service.code)}
+                        disabled={!canManageServices}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action small"
+                        onClick={() => handleToggleServiceActive(service)}
+                        disabled={!canManageServices || !service.id}
+                      >
+                        {service.isActive === false ? "Restore" : "Archive"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-action small danger"
+                        onClick={() => handleDeleteService(service)}
+                        disabled={!canManageServices || !service.id}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -6944,6 +7020,7 @@ export default function App() {
       ...inventoryForm,
       quantity: Number(inventoryForm.quantity),
     };
+
     try {
       await requestJson("/inventory/transactions", {
         method: "POST",
@@ -6992,27 +7069,6 @@ export default function App() {
     setStatusText("Notification template prepared");
   }
 
-  async function handleReportStatusTransition(
-    report: ReportRecord,
-    status: ReportStatusUpdateInput["status"],
-  ) {
-    try {
-      await requestJson(`/reports/${report.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          status,
-          signedBy: actorName,
-        } satisfies ReportStatusUpdateInput),
-      });
-      await loadOperationalData();
-      setStatusText(
-        `${report.title} moved to ${formatStatusLabel(status)}`,
-      );
-    } catch {
-      setStatusText("Report status change failed. Retry when the server is available.");
-    }
-  }
-
   async function handleClaimStatusUpdate(
     invoice: InvoiceRecord,
     claimStatus: InvoiceRecord["claimStatus"],
@@ -7027,7 +7083,9 @@ export default function App() {
         `${invoice.traceCode} claim moved to ${formatStatusLabel(claimStatus)}`,
       );
     } catch {
-      setStatusText("Claim status update failed. Retry when the server is available.");
+      setStatusText(
+        "Claim status update failed. Retry when the server is available.",
+      );
     }
   }
 
@@ -7035,7 +7093,10 @@ export default function App() {
     event.preventDefault();
     const payload = {
       ...paymentForm,
-      amountCents: Number(paymentForm.amountCents),
+      amountCents:
+        paymentForm.method === "EMPLOYEE_DISCOUNT"
+          ? 0
+          : Number(paymentForm.amountCents),
     };
     try {
       const response = await requestJson<{
@@ -7052,11 +7113,15 @@ export default function App() {
       setLatestInvoiceId(response.updatedInvoice.id);
       await loadOperationalData();
       setStatusText(
-        payload.responsibility === "PAYER"
+        payload.method === "EMPLOYEE_DISCOUNT"
+          ? "Employee discount applied"
+          : payload.responsibility === "PAYER"
           ? "Payer remittance captured"
           : "Payment captured",
       );
-      await handlePreviewReceipt(response.payment.id);
+      if (payload.method !== "EMPLOYEE_DISCOUNT") {
+        await handlePreviewReceipt(response.payment.id);
+      }
     } catch {
       setStatusText(
         "Payment could not be captured. Retry when the server is available.",
@@ -7073,6 +7138,8 @@ export default function App() {
       invoiceId: invoice.id,
       amountCents,
       responsibility: "PATIENT",
+      method:
+        current.method === "EMPLOYEE_DISCOUNT" ? "CASH" : current.method,
       traceCode: invoice.traceCode,
     }));
     setLatestInvoiceId(invoice.id);
@@ -7106,8 +7173,9 @@ export default function App() {
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
+
     try {
-      await requestJson("/notifications", {
+      await requestJson<{ id: string }>("/notifications", {
         method: "POST",
         body: JSON.stringify(notificationForm),
       });
@@ -8573,6 +8641,10 @@ export default function App() {
                     setIntakePayment((current) => ({
                       ...current,
                       collectNow: event.target.checked,
+                      amountCents:
+                        !event.target.checked || current.method === "EMPLOYEE_DISCOUNT"
+                          ? "0"
+                          : current.amountCents,
                     }))
                   }
                   disabled={
@@ -8589,13 +8661,23 @@ export default function App() {
                     setIntakePayment((current) => ({
                       ...current,
                       method: event.target.value as PaymentInput["method"],
+                      amountCents:
+                        event.target.value === "EMPLOYEE_DISCOUNT"
+                          ? "0"
+                          : current.amountCents,
+                      reference:
+                        event.target.value === "EMPLOYEE_DISCOUNT"
+                          ? "Employee discount"
+                          : current.reference === "Employee discount"
+                            ? ""
+                            : current.reference,
                     }))
                   }
                   disabled={!canManageFinance || !intakePayment.collectNow}
                 >
                   {paymentMethods.map((method) => (
                     <option key={`intake-${method}`} value={method}>
-                      {method}
+                      {formatPaymentMethodLabel(method)}
                     </option>
                   ))}
                 </select>
@@ -8611,7 +8693,11 @@ export default function App() {
                       amountCents: event.target.value,
                     }))
                   }
-                  disabled={!canManageFinance || !intakePayment.collectNow}
+                  disabled={
+                    !canManageFinance ||
+                    !intakePayment.collectNow ||
+                    intakePayment.method === "EMPLOYEE_DISCOUNT"
+                  }
                 />
               </label>
               <label className="full-width">
@@ -8642,6 +8728,11 @@ export default function App() {
               {registrationItemIds.length > 0 && intakeOrder.payerType !== "SELF_PAY" ? (
                 <p className="muted-copy">
                   {formatStatusLabel(intakeOrder.payerType)} covering {intakeOrder.payerCoveragePercent}% via {intakeOrder.payerName || "selected payer"}.
+                </p>
+              ) : null}
+              {intakePayment.collectNow && intakePayment.method === "EMPLOYEE_DISCOUNT" ? (
+                <p className="muted-copy">
+                  Employee discount will clear the patient balance with zero amount paid.
                 </p>
               ) : null}
             </div>
@@ -9794,11 +9885,11 @@ export default function App() {
                 <span className="eyebrow">Reusable templates</span>
                 <strong>
                   {isLabReportWorkspace
-                    ? "Save a lab report template and load it any time"
-                    : "Save a scan report template and load it any time"}
+                    ? "Save a lab report document template and load it any time"
+                    : "Save a scan report document template and load it any time"}
                 </strong>
                 <p>
-                  Load a saved template, import one from your device, or save the current report for reuse.
+                  Load a saved template, import a Word or PDF template from your device, or save the current report document for reuse.
                 </p>
               </div>
               <input
@@ -10249,38 +10340,22 @@ export default function App() {
             ) : null}
             {!isEchoWorksheetTemplate ? (
               <>
-                <Suspense fallback={<RichTextEditorFallback label="History" />}>
+                <Suspense fallback={<RichTextEditorFallback label="Report Document" />}>
                   <RichTextEditor
-                    label="History"
-                    value={ensureRichTextHtml(reportForm.medicalHistory)}
+                    label="Report Document"
+                    value={ensureRichTextHtml(narrativeReportDocumentHtml)}
                     onChange={(value) =>
                       setReportForm((current) => ({
                         ...current,
-                        medicalHistory: value,
-                      }))
-                    }
-                    placeholder={
-                      isLabReportWorkspace
-                        ? "Type the clinical notes, specimen context, or relevant patient history"
-                        : "Type the clinical history for this scan report"
-                    }
-                    disabled={!canWriteReports}
-                  />
-                </Suspense>
-                <Suspense fallback={<RichTextEditorFallback label="Description" />}>
-                  <RichTextEditor
-                    label="Description"
-                    value={ensureRichTextHtml(reportForm.findings)}
-                    onChange={(value) =>
-                      setReportForm((current) => ({
-                        ...current,
+                        medicalHistory: "",
                         findings: value,
+                        impression: "",
                       }))
                     }
                     placeholder={
                       isLabReportWorkspace
-                        ? "Type or paste the typed laboratory findings, result values, and interpretive notes here"
-                        : "Type or paste the report description here, then format it as needed"
+                        ? "Type or paste the full laboratory report here, including history, findings, results, and impression in one document"
+                        : "Type or paste the full scan report here, including history, description, and impression in one document"
                     }
                     disabled={!canWriteReports}
                     documentMode
@@ -10325,24 +10400,6 @@ export default function App() {
                     ))}
                   </div>
                 ) : null}
-                <Suspense fallback={<RichTextEditorFallback label="Impression" />}>
-                  <RichTextEditor
-                    label="Impression"
-                    value={ensureRichTextHtml(reportForm.impression)}
-                    onChange={(value) =>
-                      setReportForm((current) => ({
-                        ...current,
-                        impression: value,
-                      }))
-                    }
-                    placeholder={
-                      isLabReportWorkspace
-                        ? "Summarize the laboratory conclusion or interpretation"
-                        : "Summarize the report impression"
-                    }
-                    disabled={!canWriteReports}
-                  />
-                </Suspense>
                 {isUltrasoundTemplate(reportForm.templateKind) ? (
                   <label className="full-width">
                     <span>Recommendation</span>
@@ -11064,7 +11121,9 @@ export default function App() {
                   amountCents: Number(event.target.value),
                 }))
               }
-              disabled={!canManageFinance}
+              disabled={
+                !canManageFinance || paymentForm.method === "EMPLOYEE_DISCOUNT"
+              }
             />
           </label>
           <label>
@@ -11075,13 +11134,27 @@ export default function App() {
                 setPaymentForm((current) => ({
                   ...current,
                   method: event.target.value as PaymentInput["method"],
+                  responsibility:
+                    event.target.value === "EMPLOYEE_DISCOUNT"
+                      ? "PATIENT"
+                      : current.responsibility,
+                  amountCents:
+                    event.target.value === "EMPLOYEE_DISCOUNT"
+                      ? 0
+                      : current.amountCents,
+                  reference:
+                    event.target.value === "EMPLOYEE_DISCOUNT"
+                      ? "Employee discount"
+                      : current.reference === "Employee discount"
+                        ? ""
+                        : current.reference,
                 }))
               }
               disabled={!canManageFinance}
             >
               {paymentMethods.map((method) => (
                 <option key={method} value={method}>
-                  {method}
+                  {formatPaymentMethodLabel(method)}
                 </option>
               ))}
             </select>
@@ -11098,6 +11171,8 @@ export default function App() {
                   method:
                     event.target.value === "PAYER"
                       ? "BANK_TRANSFER"
+                      : current.method === "EMPLOYEE_DISCOUNT"
+                        ? "CASH"
                       : current.method === "BANK_TRANSFER"
                         ? "CASH"
                         : current.method,
@@ -12532,7 +12607,6 @@ export default function App() {
     dashboard: dashboardSection,
     patients: patientSection,
     patientRecords: patientRecordsSection,
-    orders: ordersSection,
     tracking: trackingSection,
     sonography: sonographySection,
     labReports: scanReportsSection,
@@ -12596,8 +12670,7 @@ export default function App() {
                 </div>
                 <div className="login-support-card">
                   <div className="login-support-note">
-                    <img src={omniWeaveMarkSrc} alt="OmniWeave mark" className="login-support-logo" />
-                    <small>Administrator access can add the remaining staff accounts after setup.</small>
+                    <small>Powered by OmniWeave Softwares. Administrator access can add the remaining staff accounts after setup.</small>
                   </div>
                 </div>
               </aside>
@@ -12734,9 +12807,8 @@ export default function App() {
               </div>
               <div className="login-support-card">
                 <div className="login-support-note">
-                  <img src={omniWeaveMarkSrc} alt="OmniWeave mark" className="login-support-logo" />
                   <small>
-                    Desktop installs open the hosted MediLab workspace, so the live
+                    Powered by OmniWeave Softwares. Desktop installs open the hosted MediLab workspace, so the live
                     deployment stays in sync across web and desktop.
                   </small>
                 </div>
@@ -13020,16 +13092,9 @@ export default function App() {
           <div className="sidebar-footer">
             <p>Connection: {syncTone.label}</p>
             <div className="developer-lockup sidebar-developer-lockup">
-              <div className="developer-badge">Built by</div>
-              <div className="developer-logo-frame compact mark-lockup">
-                <img
-                  src={omniWeaveMarkSrc}
-                  alt="OmniWeave Softwares logo"
-                  className="developer-logo compact"
-                />
-              </div>
+              <div className="developer-badge">Powered by</div>
               <div className="developer-copy compact">
-                <strong>OmniWeave</strong>
+                <strong>OmniWeave Softwares</strong>
                 <span>Technology partner for MediLab Nexus</span>
                 <small>Weaving Digital Solutions for Africa</small>
               </div>

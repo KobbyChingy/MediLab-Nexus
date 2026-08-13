@@ -44,6 +44,7 @@ export const paymentMethods = [
   "CARD",
   "NHIS",
   "BANK_TRANSFER",
+  "EMPLOYEE_DISCOUNT",
 ] as const;
 export const notificationChannels = [
   "SMS",
@@ -179,7 +180,7 @@ export const reportInputSchema = z.object({
   medicalHistory: z.string().optional().default(""),
   summary: z.string().min(3),
   findings: z.string().min(3),
-  impression: z.string().min(3),
+  impression: z.string().optional().default(""),
   signedBy: z.string().min(3),
   status: z.enum(reportStatuses).default("DRAFT"),
   templateKind: z.enum(reportTemplateKinds).default("LAB_STANDARD"),
@@ -221,7 +222,7 @@ export const inventoryTransactionInputSchema = z.object({
 
 export const paymentInputSchema = z.object({
   invoiceId: z.string().min(1),
-  amountCents: z.number().int().positive(),
+  amountCents: z.number().int().nonnegative(),
   method: z.enum(paymentMethods),
   responsibility: z.enum(paymentResponsibilities).default("PATIENT"),
   reference: z.string().optional(),
@@ -379,7 +380,7 @@ export const reportTemplateInputSchema = z.object({
   medicalHistory: z.string().optional().default(""),
   summary: z.string().min(3),
   findings: z.string().min(3),
-  impression: z.string().min(3),
+  impression: z.string().optional().default(""),
   assist: reportTemplateAssistInputSchema.default({}),
 });
 

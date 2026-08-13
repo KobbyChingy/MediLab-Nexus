@@ -87,6 +87,7 @@ enum PaymentMethod {
   TRANSFER
   MOBILE_MONEY
   INSURANCE
+  EMPLOYEE_DISCOUNT
 }
 
 enum PaymentResponsibility {

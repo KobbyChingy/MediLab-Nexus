@@ -216,8 +216,12 @@ export async function purgeExpiredSessions(prisma: PrismaClient) {
   });
 }
 
-export async function listLocalUsers(prisma: PrismaClient) {
+export async function listLocalUsers(
+  prisma: PrismaClient,
+  facilityId: string,
+) {
   const users = await prisma.appUser.findMany({
+    where: { facilityId },
     orderBy: [{ role: "asc" }, { username: "asc" }],
   });
   return users.map((user) => ({

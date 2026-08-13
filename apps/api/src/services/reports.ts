@@ -127,6 +127,22 @@ function renderRichText(value: string) {
   });
 }
 
+function htmlToText(value: string) {
+  return value
+    .replace(/<br\s*\/?>/giu, "\n")
+    .replace(/<\/p>|<\/div>|<\/li>|<\/h[1-6]>/giu, "\n")
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/&nbsp;/gu, " ")
+    .replace(/&amp;/gu, "&")
+    .replace(/&lt;/gu, "<")
+    .replace(/&gt;/gu, ">")
+    .replace(/&quot;/gu, '"')
+    .replace(/&#39;/gu, "'")
+    .replace(/\n{3,}/gu, "\n\n")
+    .replace(/[ \t]+/gu, " ")
+    .trim();
+}
+
 function renderEchoWorksheetMarkup(value: string) {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -449,6 +465,20 @@ function composePrintableReportHtml(bundle: {
   const description = report.findings.trim();
   const impression = report.impression.trim();
   const reportedBy = report.signedBy?.trim() || "Pending sign-off";
+  const standardReportNarrativeHtml =
+    history !== "Not provided." || impression
+      ? [
+          history !== "Not provided."
+            ? `<div class="body-copy"><strong>History</strong></div><div class="body-copy">${renderRichText(history)}</div>`
+            : "",
+          description
+            ? `<div class="body-copy" style="margin-top:${history !== "Not provided." ? "12px" : "0"}"><strong>Report</strong></div><div class="body-copy">${renderRichText(description)}</div>`
+            : "",
+          impression
+            ? `<div class="body-copy" style="margin-top:${history !== "Not provided." || description ? "12px" : "0"}"><strong>Impression</strong></div><div class="body-copy">${renderRichText(impression)}</div>`
+            : "",
+        ].join("")
+      : `<div class="body-copy">${renderRichText(description)}</div>`;
 
   if (isEchoWorksheetReport(report)) {
     const html = `<!doctype html>
@@ -661,9 +691,7 @@ function composePrintableReportHtml(bundle: {
           <div class="meta-line"><div class="label">Accession:</div><div class="value">${escapeHtml(report.order.accessionNumber)}</div></div>
         </div>
       </section>
-      <section class="section"><h3>History</h3><div class="body-copy">${renderRichText(history)}</div></section>
-      <section class="section"><h3>Description</h3><div class="body-copy">${renderRichText(description)}</div></section>
-      ${impression ? `<section class="section"><h3>Impression</h3><div class="body-copy">${renderRichText(impression)}</div></section>` : ""}
+      <section class="section"><h3>Report</h3>${standardReportNarrativeHtml}</section>
       ${imagePaths.length ? `<section class="section"><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></section>` : ""}
       <section class="signoff">
         <div class="signoff-block">
@@ -809,11 +837,23 @@ export async function ensureReportPdf(prisma: PrismaClient, reportId: string) {
   );
   const reportDate = formatReportDate(bundle.report.createdAt);
   const reportedBy = bundle.report.signedBy?.trim() || "Pending sign-off";
-  const sections = [
-    ["History", bundle.report.medicalHistory?.trim() || "Not provided."],
-    ["Description", bundle.report.findings.trim()],
-    ["Impression", bundle.report.impression.trim()],
-  ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+  const narrativeLines = [
+    bundle.report.medicalHistory?.trim() &&
+    bundle.report.medicalHistory.trim() !== "Not provided."
+      ? `History\n${bundle.report.medicalHistory.trim()}`
+      : "",
+    bundle.report.findings.trim()
+      ? narrativeIsHtml(bundle.report.findings)
+        ? htmlToText(bundle.report.findings)
+        : bundle.report.findings.trim()
+      : "",
+    bundle.report.impression.trim()
+      ? `Impression\n${bundle.report.impression.trim()}`
+      : "",
+  ].filter(Boolean);
+  const sections = [["Report", narrativeLines.join("\n\n")]].filter(
+    ([, value]) => Boolean(value),
+  ) as Array<[string, string]>;
 
   await new Promise<void>((resolve, reject) => {
     doc.pipe(stream);

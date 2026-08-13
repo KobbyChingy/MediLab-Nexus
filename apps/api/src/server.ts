@@ -4725,6 +4725,13 @@ app.post("/api/billing/payments", async (request, reply) => {
     payload.responsibility === "PAYER"
       ? settlement.payerBalanceCents
       : settlement.patientBalanceCents;
+  const isEmployeeDiscount = payload.method === "EMPLOYEE_DISCOUNT";
+
+  if (isEmployeeDiscount && payload.responsibility !== "PATIENT") {
+    return reply.code(400).send({
+      message: "Employee discount can only be applied to the patient balance.",
+    });
+  }
   if (targetBalanceCents <= 0) {
     return reply.code(400).send({
       message:
@@ -4738,8 +4745,23 @@ app.post("/api/billing/payments", async (request, reply) => {
       message: `Payment exceeds the remaining ${payload.responsibility.toLowerCase()} balance.`,
     });
   }
+  if (!isEmployeeDiscount && payload.amountCents <= 0) {
+    return reply.code(400).send({
+      message: "Payment amount must be greater than zero.",
+    });
+  }
+  if (isEmployeeDiscount && payload.amountCents !== 0) {
+    return reply.code(400).send({
+      message: "Employee discount uses zero paid amount and clears the patient balance as a discount.",
+    });
+  }
 
   const response = await prisma.$transaction(async (tx) => {
+    const discountAppliedCents = isEmployeeDiscount ? targetBalanceCents : 0;
+    const nextPatientResponsibilityCents =
+      payload.responsibility === "PATIENT"
+        ? Math.max(0, invoice.patientResponsibilityCents - discountAppliedCents)
+        : invoice.patientResponsibilityCents;
     const payment = await tx.paymentRecord.create({
       data: {
         invoiceId: invoice.id,
@@ -4758,13 +4780,17 @@ app.post("/api/billing/payments", async (request, reply) => {
     ];
     const nextSettlement = summarizeInvoiceSettlement({
       status: invoice.status,
-      patientResponsibilityCents: invoice.patientResponsibilityCents,
+      patientResponsibilityCents: nextPatientResponsibilityCents,
       payerResponsibilityCents: invoice.payerResponsibilityCents,
+      discountCents: invoice.discountCents + discountAppliedCents,
       payments: nextPayments,
     });
     const updatedInvoice = await tx.invoice.update({
       where: { id: invoice.id },
       data: {
+        patientResponsibilityCents: nextPatientResponsibilityCents,
+        discountCents: invoice.discountCents + discountAppliedCents,
+        amountDueCents: nextSettlement.totalDueCents,
         amountPaidCents: nextSettlement.totalPaidCents,
         status: nextSettlement.status,
         claimStatus: resolveClaimSettlementStatus(
@@ -4779,7 +4805,9 @@ app.post("/api/billing/payments", async (request, reply) => {
       entityType: "Invoice",
       entityId: updatedInvoice.id,
       traceCode: invoice.patient.traceCode,
-      summary: `${payload.responsibility} ${payload.method} payment recorded for ${invoice.patient.traceCode}`,
+      summary: isEmployeeDiscount
+        ? `Employee discount cleared ${targetBalanceCents} for ${invoice.patient.traceCode} with zero paid amount`
+        : `${payload.responsibility} ${payload.method} payment recorded for ${invoice.patient.traceCode}`,
       payload,
     });
     return { payment, updatedInvoice };
@@ -5087,7 +5115,7 @@ app.get(
       return deny(reply, "user:manage");
     }
 
-    const users = await listLocalUsers(prisma);
+    const users = await listLocalUsers(prisma, request.actor.facilityId);
     return users.map((user) => ({
       ...user,
       lockedUntil: user.lockedUntil?.toISOString() ?? null,
@@ -5107,16 +5135,9 @@ app.post("/api/admin/users", async (request, reply) => {
   }
 
   const payload = adminUserInputSchema.parse(request.body);
-  const facility = await prisma.facility.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
-  if (!facility) {
-    return reply.code(500).send({ message: "Facility not initialized." });
-  }
-
   const user = await createLocalUser(prisma, {
     ...payload,
-    facilityId: facility.id,
+    facilityId: request.actor.facilityId,
   });
   await recordAudit(prisma, request.actor, {
     action: "USER_CREATED",

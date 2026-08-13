@@ -94,6 +94,7 @@ enum PaymentMethod {
   CARD
   NHIS
   BANK_TRANSFER
+  EMPLOYEE_DISCOUNT
 }
 
 enum PaymentResponsibility {
