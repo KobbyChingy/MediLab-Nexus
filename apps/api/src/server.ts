@@ -5508,10 +5508,34 @@ if (serveBundledWeb) {
 
 const port = Number(process.env.PORT ?? 4000);
 
+async function ensurePatientReferralAmountColumn() {
+  const existingColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'Patient'
+      AND column_name = 'referralAmountCents'
+  `;
+
+  if (existingColumns.length > 0) {
+    return;
+  }
+
+  app.log.warn(
+    "Patient.referralAmountCents column missing; applying compatibility schema patch.",
+  );
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Patient"
+    ADD COLUMN IF NOT EXISTS "referralAmountCents" INTEGER
+  `);
+}
+
 const bootstrap = async () => {
   const facilityCode = process.env.MEDILAB_FACILITY_CODE ?? "MLN-ACC";
   const facilityName =
     process.env.MEDILAB_FACILITY_NAME ?? "MediLab Nexus Diagnostic Centre";
+  await ensurePatientReferralAmountColumn();
   await purgeExpiredSessions(prisma);
   await prisma.facility.upsert({
     where: { code: facilityCode },
