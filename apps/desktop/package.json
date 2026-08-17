@@ -7,14 +7,16 @@
   "description": "Standalone desktop application for MediLab Nexus diagnostic workflows.",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsup src/main.ts --format esm --platform node --external electron",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
+    "predist": "npm run build",
     "dist": "electron-builder"
   },
   "build": {
     "appId": "com.omniweave.medilabnexus",
     "productName": "MediLab Nexus",
-    "asar": true,
+    "asar": false,
+    "compression": "store",
     "directories": {
       "output": "../../dist-desktop/installer"
     },
@@ -33,6 +35,7 @@
     },
     "win": {
       "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
       "target": [
         "nsis"
       ]
