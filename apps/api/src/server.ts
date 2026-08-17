@@ -5508,16 +5508,123 @@ if (serveBundledWeb) {
 
 const port = Number(process.env.PORT ?? 4000);
 
-async function ensurePatientReferralAmountColumn() {
+async function getPublicTableColumns(tableName: string) {
   const existingColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
     SELECT column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = 'Patient'
-      AND column_name = 'referralAmountCents'
+      AND table_name = ${tableName}
   `;
 
-  if (existingColumns.length > 0) {
+  return new Set(existingColumns.map((column) => column.column_name));
+}
+
+async function ensureLoginSchemaCompatibility(facilityId: string) {
+  const appUserColumns = await getPublicTableColumns("AppUser");
+
+  if (!appUserColumns.has("displayName")) {
+    app.log.warn(
+      "AppUser.displayName column missing; applying compatibility schema patch.",
+    );
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "displayName" TEXT
+    `);
+    if (appUserColumns.has("fullName")) {
+      await prisma.$executeRawUnsafe(`
+        UPDATE "AppUser"
+        SET "displayName" = COALESCE(NULLIF("fullName", ''), "username")
+        WHERE "displayName" IS NULL OR "displayName" = ''
+      `);
+    }
+  }
+
+  if (!appUserColumns.has("isActive")) {
+    app.log.warn(
+      "AppUser.isActive column missing; applying compatibility schema patch.",
+    );
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true
+    `);
+    if (appUserColumns.has("active")) {
+      await prisma.$executeRawUnsafe(`
+        UPDATE "AppUser"
+        SET "isActive" = COALESCE("active", true)
+      `);
+    }
+  }
+
+  if (!appUserColumns.has("pinSalt")) {
+    app.log.warn(
+      "AppUser.pinSalt column missing; applying compatibility schema patch. Legacy users may require a PIN reset before they can sign in.",
+    );
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "pinSalt" TEXT NOT NULL DEFAULT ''
+    `);
+  }
+
+  if (!appUserColumns.has("pinChangedAt")) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "pinChangedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    `);
+  }
+
+  if (!appUserColumns.has("failedLoginCount")) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "failedLoginCount" INTEGER NOT NULL DEFAULT 0
+    `);
+  }
+
+  if (!appUserColumns.has("lockedUntil")) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "lockedUntil" TIMESTAMP(3)
+    `);
+  }
+
+  if (!appUserColumns.has("lastLoginAt")) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppUser"
+      ADD COLUMN IF NOT EXISTS "lastLoginAt" TIMESTAMP(3)
+    `);
+  }
+
+  if (appUserColumns.has("facilityId")) {
+    await prisma.$executeRaw`
+      UPDATE "AppUser"
+      SET "facilityId" = ${facilityId}
+      WHERE "facilityId" IS NULL
+    `;
+  }
+
+  const appSessionColumns = await getPublicTableColumns("AppSession");
+
+  if (!appSessionColumns.has("lastSeenAt")) {
+    app.log.warn(
+      "AppSession.lastSeenAt column missing; applying compatibility schema patch.",
+    );
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppSession"
+      ADD COLUMN IF NOT EXISTS "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    `);
+  }
+
+  if (!appSessionColumns.has("createdAt")) {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "AppSession"
+      ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    `);
+  }
+}
+
+async function ensurePatientReferralAmountColumn() {
+  const existingColumns = await getPublicTableColumns("Patient");
+
+  if (existingColumns.has("referralAmountCents")) {
     return;
   }
 
@@ -5536,8 +5643,7 @@ const bootstrap = async () => {
   const facilityName =
     process.env.MEDILAB_FACILITY_NAME ?? "MediLab Nexus Diagnostic Centre";
   await ensurePatientReferralAmountColumn();
-  await purgeExpiredSessions(prisma);
-  await prisma.facility.upsert({
+  const facility = await prisma.facility.upsert({
     where: { code: facilityCode },
     update: {},
     create: {
@@ -5550,6 +5656,8 @@ const bootstrap = async () => {
         "Thank you for choosing MediLab Nexus. Present your Trace Code whenever you contact the lab.",
     },
   });
+  await ensureLoginSchemaCompatibility(facility.id);
+  await purgeExpiredSessions(prisma);
 };
 
 bootstrap()
