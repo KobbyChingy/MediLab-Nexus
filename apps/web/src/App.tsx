@@ -10015,12 +10015,74 @@ export default function App() {
             ) : null}
             <label className="full-width">
               <span>Search patient or trace code</span>
-              <input
-                value={reportPatientQuery}
-                onChange={(event) => setReportPatientQuery(event.target.value)}
-                placeholder="Search by patient name or trace code"
-                disabled={!canWriteReports}
-              />
+              <div className="report-patient-search">
+                <input
+                  value={reportPatientQuery}
+                  onChange={(event) => {
+                    setReportPatientQuery(event.target.value);
+                    if (!event.target.value.trim()) {
+                      setReportForm((current) => ({
+                        ...current,
+                        patientId: "",
+                        orderId: "",
+                      }));
+                    }
+                  }}
+                  placeholder="Search by patient name or trace code"
+                  disabled={!canWriteReports}
+                  aria-controls="report-patient-results"
+                  aria-expanded={Boolean(reportPatientQuery.trim())}
+                />
+                {reportPatientQuery.trim() ? (
+                  <div
+                    id="report-patient-results"
+                    className="report-patient-results"
+                    role="listbox"
+                  >
+                    {filteredReportPatients.length > 0 ? (
+                      filteredReportPatients.map((patient) => (
+                        <button
+                          key={`report-patient-${patient.id}`}
+                          type="button"
+                          className="report-patient-result"
+                          onClick={() => {
+                            setSelectedPatientId(patient.id);
+                            setReportForm((current) => ({
+                              ...current,
+                              patientId: patient.id,
+                              orderId: "",
+                            }));
+                            setReportPatientQuery(
+                              `${patient.traceCode} · ${[
+                                patient.firstName,
+                                patient.middleName ?? "",
+                                patient.lastName,
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}`,
+                            );
+                          }}
+                        >
+                          <strong>
+                            {[
+                              patient.firstName,
+                              patient.middleName ?? "",
+                              patient.lastName,
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                          </strong>
+                          <span>{patient.traceCode}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="report-patient-empty">
+                        No reportable patient matches found.
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </label>
             <label>
               <span>Patient</span>

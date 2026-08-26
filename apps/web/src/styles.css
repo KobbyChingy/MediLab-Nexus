@@ -594,6 +594,56 @@ label span {
   font-size: 0.82rem;
 }
 
+.report-patient-search {
+  position: relative;
+}
+
+.report-patient-results {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  display: grid;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+
+.report-patient-result,
+.report-patient-empty {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+}
+
+.report-patient-result {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.report-patient-result:last-child {
+  border-bottom: 0;
+}
+
+.report-patient-result:hover,
+.report-patient-result:focus-visible {
+  background: var(--surface-muted);
+}
+
+.report-patient-result span,
+.report-patient-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .nav-toggle,
 .icon-button,
 .ghost-action,
