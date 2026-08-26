@@ -3391,12 +3391,17 @@ app.get("/api/patients", async (request, reply) => {
       ? {
           facilityId: request.actor.facilityId,
           OR: [
-            { traceCode: { contains: query } },
-            { firstName: { contains: query } },
-            { lastName: { contains: query } },
-            { phone: { contains: query } },
-            { nhisId: { contains: query } },
-            { referralDoctor: { is: { fullName: { contains: query } } } },
+            { traceCode: { contains: query, mode: "insensitive" } },
+            { firstName: { contains: query, mode: "insensitive" } },
+            { middleName: { contains: query, mode: "insensitive" } },
+            { lastName: { contains: query, mode: "insensitive" } },
+            { phone: { contains: query, mode: "insensitive" } },
+            { nhisId: { contains: query, mode: "insensitive" } },
+            {
+              referralDoctor: {
+                is: { fullName: { contains: query, mode: "insensitive" } },
+              },
+            },
           ],
         }
       : { facilityId: request.actor.facilityId },

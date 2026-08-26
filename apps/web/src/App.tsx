@@ -1465,6 +1465,35 @@ function normalizeImportedTemplateText(value: string) {
     .trim();
 }
 
+function normalizePatientSearchValue(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/gu, " ");
+}
+
+function patientMatchesSearch(patient: PatientRecord, query: string) {
+  const normalizedQuery = normalizePatientSearchValue(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const name = [patient.firstName, patient.middleName ?? "", patient.lastName]
+    .filter(Boolean)
+    .join(" ");
+  const searchableText = [
+    name,
+    patient.traceCode,
+    patient.phone,
+    patient.nhisId ?? "",
+    patient.referralDoctorName ?? "",
+  ]
+    .map(normalizePatientSearchValue)
+    .join(" ");
+
+  return normalizedQuery
+    .split(" ")
+    .filter(Boolean)
+    .every((token) => searchableText.includes(token));
+}
+
 function extractPdfPageText(
   items: Array<{ str?: string; transform?: number[]; hasEOL?: boolean }>,
 ) {
@@ -3857,7 +3886,7 @@ export default function App() {
     [selectedPatient, workflow.reports],
   );
   const filteredPatientRecords = useMemo(() => {
-    const query = patientRecordsQuery.trim().toLowerCase();
+    const query = patientRecordsQuery.trim();
     const rankedPatients = [...patients].sort(
       (left, right) =>
         new Date(right.createdAt).getTime() -
@@ -3870,14 +3899,10 @@ export default function App() {
 
     return rankedPatients.filter((patient) => {
       const tests = patientTestsById.get(patient.id) ?? [];
-      return [
-        patient.traceCode,
-        patient.firstName,
-        patient.lastName,
-        patient.phone,
-        patient.referralDoctorName ?? "",
-        ...tests,
-      ].some((value) => value.toLowerCase().includes(query));
+      return (
+        patientMatchesSearch(patient, query) ||
+        tests.some((value) => normalizePatientSearchValue(value).includes(normalizePatientSearchValue(query)))
+      );
     });
   }, [patientRecordsQuery, patientTestsById, patients]);
   const refundPatientMatches = useMemo(() => {
@@ -4107,21 +4132,13 @@ export default function App() {
     }));
   }, [selectedImagingStudy, selectedPatient?.phone]);
   const searchMatches = useMemo(() => {
-    const query = globalQuery.trim().toLowerCase();
+    const query = globalQuery.trim();
     if (!query) {
       return patients.slice(0, 6);
     }
 
     return patients
-      .filter((patient) =>
-        [
-          patient.traceCode,
-          patient.firstName,
-          patient.lastName,
-          patient.phone,
-          patient.referralDoctorName ?? "",
-        ].some((value) => value.toLowerCase().includes(query)),
-      )
+      .filter((patient) => patientMatchesSearch(patient, query))
       .slice(0, 8);
   }, [globalQuery, patients]);
   const showPatientIntakeTools =
@@ -4301,16 +4318,9 @@ export default function App() {
     }
 
     return sortedPatients.filter((patient) => {
-      const fullName = `${patient.firstName} ${patient.lastName}`
-        .trim()
-        .toLowerCase();
-
       return (
         reportPatientIds.has(patient.id) &&
-        (
-          patient.traceCode.toLowerCase().includes(normalizedQuery) ||
-          fullName.includes(normalizedQuery)
-        )
+        patientMatchesSearch(patient, normalizedQuery)
       );
     });
   }, [activeReportableOrders, patients, reportPatientQuery]);
@@ -4359,13 +4369,6 @@ export default function App() {
       isUltrasoundTemplate(reportForm.templateKind)
         ? ultrasoundTemplatePresets[reportForm.templateKind]
         : null,
-    [reportForm.templateKind],
-  );
-  const selectedUltrasoundPresetFields = useMemo(
-    () =>
-      isUltrasoundTemplate(reportForm.templateKind)
-        ? (ultrasoundPresetFieldMap[reportForm.templateKind] ?? [])
-        : [],
     [reportForm.templateKind],
   );
   const isEchoWorksheetTemplate = false;
@@ -5563,6 +5566,7 @@ export default function App() {
       setReportImagePathsText("");
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
       setEchoWorksheet(buildDefaultEchoWorksheetState());
+      setActiveNav("scanReports");
       await loadOperationalData();
       setStatusText(
         `${editingReportId ? "Updated" : "Saved"} report ${saved.title} as ${formatStatusLabel(saved.status)}`,
@@ -5954,6 +5958,7 @@ export default function App() {
         recommendation: parsed.recommendation || current.recommendation,
       }));
       setReportTemplateName(stripFileExtension(file.name));
+      setActiveNav("scanReports");
       setStatusText(`Loaded template from ${file.name}`);
     } catch (error) {
       const message =
@@ -10594,64 +10599,6 @@ export default function App() {
                     documentMode
                   />
                 </Suspense>
-                {isUltrasoundTemplate(reportForm.templateKind) ? (
-                  <label className="full-width">
-                    <span>Measurements notes</span>
-                    <textarea
-                      rows={3}
-                      value={ultrasoundReportAssist.measurementsText}
-                      onChange={(event) =>
-                        updateUltrasoundAssistField(
-                          "measurementsText",
-                          event.target.value,
-                        )
-                      }
-                      placeholder={
-                        selectedUltrasoundTemplatePreset?.measurementsPlaceholder
-                      }
-                      disabled={!canWriteReports}
-                    />
-                  </label>
-                ) : null}
-                {selectedUltrasoundPresetFields.length > 0 ? (
-                  <div className="full-width report-assist-grid">
-                    {selectedUltrasoundPresetFields.map((field) => (
-                      <label key={field.key}>
-                        <span>{field.label}</span>
-                        <input
-                          value={ultrasoundReportAssist[field.key]}
-                          onChange={(event) =>
-                            updateUltrasoundAssistField(
-                              field.key,
-                              event.target.value,
-                            )
-                          }
-                          placeholder={field.placeholder}
-                          disabled={!canWriteReports}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
-                {isUltrasoundTemplate(reportForm.templateKind) ? (
-                  <label className="full-width">
-                    <span>Recommendation</span>
-                    <textarea
-                      rows={2}
-                      value={ultrasoundReportAssist.recommendation}
-                      onChange={(event) =>
-                        updateUltrasoundAssistField(
-                          "recommendation",
-                          event.target.value,
-                        )
-                      }
-                      placeholder={
-                        selectedUltrasoundTemplatePreset?.recommendationPlaceholder
-                      }
-                      disabled={!canWriteReports}
-                    />
-                  </label>
-                ) : null}
               </>
             ) : null}
             <label>
@@ -13228,6 +13175,32 @@ export default function App() {
               placeholder="Search by Trace Code, name, or phone"
             />
             <kbd>Ctrl K</kbd>
+            {globalQuery.trim() ? (
+              <div className="global-search-results" role="listbox">
+                {searchMatches.length > 0 ? (
+                  searchMatches.map((patient) => (
+                    <button
+                      key={patient.id}
+                      type="button"
+                      className="global-search-result"
+                      onClick={() => {
+                        openPatient(patient, "patientRecords");
+                        setGlobalQuery("");
+                      }}
+                    >
+                      <strong>
+                        {patient.firstName} {patient.middleName ?? ""} {patient.lastName}
+                      </strong>
+                      <span>
+                        {patient.traceCode} · {patient.phone || "No phone recorded"}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="global-search-empty">No patient matches found.</div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="topbar-right">

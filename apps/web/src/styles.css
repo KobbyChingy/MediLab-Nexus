@@ -520,6 +520,7 @@ label span {
 }
 
 .search-shell {
+  position: relative;
   min-width: min(100%, 16rem);
   max-width: 100%;
   flex: 1 1 18rem;
@@ -545,6 +546,52 @@ label span {
   font-size: 0.75rem;
   color: var(--muted);
   flex: 0 0 auto;
+}
+
+.global-search-results {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  right: 0;
+  display: grid;
+  max-height: min(22rem, 60vh);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+
+.global-search-result,
+.global-search-empty {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+}
+
+.global-search-result {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.global-search-result:last-child {
+  border-bottom: 0;
+}
+
+.global-search-result:hover,
+.global-search-result:focus-visible {
+  background: var(--surface-muted);
+}
+
+.global-search-result span,
+.global-search-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .nav-toggle,
@@ -735,7 +782,10 @@ body.sidebar-drawer-open {
   top: 5.8rem;
   padding: 1rem 0.9rem;
   background: var(--surface-strong);
-  overflow: hidden;
+  max-height: calc(100vh - 6.8rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 :root[data-theme="dark"] .sidebar {
