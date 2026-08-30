@@ -1,163 +1,631 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "db-seed-refresh",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "db:seed"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "db-purge-patients",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "db:purge:patients"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "web-build-validate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "build", "-w", "@medilab/web"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-db-push",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "db:push"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-dns-check",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-Command",
-        "Resolve-DnsName db.bmqagutwvkygrurulfdd.supabase.co | Out-String"
-      ],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-bootstrap-sql",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "db:bootstrap:supabase"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-pooler-check",
-      "type": "shell",
-      "command": "node",
-      "args": [
-        "-e",
-        "const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.$queryRawUnsafe('select 1').then((rows) => { console.log(JSON.stringify(rows)); return prisma.$disconnect(); }).catch(async (error) => { console.error(error); await prisma.$disconnect(); process.exit(1); });"
-      ],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-pooler-prisma-check",
-      "type": "shell",
-      "command": "npx",
-      "args": [
-        "prisma",
-        "db",
-        "pull",
-        "--print",
-        "--schema",
-        "packages/db/prisma/schema.postgres.prisma"
-      ],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "local-port-check",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-Command",
-        "Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
-      ],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-db-generate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "db:generate"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "supabase-db-package-build",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "build", "-w", "@medilab/db"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "setup-status-check",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-Command",
-        "Invoke-WebRequest -UseBasicParsing http://localhost:4000/api/setup/status | Select-Object -ExpandProperty Content"
-      ],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "shared-package-build",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "build", "-w", "@medilab/shared"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "api-build-validate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "build", "-w", "@medilab/api"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "desktop-build-validate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "build", "-w", "@medilab/desktop"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "desktop-full-build-validate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "desktop:build"],
-      "isBackground": false,
-      "group": "build"
-    },
-    {
-      "label": "desktop-dist-validate",
-      "type": "shell",
-      "command": "npm",
-      "args": ["run", "desktop:dist"],
-      "isBackground": false,
-      "group": "build"
-    }
-  ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "db-seed-refresh",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:seed"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "db-purge-patients",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:purge:patients"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "web-build-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/web"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-db-push",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:push"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-dns-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Resolve-DnsName db.bmqagutwvkygrurulfdd.supabase.co | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-bootstrap-sql",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:bootstrap:supabase"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-pooler-check",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.$queryRawUnsafe('select 1').then((rows) => { console.log(JSON.stringify(rows)); return prisma.$disconnect(); }).catch(async (error) => { console.error(error); await prisma.$disconnect(); process.exit(1); });"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-pooler-prisma-check",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"prisma",
+				"db",
+				"pull",
+				"--print",
+				"--schema",
+				"packages/db/prisma/schema.postgres.prisma"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "local-port-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort,OwningProcess | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-db-generate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"db:generate"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "supabase-db-package-build",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/db"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "setup-status-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Invoke-WebRequest -UseBasicParsing http://localhost:4000/api/setup/status | Select-Object -ExpandProperty Content"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "shared-package-build",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/shared"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "api-build-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/api"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "desktop-build-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build",
+				"-w",
+				"@medilab/desktop"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "desktop-full-build-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"desktop:build"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "desktop-dist-validate",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"desktop:dist"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-live-users",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"-e",
+				"const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.appUser.findMany({ select: { id: true, facilityId: true, username: true, displayName: true, role: true, active: true, createdAt: true }, orderBy: { createdAt: 'asc' } }).then((rows) => { console.log(JSON.stringify({ count: rows.length, rows }, null, 2)); }).catch((error) => { console.error(error); process.exit(1); }).finally(async () => { await prisma.$disconnect(); });"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-live-users-file",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"scripts/inspect-live-users.cjs"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-live-users-file-2",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"scripts/inspect-live-users.cjs"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-status-short",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-remote-v",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"remote",
+				"-v"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-log-short",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"--oneline",
+				"--decorate",
+				"-n",
+				"5"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-add-desktop-reflect-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"apps/api/src/server.ts",
+				"apps/api/src/services/auth.ts",
+				"apps/api/src/services/reports.ts",
+				"apps/web/src/App.tsx",
+				"packages/db/prisma/schema.postgres.prisma",
+				"packages/db/prisma/sqlite/schema.prisma",
+				"packages/shared/src/index.ts"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-status-staged-check",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-commit-desktop-reflect-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"feat: align desktop-hosted workflows and report editing"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-push-main-desktop-reflect-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-add-service-tat-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"apps/web/src/App.tsx"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-commit-service-tat-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"fix: improve service turnaround entry"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-push-service-tat-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-show-import-sample-block",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"show",
+				"HEAD:apps/web/src/App.tsx"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-show-handle-sample-block",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$content = git show HEAD:apps/web/src/App.tsx; $match = Select-String -InputObject $content -Pattern 'async function handleSampleSubmit|async function handleImportReportTemplateFile|function handleStartReportForStudy' -Context 0,60; $match | ForEach-Object { $_.Line; $_.Context.PostContext; '---' } | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-show-handlers-context",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"$tmp = Join-Path $env:TEMP 'medilab-head-app.tsx'; git show HEAD:apps/web/src/App.tsx | Set-Content -Path $tmp; Select-String -Path $tmp -Pattern 'async function handleImportReportTemplateFile|async function handleSampleSubmit|Choose a sonography study before opening the scan report draft' -Context 0,40 | ForEach-Object { $_.Line; $_.Context.PostContext; '---' } | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-show-handlers-lines",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"git show HEAD:apps/web/src/App.tsx > %TEMP%\\medilab-head-app.tsx && findstr /n /c:\"async function handleImportReportTemplateFile\" /c:\"async function handleSampleSubmit\" /c:\"Choose a sonography study before opening the scan report draft\" %TEMP%\\medilab-head-app.tsx"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-add-template-import-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"apps/web/src/App.tsx"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-commit-template-import-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"fix: improve template import and bulk turnaround parsing"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-push-template-import-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-add-pdf-template-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"apps/web/src/App.tsx"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-commit-pdf-template-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"fix: preserve PDF template structure on import"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git-push-pdf-template-fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"main"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "desktop-dist-refresh-latest",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"desktop:dist"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-desktop-lock-processes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process | Where-Object { $_.ProcessName -like 'MediLab Nexus*' -or $_.ProcessName -like 'electron*' -or $_.ProcessName -like 'Setup*' } | Select-Object ProcessName, Id, Path | Format-Table -AutoSize | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-desktop-locked-file",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-ChildItem 'dist-desktop\\installer\\win-unpacked\\locales\\sv.pak' | Select-Object FullName, Length, LastWriteTime | Format-List | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "tasklist-electron-locks",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"tasklist | findstr /I \"MediLab electron setup\""
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "kill-electron-locks",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"for %p in (\"MediLab Nexus.exe\" electron.exe setup.exe) do @taskkill /F /IM %~p"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-desktop-locks-safe",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process | Where-Object { $_.ProcessName -like '*MediLab*' -or $_.ProcessName -like 'electron*' -or $_.ProcessName -like 'setup*' } | Select-Object ProcessName, Id | Format-Table -AutoSize | Out-String"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "kill-desktop-locks-safe",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process | Where-Object { $_.ProcessName -like '*MediLab*' -or $_.ProcessName -like 'electron*' -or $_.ProcessName -like 'setup*' } | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "taskkill-medilab-exe",
+			"type": "shell",
+			"command": "taskkill",
+			"args": [
+				"/F",
+				"/IM",
+				"MediLab Nexus.exe"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "taskkill-electron-exe",
+			"type": "shell",
+			"command": "taskkill",
+			"args": [
+				"/F",
+				"/IM",
+				"electron.exe"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "taskkill-setup-exe",
+			"type": "shell",
+			"command": "taskkill",
+			"args": [
+				"/F",
+				"/IM",
+				"setup.exe"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "desktop-dist-refresh-retry",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"desktop:dist"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-user-dufie11",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"scripts/inspect-app-user-pin.cjs",
+				"dufie11",
+				"duffie1234"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "inspect-user-dufie11-altpin",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"scripts/inspect-app-user-pin.cjs",
+				"dufie11",
+				"dufie1234"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
 }

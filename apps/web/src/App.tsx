@@ -2327,11 +2327,6 @@ function getRoleMetricCards(
   if (role === "FINANCE") {
     return [
       {
-        label: "Revenue today",
-        value: formatMoney(adminOverview.finance.revenueTodayCents),
-        note: "Captured today",
-      },
-      {
         label: "Outstanding",
         value: formatMoney(adminOverview.finance.outstandingCents),
         note: "Collections follow-up",
@@ -2345,6 +2340,14 @@ function getRoleMetricCards(
         label: "Queued notices",
         value: adminOverview.notifications.queued,
         note: "Billing reminders",
+      },
+      {
+        label: "Pending claims",
+        value: adminOverview.finance.paymentMix.reduce(
+          (sum, item) => sum + item.count,
+          0,
+        ),
+        note: "Billing activity in motion",
       },
     ];
   }
@@ -2366,9 +2369,9 @@ function getRoleMetricCards(
       note: "Lab and scan reports nearing release",
     },
     {
-      label: "Revenue",
-      value: formatMoney(adminOverview.finance.revenueTodayCents),
-      note: "Captured today",
+      label: "Open referrals",
+      value: adminOverview.finance.referralLeaders.length,
+      note: "Clinician follow-up",
     },
   ];
 }
@@ -5646,8 +5649,7 @@ export default function App() {
       );
       if (writePreviewWindow(preview, printable.html)) {
         if (autoPrint) {
-          preview.focus();
-          preview.print();
+          triggerPreviewPrint(preview, 180);
           setStatusText(`Opened printable draft ${payload.title}`);
         } else {
           setStatusText(`Opened preview for ${payload.title}`);
@@ -7730,44 +7732,46 @@ export default function App() {
           ))}
         </section>
 
-        <section className="dashboard-feature-grid">
-          <article className="surface-card dashboard-revenue-card">
-            <span>Today&apos;s revenue</span>
-            <strong>
-              {formatMoney(adminOverview.finance.revenueTodayCents)}
-            </strong>
-            <p>
-              Outstanding balances:{" "}
-              {formatMoney(adminOverview.finance.outstandingCents)}
-            </p>
-          </article>
-          <article className="surface-card dashboard-performance-card">
-            <div className="section-head compact-head">
-              <div>
-                <h3>Performance snapshot</h3>
-                <p>Collections and workflow movement in the current workspace.</p>
+        {(currentRole === "ADMIN" || currentRole === "MANAGER") && (
+          <section className="dashboard-feature-grid">
+            <article className="surface-card dashboard-revenue-card">
+              <span>Today&apos;s revenue</span>
+              <strong>
+                {formatMoney(adminOverview.finance.revenueTodayCents)}
+              </strong>
+              <p>
+                Outstanding balances:{" "}
+                {formatMoney(adminOverview.finance.outstandingCents)}
+              </p>
+            </article>
+            <article className="surface-card dashboard-performance-card">
+              <div className="section-head compact-head">
+                <div>
+                  <h3>Performance snapshot</h3>
+                  <p>Collections and workflow movement in the current workspace.</p>
+                </div>
               </div>
-            </div>
-            <div className="dashboard-performance-metrics">
-              <div className="dashboard-performance-metric">
-                <span>Collections</span>
-                <strong>{formatMoney(dashboardCollectedCents)}</strong>
+              <div className="dashboard-performance-metrics">
+                <div className="dashboard-performance-metric">
+                  <span>Collections</span>
+                  <strong>{formatMoney(dashboardCollectedCents)}</strong>
+                </div>
+                <div className="dashboard-performance-metric">
+                  <span>Transactions</span>
+                  <strong>{workflow.payments.length}</strong>
+                </div>
+                <div className="dashboard-performance-metric">
+                  <span>Avg. payment</span>
+                  <strong>{formatMoney(dashboardAveragePaymentCents)}</strong>
+                </div>
+                <div className="dashboard-performance-metric">
+                  <span>Pending items</span>
+                  <strong>{dashboardPendingItems}</strong>
+                </div>
               </div>
-              <div className="dashboard-performance-metric">
-                <span>Transactions</span>
-                <strong>{workflow.payments.length}</strong>
-              </div>
-              <div className="dashboard-performance-metric">
-                <span>Avg. payment</span>
-                <strong>{formatMoney(dashboardAveragePaymentCents)}</strong>
-              </div>
-              <div className="dashboard-performance-metric">
-                <span>Pending items</span>
-                <strong>{dashboardPendingItems}</strong>
-              </div>
-            </div>
-          </article>
-        </section>
+            </article>
+          </section>
+        )}
 
         <section className="dashboard-workstream-grid">
           <article className="surface-card dashboard-workstream-card">
@@ -10956,126 +10960,127 @@ export default function App() {
   );
 
   const billingSection = (
-    <section className="content-grid two-wide">
-      <article className="surface-card">
-        <div className="section-head">
-          <div>
-            <h2>Finance overview</h2>
-            <p>Payments, outstanding balances, and payer mix.</p>
-          </div>
-        </div>
-        <div className="metric-cluster">
-          <div className="metric-mini">
-            <span>Revenue today</span>
-            <strong>
-              {formatMoney(adminOverview.finance.revenueTodayCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Outstanding</span>
-            <strong>
-              {formatMoney(adminOverview.finance.outstandingCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Invoices open</span>
-            <strong>{adminOverview.finance.invoicesOpen}</strong>
-          </div>
-          <div className="metric-mini">
-            <span>Referral earned</span>
-            <strong>
-              {formatMoney(adminOverview.finance.referralAmountEarnedCents)}
-            </strong>
-          </div>
-          <div className="metric-mini">
-            <span>Referral outstanding</span>
-            <strong>
-              {formatMoney(
-                adminOverview.finance.referralAmountOutstandingCents,
-              )}
-            </strong>
-          </div>
-        </div>
-        <div className="list-stack">
-          {adminOverview.finance.paymentMix.map((item) => (
-            <div key={item.method} className="list-row">
-              <div>
-                <strong>{item.method}</strong>
-                <span>{item.count} payment(s)</span>
-              </div>
-              <small>{formatMoney(item.totalCents)}</small>
-            </div>
-          ))}
-        </div>
-        <div className="bordered-top">
+    (currentRole === "ADMIN" || currentRole === "MANAGER") && (
+      <section className="content-grid two-wide">
+        <article className="surface-card">
           <div className="section-head">
             <div>
-              <h3>Top referrers</h3>
-              <p>Referral exposure by referring doctor.</p>
+              <h2>Finance overview</h2>
+              <p>Payments, outstanding balances, and payer mix.</p>
             </div>
           </div>
-          <div className="list-stack compact-scroll">
-            {adminOverview.finance.referralLeaders.length === 0 ? (
-              <div className="list-row">
-                <span>No referral data yet.</span>
-                <small>Awaiting linked invoices</small>
-              </div>
-            ) : null}
-            {adminOverview.finance.referralLeaders.map((leader) => (
-              <div key={leader.doctorName} className="list-row">
+          <div className="metric-cluster">
+            <div className="metric-mini">
+              <span>Revenue today</span>
+              <strong>
+                {formatMoney(adminOverview.finance.revenueTodayCents)}
+              </strong>
+            </div>
+            <div className="metric-mini">
+              <span>Outstanding</span>
+              <strong>
+                {formatMoney(adminOverview.finance.outstandingCents)}
+              </strong>
+            </div>
+            <div className="metric-mini">
+              <span>Invoices open</span>
+              <strong>{adminOverview.finance.invoicesOpen}</strong>
+            </div>
+            <div className="metric-mini">
+              <span>Referral earned</span>
+              <strong>
+                {formatMoney(adminOverview.finance.referralAmountEarnedCents)}
+              </strong>
+            </div>
+            <div className="metric-mini">
+              <span>Referral outstanding</span>
+              <strong>
+                {formatMoney(
+                  adminOverview.finance.referralAmountOutstandingCents,
+                )}
+              </strong>
+            </div>
+          </div>
+          <div className="list-stack">
+            {adminOverview.finance.paymentMix.map((item) => (
+              <div key={item.method} className="list-row">
                 <div>
-                  <strong>{leader.doctorName}</strong>
-                  <span>
-                    Default {formatMoney(leader.defaultReferralAmountCents)} ·{" "}
-                    {leader.invoicesCount} invoice(s)
-                  </span>
-                  <small>
-                    Paid base {formatMoney(leader.revenueCents)} · Outstanding
-                    referral {formatMoney(leader.referralOutstandingCents)}
-                  </small>
+                  <strong>{item.method}</strong>
+                  <span>{item.count} payment(s)</span>
                 </div>
-                <small>{formatMoney(leader.referralDueCents)}</small>
+                <small>{formatMoney(item.totalCents)}</small>
               </div>
             ))}
           </div>
-        </div>
-        <div className="bordered-top">
-          <div className="section-head">
-            <div>
-              <h3>Recent invoices</h3>
-              <p>Open branded invoice statements before or after payment.</p>
+          <div className="bordered-top">
+            <div className="section-head">
+              <div>
+                <h3>Top referrers</h3>
+                <p>Referral exposure by referring doctor.</p>
+              </div>
             </div>
-          </div>
-          <div className="list-stack compact-scroll">
-            {workflow.invoices.map((invoice) => {
-              const balanceTone =
-                invoice.balanceCents > 0 ? "tag-warn" : "tag-good";
-              return (
-                <div key={invoice.id} className="list-row user-admin-row">
+            <div className="list-stack compact-scroll">
+              {adminOverview.finance.referralLeaders.length === 0 ? (
+                <div className="list-row">
+                  <span>No referral data yet.</span>
+                  <small>Awaiting linked invoices</small>
+                </div>
+              ) : null}
+              {adminOverview.finance.referralLeaders.map((leader) => (
+                <div key={leader.doctorName} className="list-row">
                   <div>
-                    <strong>{invoice.traceCode}</strong>
+                    <strong>{leader.doctorName}</strong>
                     <span>
-                      {invoice.accessionNumber} · {invoice.status}
+                      Default {formatMoney(leader.defaultReferralAmountCents)} ·{" "}
+                      {leader.invoicesCount} invoice(s)
                     </span>
-                    {invoice.referralDoctorName ? (
-                      <small>
-                        {invoice.referralDoctorName} ·{" "}
-                        Referral {formatMoney(invoice.referralAmountCents ?? 0)} ·
-                        Due {formatMoney(invoice.referralDueCents)}
-                      </small>
-                    ) : null}
                     <small>
-                      {formatStatusLabel(invoice.payerType)}
-                      {invoice.payerName ? ` · ${invoice.payerName}` : ""}
-                      {invoice.payerType !== "SELF_PAY"
-                        ? ` · Claim ${formatStatusLabel(invoice.claimStatus)}`
-                        : ""}
-                    </small>
-                    <small>
-                      Patient {formatMoney(invoice.patientPaidCents)} of {formatMoney(invoice.patientResponsibilityCents)} · Payer {formatMoney(invoice.payerPaidCents)} of {formatMoney(invoice.payerResponsibilityCents)}
+                      Paid base {formatMoney(leader.revenueCents)} · Outstanding
+                      referral {formatMoney(leader.referralOutstandingCents)}
                     </small>
                   </div>
-                  <div className="inline-actions">
+                  <small>{formatMoney(leader.referralDueCents)}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bordered-top">
+            <div className="section-head">
+              <div>
+                <h3>Recent invoices</h3>
+                <p>Open branded invoice statements before or after payment.</p>
+              </div>
+            </div>
+            <div className="list-stack compact-scroll">
+              {workflow.invoices.map((invoice) => {
+                const balanceTone =
+                  invoice.balanceCents > 0 ? "tag-warn" : "tag-good";
+                return (
+                  <div key={invoice.id} className="list-row user-admin-row">
+                    <div>
+                      <strong>{invoice.traceCode}</strong>
+                      <span>
+                        {invoice.accessionNumber} · {invoice.status}
+                      </span>
+                      {invoice.referralDoctorName ? (
+                        <small>
+                          {invoice.referralDoctorName} ·{" "}
+                          Referral {formatMoney(invoice.referralAmountCents ?? 0)} ·
+                          Due {formatMoney(invoice.referralDueCents)}
+                        </small>
+                      ) : null}
+                      <small>
+                        {formatStatusLabel(invoice.payerType)}
+                        {invoice.payerName ? ` · ${invoice.payerName}` : ""}
+                        {invoice.payerType !== "SELF_PAY"
+                          ? ` · Claim ${formatStatusLabel(invoice.claimStatus)}`
+                          : ""}
+                      </small>
+                      <small>
+                        Patient {formatMoney(invoice.patientPaidCents)} of {formatMoney(invoice.patientResponsibilityCents)} · Payer {formatMoney(invoice.payerPaidCents)} of {formatMoney(invoice.payerResponsibilityCents)}
+                      </small>
+                    </div>
+                    <div className="inline-actions">
                     <span className={`tag ${balanceTone}`}>
                       {formatMoney(invoice.balanceCents)}
                     </span>
@@ -11474,6 +11479,7 @@ export default function App() {
         ) : null}
       </article>
     </section>
+    )
   );
 
   const analyticsRangeSummaryLabel =
