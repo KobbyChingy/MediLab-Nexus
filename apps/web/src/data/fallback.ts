@@ -16,6 +16,7 @@ export const fallbackBootstrap: BootstrapPayload = {
     footerMessage:
       "Thank you for choosing MediLab Nexus. Present your Trace Code when requesting support.",
     printFontSize: "MEDIUM",
+    showFacilityProfileOnPrint: true,
   },
   catalog: catalogSeed,
   metrics: {

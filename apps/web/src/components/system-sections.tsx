@@ -1701,6 +1701,20 @@ export function SystemSettingsSection(props: {
               ))}
             </select>
           </label>
+          <label className="full-width checkbox-label">
+            <input
+              type="checkbox"
+              checked={facilityForm.showFacilityProfileOnPrint}
+              onChange={(event) =>
+                setFacilityForm((current) => ({
+                  ...current,
+                  showFacilityProfileOnPrint: event.target.checked,
+                }))
+              }
+              disabled={!canManageUsers}
+            />
+            <span>Show facility profile on A4 printouts</span>
+          </label>
           <label className="full-width">
             <span>Footer message</span>
             <textarea

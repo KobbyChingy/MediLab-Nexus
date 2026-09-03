@@ -270,6 +270,7 @@ function serializeFacility(
         logoDataUrl: string;
         footerMessage: string;
         printFontSize?: string;
+        showFacilityProfileOnPrint?: boolean;
       }
     | null
     | undefined,
@@ -292,6 +293,7 @@ function serializeFacility(
       facility?.footerMessage ??
       "Thank you for choosing MediLab Nexus. Present your Trace Code whenever you contact the lab.",
     printFontSize,
+    showFacilityProfileOnPrint: facility?.showFacilityProfileOnPrint ?? true,
   };
 }
 
@@ -2316,6 +2318,7 @@ app.post("/api/setup/initialize", async (request, reply) => {
           logoDataUrl: facilityDefaults.logoDataUrl,
           footerMessage: facilityDefaults.footerMessage,
           printFontSize: facilityDefaults.printFontSize,
+          showFacilityProfileOnPrint: facilityDefaults.showFacilityProfileOnPrint,
         },
       });
 
@@ -2876,6 +2879,9 @@ app.put("/api/admin/facility", async (request, reply) => {
           }
         : {}),
       printFontSize: payload.printFontSize,
+      ...(canManageFacilityProfile
+        ? { showFacilityProfileOnPrint: payload.showFacilityProfileOnPrint }
+        : {}),
     },
   });
 
@@ -2898,6 +2904,8 @@ app.put("/api/admin/facility", async (request, reply) => {
         : {}),
       printFontSize: payload.printFontSize,
       logoUpdated: canManageFacilityProfile && Boolean(payload.logoDataUrl),
+      showFacilityProfileOnPrint:
+        canManageFacilityProfile && payload.showFacilityProfileOnPrint,
     },
   });
 

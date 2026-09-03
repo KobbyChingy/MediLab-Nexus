@@ -2910,6 +2910,7 @@ export default function App() {
     logoDataUrl: fallbackBootstrap.facility.logoDataUrl,
     footerMessage: fallbackBootstrap.facility.footerMessage,
     printFontSize: fallbackBootstrap.facility.printFontSize,
+    showFacilityProfileOnPrint: fallbackBootstrap.facility.showFacilityProfileOnPrint,
   });
   const [latestReceipt, setLatestReceipt] = useState<{
     paymentId: string;
@@ -3644,6 +3645,7 @@ export default function App() {
       logoDataUrl: bootstrap.facility.logoDataUrl,
       footerMessage: bootstrap.facility.footerMessage,
       printFontSize: bootstrap.facility.printFontSize,
+      showFacilityProfileOnPrint: bootstrap.facility.showFacilityProfileOnPrint,
     });
   }, [bootstrap.facility]);
 
@@ -6146,6 +6148,15 @@ export default function App() {
     preview.document.close();
     preview.focus();
     return true;
+  }
+
+  function triggerPreviewPrint(preview: Window, delayMs = 0) {
+    window.setTimeout(() => {
+      if (!preview.closed) {
+        preview.focus();
+        preview.print();
+      }
+    }, delayMs);
   }
 
   function escapeHtml(value: string) {
@@ -12888,7 +12899,7 @@ export default function App() {
     />
   );
 
-  const sectionMap: Record<NavKey, React.JSX.Element> = {
+  const sectionMap: Record<NavKey, React.ReactNode> = {
     dashboard: dashboardSection,
     patients: patientSection,
     patientRecords: patientRecordsSection,

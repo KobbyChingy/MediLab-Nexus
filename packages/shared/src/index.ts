@@ -321,6 +321,7 @@ export const facilitySettingsInputSchema = z.object({
   logoDataUrl: z.string().optional().default(""),
   footerMessage: z.string().optional().default(""),
   printFontSize: z.enum(printFontSizes).default("MEDIUM"),
+  showFacilityProfileOnPrint: z.boolean().default(true),
 });
 
 export const attendanceHolidayInputSchema = z.object({
@@ -499,6 +500,7 @@ export type FacilityProfile = {
   logoDataUrl: string;
   footerMessage: string;
   printFontSize: (typeof printFontSizes)[number];
+  showFacilityProfileOnPrint: boolean;
 };
 
 export type ReportTemplatePayload = {

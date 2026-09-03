@@ -28,6 +28,7 @@ type FacilityProfile = {
   logoDataUrl: string;
   footerMessage: string;
   printFontSize: "SMALL" | "MEDIUM" | "LARGE";
+  showFacilityProfileOnPrint: boolean;
 };
 
 function sanitizeFilePart(value: string) {
@@ -171,6 +172,7 @@ function toFacilityProfile(
         logoDataUrl: string;
         footerMessage: string;
         printFontSize?: string;
+        showFacilityProfileOnPrint?: boolean;
       }
     | null
     | undefined,
@@ -193,6 +195,7 @@ function toFacilityProfile(
       facility?.footerMessage?.trim() ||
       "Generated locally by MediLab Nexus. Preserve the Patient Trace Code on all printed copies.",
     printFontSize,
+    showFacilityProfileOnPrint: facility?.showFacilityProfileOnPrint ?? true,
   };
 }
 
@@ -549,11 +552,9 @@ function composePrintableReportHtml(bundle: {
         ${facilityWatermarkSrc ? `<img class="echo-watermark" src="${facilityWatermarkSrc}" alt="" />` : ""}
         <header class="echo-header">
           <div class="letterhead">
-            <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+            ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
             <div class="letterhead-copy">
-              <h1 class="facility-name">${escapeHtml(facility.name)}</h1>
-              ${facility.location ? `<p class="facility-meta">${escapeHtml(facility.location)}</p>` : ""}
-              ${facility.phone || facility.email ? `<p class="facility-meta">${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}
+              ${facility.showFacilityProfileOnPrint ? `<h1 class="facility-name">${escapeHtml(facility.name)}</h1>${facility.location ? `<p class="facility-meta">${escapeHtml(facility.location)}</p>` : ""}${facility.phone || facility.email ? `<p class="facility-meta">${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}` : ""}
               <h2 class="report-title">${escapeHtml(report.title)}</h2>
             </div>
           </div>
@@ -672,12 +673,10 @@ function composePrintableReportHtml(bundle: {
         <div class="brand-row">
           <div class="brand-main">
             <div class="brand-mark">
-              <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+              ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
             </div>
             <div class="brand-copy">
-              <p class="facility-name">${escapeHtml(facility.name)}</p>
-              ${facility.location ? `<p>${escapeHtml(facility.location)}</p>` : ""}
-              ${facility.phone || facility.email ? `<p>${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}
+              ${facility.showFacilityProfileOnPrint ? `<p class="facility-name">${escapeHtml(facility.name)}</p>${facility.location ? `<p>${escapeHtml(facility.location)}</p>` : ""}${facility.phone || facility.email ? `<p>${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}` : ""}
               <h1>${escapeHtml(report.title)}</h1>
               <h2>${escapeHtml(orderedItems)}</h2>
               <div class="rule"></div>
@@ -865,9 +864,10 @@ export async function ensureReportPdf(prisma: PrismaClient, reportId: string) {
 
   await new Promise<void>((resolve, reject) => {
     doc.pipe(stream);
-    drawPdfBrand(doc, bundle.facility);
-    doc.fontSize(11).fillColor("#5d6d67").text(bundle.facility.code, 96, 36);
-    doc.fontSize(13).fillColor("#14231f").text(bundle.facility.name);
+    if (bundle.facility.showFacilityProfileOnPrint) {
+      drawPdfBrand(doc, bundle.facility);
+      doc.fontSize(11).fillColor("#5d6d67").text(bundle.facility.code, 96, 36);
+      doc.fontSize(13).fillColor("#14231f").text(bundle.facility.name);
     if (bundle.facility.location) {
       doc
         .moveDown(0.15)
@@ -885,6 +885,7 @@ export async function ensureReportPdf(prisma: PrismaClient, reportId: string) {
             .filter(Boolean)
             .join(" / "),
         );
+    }
     }
     doc.moveDown(0.45);
     doc
@@ -1071,13 +1072,13 @@ export async function renderPrintableReceiptHtml(
     <article class="sheet">
       <header class="hero">
         <div>
-          <p>${escapeHtml(facility.name)}</p>
+          ${facility.showFacilityProfileOnPrint ? `<p>${escapeHtml(facility.name)}</p>` : ""}
           <h1>Payment Receipt</h1>
-          <p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>
+          ${facility.showFacilityProfileOnPrint ? `<p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>` : ""}
         </div>
         <div class="hero-side">
           <button class="print-button" type="button" onclick="window.print()">Print receipt</button>
-          <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+          ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
         </div>
       </header>
       <section class="section">
@@ -1180,13 +1181,12 @@ export async function renderPrintableInvoiceHtml(
     <article class="sheet">
       <header class="hero">
         <div>
-          <p>${escapeHtml(facility.name)}</p>
+          ${facility.showFacilityProfileOnPrint ? `<p>${escapeHtml(facility.name)}</p><p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>` : ""}
           <h1>Invoice Statement</h1>
-          <p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>
         </div>
         <div class="hero-side">
           <button class="print-button" type="button" onclick="window.print()">Print invoice</button>
-          <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+          ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
         </div>
       </header>
       <section class="section">
@@ -1298,13 +1298,13 @@ export async function renderPrintableFinanceAnalyticsHtml(
     <article class="sheet">
       <header class="hero">
         <div>
-          <p>${escapeHtml(facility.name)}</p>
+          ${facility.showFacilityProfileOnPrint ? `<p>${escapeHtml(facility.name)}</p>` : ""}
           <h1>Financial Overview</h1>
           <p class="contact">${escapeHtml(rangeLabel)} · Generated ${escapeHtml(new Date(analytics.generatedAt).toLocaleString())}</p>
         </div>
         <div class="hero-side">
           <button class="print-button" type="button" onclick="window.print()">Print overview</button>
-          <img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />
+          ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
         </div>
       </header>
       <section class="section">
