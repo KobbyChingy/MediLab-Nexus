@@ -5500,6 +5500,108 @@ app.get("/api/admin/integrations/status", getIntegrationStatus);
 
 app.post("/api/admin/integrations/run", runIntegrationDispatch);
 
+// Real-time sync endpoints - reports ready for printing
+app.get("/api/workflow/reports-ready", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const sinceParam = (request.query as { since?: string }).since;
+  const sinceDate = sinceParam ? new Date(sinceParam) : new Date(Date.now() - 1000 * 60 * 5);
+
+  const reports = await prisma.report.findMany({
+    where: {
+      status: { in: ["RELEASED", "APPROVED"] },
+      createdAt: { gte: sinceDate },
+      order: {
+        patient: {
+          facilityId: request.actor.facilityId,
+        },
+      },
+    },
+    include: {
+      patient: true,
+      order: {
+        include: {
+          items: {
+            include: {
+              catalogItem: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  return reports.map(serializeSavedReport);
+});
+
+// Real-time sync endpoints - recent changes summary
+app.get("/api/workflow/recent-changes", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const minutesParam = (request.query as { minutes?: string }).minutes;
+  const sinceMinutes = Math.max(1, Math.min(30, Number(minutesParam) || 5));
+  const sinceTime = new Date(Date.now() - 1000 * 60 * sinceMinutes);
+
+  const [patientCount, orderCount, reportCount, sampleCount, paymentCount] =
+    await Promise.all([
+      prisma.patient.count({
+        where: {
+          facilityId: request.actor.facilityId,
+          updatedAt: { gte: sinceTime },
+        },
+      }),
+      prisma.diagnosticOrder.count({
+        where: {
+          patient: { facilityId: request.actor.facilityId },
+          updatedAt: { gte: sinceTime },
+        },
+      }),
+      prisma.report.count({
+        where: {
+          order: {
+            patient: { facilityId: request.actor.facilityId },
+          },
+          updatedAt: { gte: sinceTime },
+        },
+      }),
+      prisma.sample.count({
+        where: {
+          patient: { facilityId: request.actor.facilityId },
+          updatedAt: { gte: sinceTime },
+        },
+      }),
+      prisma.paymentRecord.count({
+        where: {
+          createdAt: { gte: sinceTime },
+        },
+      }),
+    ]);
+
+  return {
+    timeWindowMinutes: sinceMinutes,
+    changedCounts: {
+      patients: patientCount,
+      orders: orderCount,
+      reports: reportCount,
+      samples: sampleCount,
+      payments: paymentCount,
+    },
+    hasChanges:
+      patientCount > 0 ||
+      orderCount > 0 ||
+      reportCount > 0 ||
+      sampleCount > 0 ||
+      paymentCount > 0,
+    lastCheckedAt: new Date().toISOString(),
+  };
+});
+
 if (serveBundledWeb) {
   app.setNotFoundHandler(async (request, reply) => {
     const pathname = request.url.split("?")[0] ?? "/";

@@ -2963,10 +2963,14 @@ export default function App() {
   const [refundPatientQuery, setRefundPatientQuery] = useState("");
   const [refundPatientId, setRefundPatientId] = useState("");
   const [patientRecordsQuery, setPatientRecordsQuery] = useState("");
+  const [patientRecordsDate, setPatientRecordsDate] = useState(
+    buildCurrentDateInputValue,
+  );
+  const [patientRecordDetailOpen, setPatientRecordDetailOpen] = useState(false);
   const [expenseFilters, setExpenseFilters] = useState<ExpenseFiltersState>({
     category: "ALL",
-    startDate: "",
-    endDate: "",
+    startDate: buildCurrentDateInputValue(),
+    endDate: buildCurrentDateInputValue(),
   });
   const [isEditingPatientRecord, setIsEditingPatientRecord] = useState(false);
   const [patientRecordDraft, setPatientRecordDraft] =
@@ -3201,6 +3205,31 @@ export default function App() {
       return undefined as T;
     }
     return (await response.json()) as T;
+  }
+
+  function triggerWorkflowRefresh(kind: "patient" | "order" | "report" | "system" = "system") {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const payload = { kind, at: Date.now() };
+    window.dispatchEvent(new CustomEvent("medilab-workflow-refresh", { detail: payload }));
+
+    try {
+      if ("BroadcastChannel" in window) {
+        const channel = new BroadcastChannel("medilab-nexus-sync");
+        channel.postMessage(payload);
+        channel.close();
+      }
+    } catch {
+      // Ignore cross-tab messaging errors and fall back to local storage.
+    }
+
+    try {
+      window.localStorage.setItem("medilab-workflow-refresh", JSON.stringify(payload));
+    } catch {
+      // Ignore storage write failures in restricted environments.
+    }
   }
 
   function togglePasswordVisibility(key: keyof typeof passwordVisibility) {
@@ -3505,6 +3534,25 @@ export default function App() {
       setAttendanceWorkspace(buildEmptyAttendanceWorkspace(attendanceDate));
     }
   }
+
+  useEffect(() => {
+    const handleWorkflowRefresh = () => {
+      void loadOperationalData();
+    };
+    const handleStorageWorkflowRefresh = (event: StorageEvent) => {
+      if (event.key === "medilab-workflow-refresh") {
+        void loadOperationalData();
+      }
+    };
+
+    window.addEventListener("medilab-workflow-refresh", handleWorkflowRefresh);
+    window.addEventListener("storage", handleStorageWorkflowRefresh);
+
+    return () => {
+      window.removeEventListener("medilab-workflow-refresh", handleWorkflowRefresh);
+      window.removeEventListener("storage", handleStorageWorkflowRefresh);
+    };
+  }, [authSession?.user.id]);
 
   useEffect(() => {
     void loadOperationalData();
@@ -3897,19 +3945,27 @@ export default function App() {
         new Date(right.createdAt).getTime() -
         new Date(left.createdAt).getTime(),
     );
+    const selectedDate = patientRecordsDate || buildCurrentDateInputValue();
+    const dayStart = new Date(`${selectedDate}T00:00:00`);
+    const dayEnd = new Date(`${selectedDate}T23:59:59.999`);
+
+    const dateFilteredPatients = rankedPatients.filter((patient) => {
+      const createdAt = new Date(patient.createdAt);
+      return createdAt >= dayStart && createdAt <= dayEnd;
+    });
 
     if (!query) {
-      return rankedPatients;
+      return dateFilteredPatients;
     }
 
-    return rankedPatients.filter((patient) => {
+    return dateFilteredPatients.filter((patient) => {
       const tests = patientTestsById.get(patient.id) ?? [];
       return (
         patientMatchesSearch(patient, query) ||
         tests.some((value) => normalizePatientSearchValue(value).includes(normalizePatientSearchValue(query)))
       );
     });
-  }, [patientRecordsQuery, patientTestsById, patients]);
+  }, [patientRecordsDate, patientRecordsQuery, patientTestsById, patients]);
   const refundPatientMatches = useMemo(() => {
     const query = refundPatientQuery.trim().toLowerCase();
     const sortedPatients = [...patients].sort((left, right) =>
@@ -4860,6 +4916,21 @@ export default function App() {
       ) ?? null,
     [filteredStudyPerformance, selectedAnalyticsStudy],
   );
+  const selectedAnalyticsStudyInvoices = useMemo(() => {
+    if (!selectedAnalyticsStudy) {
+      return [];
+    }
+
+    const matchingOrderIds = new Set(
+      workflow.orders
+        .filter((order) => order.items.includes(selectedAnalyticsStudy))
+        .map((order) => order.id),
+    );
+
+    return workflow.invoices.filter((invoice) =>
+      matchingOrderIds.has(invoice.orderId),
+    );
+  }, [selectedAnalyticsStudy, workflow.invoices, workflow.orders]);
   const rankedStudyPerformance = useMemo(
     () =>
       [...filteredStudyPerformance].sort((left, right) => {
@@ -5270,6 +5341,7 @@ export default function App() {
 
   function openPatient(patient: PatientRecord, nextNav: NavKey = "patients") {
     setSelectedPatientId(patient.id);
+    setPatientRecordDetailOpen(nextNav === "patientRecords");
     setOrderForm((current) => ({ ...current, patientId: patient.id }));
     setNotificationForm((current) => ({
       ...current,
@@ -5399,6 +5471,7 @@ export default function App() {
         }
       }
 
+      triggerWorkflowRefresh("patient");
       await refreshRegistrationWorkspaceData();
       openPatient(created);
       setPatientForm(buildPatientDraft());
@@ -5491,6 +5564,7 @@ export default function App() {
       setPatientRecordDraft(buildPatientDraft(updated));
       setIsEditingPatientRecord(false);
       await loadOperationalData();
+      triggerWorkflowRefresh("patient");
       setStatusText(`Updated patient record ${updated.traceCode}`);
     } catch (error) {
       setStatusText(
@@ -5572,10 +5646,16 @@ export default function App() {
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
       setEchoWorksheet(buildDefaultEchoWorksheetState());
       setActiveNav("scanReports");
+      triggerWorkflowRefresh("report");
       await loadOperationalData();
       setStatusText(
         `${editingReportId ? "Updated" : "Saved"} report ${saved.title} as ${formatStatusLabel(saved.status)}`,
       );
+      if (saved.status === "APPROVED" || saved.status === "RELEASED") {
+        setStatusText(
+          `Report ${saved.title} was saved and is now ready for the reception print queue.`,
+        );
+      }
     } catch {
       setStatusText(
         `Report could not be ${editingReportId ? "updated" : "saved"}. Retry when the server is available.`,
@@ -6604,6 +6684,7 @@ export default function App() {
         setRefundPatientId("");
         setRefundPatientQuery("");
       }
+      triggerWorkflowRefresh("system");
       await loadOperationalData();
       await loadExpenseWorkspace();
       setStatusText(
@@ -6629,6 +6710,7 @@ export default function App() {
       await requestJson(`/finance/expenses/${expenseId}`, {
         method: "DELETE",
       });
+      triggerWorkflowRefresh("system");
       await loadOperationalData();
       await loadExpenseWorkspace();
       setStatusText(`Deleted expense ${description}`);
@@ -7578,8 +7660,15 @@ export default function App() {
         body: JSON.stringify(selfPinChange satisfies ChangeOwnPinInput),
       });
       setSelfPinChange({ currentPin: "", newPin: "" });
-      await loadOperationalData();
-      setStatusText("Your PIN was changed and previous sessions were revoked");
+      await fetch(`${apiBase}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+      setAuthSession(null);
+      setAuthReady(true);
+      setBellOpen(false);
+      setIncomingAlerts([]);
+      setStatusText("PIN changed. Sign in with your new PIN.");
     } catch (error) {
       setStatusText(
         error instanceof Error ? error.message : "PIN change failed",
@@ -8036,8 +8125,16 @@ export default function App() {
           </div>
         ) : null}
       </div>
-      <div className="form-grid">
-        <label className="full-width">
+      <div className="inline-form-grid two-up">
+        <label>
+          <span>Calendar day</span>
+          <input
+            type="date"
+            value={patientRecordsDate}
+            onChange={(event) => setPatientRecordsDate(event.target.value || buildCurrentDateInputValue())}
+          />
+        </label>
+        <label>
           <span>Search patient records</span>
           <input
             value={patientRecordsQuery}
@@ -8101,6 +8198,111 @@ export default function App() {
           );
         })}
       </div>
+      {selectedPatient && patientRecordDetailOpen ? (
+        <div
+          className="overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.48)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setPatientRecordDetailOpen(false)}
+        >
+          <div
+            className="surface-card"
+            style={{
+              width: "min(1100px, 92vw)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              padding: "1.25rem",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-head">
+              <div>
+                <h3>Selected patient record</h3>
+                <p>Review the patient’s tests, billing summary, and visit timeline.</p>
+              </div>
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={() => setPatientRecordDetailOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="summary-panel full-width">
+              <span>Patient details</span>
+              <strong>
+                {selectedPatient.firstName}{" "}
+                {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ""}
+                {selectedPatient.lastName}
+              </strong>
+              <p className="muted-copy">
+                {selectedPatient.traceCode} · {selectedPatient.gender || "Gender not recorded"}
+                {selectedPatient.dateOfBirth ? ` · DOB ${selectedPatient.dateOfBirth}` : ""}
+                {selectedPatient.location ? ` · ${selectedPatient.location}` : ""}
+                {selectedPatient.nhisId ? ` · NHIS ${selectedPatient.nhisId}` : ""}
+              </p>
+              <p className="muted-copy">
+                {selectedPatient.allergies || selectedPatient.medicalHistory
+                  ? [selectedPatient.allergies, selectedPatient.medicalHistory].filter(Boolean).join(" · ")
+                  : "No allergies or medical history recorded yet."}
+              </p>
+              <div className="inline-actions">
+                {canEditPatientRecords ? (
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => {
+                      setIsEditingPatientRecord((current) => !current);
+                    }}
+                  >
+                    {isEditingPatientRecord ? "Close editor" : "Edit record"}
+                  </button>
+                ) : null}
+                {canEditPatientRecords ? (
+                  <button
+                    type="button"
+                    className="ghost-action small"
+                    onClick={() => void handleDeletePatient()}
+                  >
+                    Delete patient
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-action small"
+                  onClick={handlePrintPatientRecord}
+                >
+                  Print record
+                </button>
+              </div>
+            </div>
+            {selectedPatientTimeline.length > 0 ? (
+              <div className="list-stack">
+                {selectedPatientTimeline.map((entry) => (
+                  <div key={entry.id} className="list-row">
+                    <div>
+                      <strong>{entry.label}</strong>
+                      <small>{formatDate(entry.occurredAt)}</small>
+                    </div>
+                    <span>{entry.detail}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="list-row">
+                <span>No visit history yet.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
       <div className="bordered-top patient-history-panel">
         <div className="section-head">
           <div>
@@ -11637,7 +11839,12 @@ export default function App() {
             </div>
           ) : null}
           {financeAnalytics.topServices.map((service) => (
-            <div key={service.description} className="list-row user-admin-row">
+            <button
+              key={service.description}
+              type="button"
+              className="list-row button-row user-admin-row"
+              onClick={() => setSelectedAnalyticsStudy(service.description)}
+            >
               <div>
                 <strong>{service.description}</strong>
                 <span>
@@ -11645,10 +11852,96 @@ export default function App() {
                 </span>
               </div>
               <small>{formatMoney(service.revenueCents)}</small>
-            </div>
+            </button>
           ))}
         </div>
       </article>
+
+      {selectedAnalyticsStudyEntry ? (
+        <div
+          className="overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.48)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setSelectedAnalyticsStudy("")}
+        >
+          <div
+            className="surface-card"
+            style={{
+              width: "min(900px, 92vw)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              padding: "1.25rem",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-head">
+              <div>
+                <h3>{selectedAnalyticsStudyEntry.description}</h3>
+                <p>
+                  {selectedAnalyticsStudyEntry.department} · {analyticsRangeSummaryLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={() => setSelectedAnalyticsStudy("")}
+              >
+                Close
+              </button>
+            </div>
+            <div className="metric-cluster">
+              <div className="metric-mini">
+                <span>Amount billed</span>
+                <strong>{formatMoney(selectedAnalyticsStudyEntry.billedCents)}</strong>
+              </div>
+              <div className="metric-mini">
+                <span>Amount paid</span>
+                <strong>{formatMoney(selectedAnalyticsStudyEntry.collectedCents)}</strong>
+              </div>
+              <div className="metric-mini">
+                <span>Outstanding</span>
+                <strong>{formatMoney(selectedAnalyticsStudyEntry.outstandingCents)}</strong>
+              </div>
+              <div className="metric-mini">
+                <span>Referral amount due</span>
+                <strong>{formatMoney(
+                  selectedAnalyticsStudyInvoices.reduce(
+                    (total, invoice) => total + invoice.referralDueCents,
+                    0,
+                  ),
+                )}</strong>
+              </div>
+            </div>
+            <div className="list-stack bordered-top">
+              {selectedAnalyticsStudyInvoices.length === 0 ? (
+                <div className="list-row">
+                  <span>No invoice detail is available for this filtered study.</span>
+                </div>
+              ) : (
+                selectedAnalyticsStudyInvoices.map((invoice) => (
+                  <div key={invoice.id} className="list-row user-admin-row">
+                    <div>
+                      <strong>{invoice.traceCode} · {invoice.accessionNumber}</strong>
+                      <span>Amount paid {formatMoney(invoice.amountPaidCents)}</span>
+                      <small>
+                        Referral {formatMoney(invoice.referralDueCents)} · {invoice.referralDoctorName || "No referral doctor or place recorded"}
+                      </small>
+                    </div>
+                    <small>{formatDate(invoice.createdAt)}</small>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <article className="surface-card">
         <div className="section-head">

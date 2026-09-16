@@ -1994,3 +1994,48 @@ export type SetupStatusPayload = {
   hasFacility: boolean;
   facility: FacilityProfile;
 };
+
+/**
+ * Real-time event types for WebSocket communication
+ */
+export type RealtimeEventType =
+  | "patient:created"
+  | "patient:updated"
+  | "patient:deleted"
+  | "report:saved"
+  | "report:updated"
+  | "order:created"
+  | "order:updated"
+  | "sample:updated"
+  | "imaging:updated"
+  | "invoice:created"
+  | "payment:recorded"
+  | "workflow:refresh"
+  | "connection:established";
+
+export type RealtimeEvent<T = unknown> = {
+  type: RealtimeEventType;
+  timestamp: number;
+  actor?: {
+    userId: string;
+    displayName?: string;
+  };
+  data: T;
+};
+
+/**
+ * Report saved event payload - sent to receptionist for printing
+ */
+export type ReportSavedRealtimePayload = {
+  reportId: string;
+  orderId: string;
+  patientId: string;
+  patientTraceCode: string;
+  patientName: string;
+  reportTitle: string;
+  reportStatus: (typeof reportStatuses)[number];
+  signedBy: string | null;
+  createdAt: string;
+  readyForPrint: boolean;
+  pdfPath: string | null;
+};
