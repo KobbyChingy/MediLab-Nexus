@@ -2963,9 +2963,10 @@ export default function App() {
   const [refundPatientQuery, setRefundPatientQuery] = useState("");
   const [refundPatientId, setRefundPatientId] = useState("");
   const [patientRecordsQuery, setPatientRecordsQuery] = useState("");
-  const [patientRecordsDate, setPatientRecordsDate] = useState(
-    buildCurrentDateInputValue,
-  );
+  const [patientRecordsDateRange, setPatientRecordsDateRange] = useState({
+    startDate: buildCurrentDateInputValue(),
+    endDate: buildCurrentDateInputValue(),
+  });
   const [patientRecordDetailOpen, setPatientRecordDetailOpen] = useState(false);
   const [expenseFilters, setExpenseFilters] = useState<ExpenseFiltersState>({
     category: "ALL",
@@ -3945,9 +3946,11 @@ export default function App() {
         new Date(right.createdAt).getTime() -
         new Date(left.createdAt).getTime(),
     );
-    const selectedDate = patientRecordsDate || buildCurrentDateInputValue();
-    const dayStart = new Date(`${selectedDate}T00:00:00`);
-    const dayEnd = new Date(`${selectedDate}T23:59:59.999`);
+    const startDate =
+      patientRecordsDateRange.startDate || buildCurrentDateInputValue();
+    const endDate = patientRecordsDateRange.endDate || startDate;
+    const dayStart = new Date(`${startDate}T00:00:00`);
+    const dayEnd = new Date(`${endDate}T23:59:59.999`);
 
     const dateFilteredPatients = rankedPatients.filter((patient) => {
       const createdAt = new Date(patient.createdAt);
@@ -3965,7 +3968,7 @@ export default function App() {
         tests.some((value) => normalizePatientSearchValue(value).includes(normalizePatientSearchValue(query)))
       );
     });
-  }, [patientRecordsDate, patientRecordsQuery, patientTestsById, patients]);
+  }, [patientRecordsDateRange, patientRecordsQuery, patientTestsById, patients]);
   const refundPatientMatches = useMemo(() => {
     const query = refundPatientQuery.trim().toLowerCase();
     const sortedPatients = [...patients].sort((left, right) =>
@@ -4951,21 +4954,6 @@ export default function App() {
         .slice(0, 8),
     [filteredStudyPerformance],
   );
-  useEffect(() => {
-    if (filteredStudyPerformance.length === 0) {
-      if (selectedAnalyticsStudy) {
-        setSelectedAnalyticsStudy("");
-      }
-      return;
-    }
-
-    const selectionExists = filteredStudyPerformance.some(
-      (study) => study.description === selectedAnalyticsStudy,
-    );
-    if (!selectionExists) {
-      setSelectedAnalyticsStudy(filteredStudyPerformance[0]?.description ?? "");
-    }
-  }, [filteredStudyPerformance, selectedAnalyticsStudy]);
   const portalQuickActions = (
     portalProfile?.actions ?? defaultPortalActions
   ).filter((action) => visibleNavKeys.has(action.target));
@@ -8127,11 +8115,29 @@ export default function App() {
       </div>
       <div className="inline-form-grid two-up">
         <label>
-          <span>Calendar day</span>
+          <span>From date</span>
           <input
             type="date"
-            value={patientRecordsDate}
-            onChange={(event) => setPatientRecordsDate(event.target.value || buildCurrentDateInputValue())}
+            value={patientRecordsDateRange.startDate}
+            onChange={(event) =>
+              setPatientRecordsDateRange((current) => ({
+                ...current,
+                startDate: event.target.value || buildCurrentDateInputValue(),
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>To date</span>
+          <input
+            type="date"
+            value={patientRecordsDateRange.endDate}
+            onChange={(event) =>
+              setPatientRecordsDateRange((current) => ({
+                ...current,
+                endDate: event.target.value || buildCurrentDateInputValue(),
+              }))
+            }
           />
         </label>
         <label>
