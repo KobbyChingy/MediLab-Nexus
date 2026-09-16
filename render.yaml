@@ -1,4 +1,5 @@
-# Render uses commit-based auto-deploys for the hosted demo service.
+# Render uses commit-based auto-deploys for the hosted demo service; keep this
+# manifest in the deployment commit so every hosted source update is rebuilt.
 services:
   - type: web
     name: medilab-nexus-demo
