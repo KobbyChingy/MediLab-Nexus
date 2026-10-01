@@ -477,13 +477,13 @@ function composePrintableReportHtml(bundle: {
     history !== "Not provided." || impression
       ? [
           history !== "Not provided."
-            ? `<div class="body-copy"><strong>History</strong></div><div class="body-copy">${renderRichText(history)}</div>`
+            ? `<div class="report-label"><strong>History</strong></div><div class="body-copy history-copy">${renderRichText(history)}</div>`
             : "",
           description
-            ? `<div class="body-copy" style="margin-top:${history !== "Not provided." ? "12px" : "0"}"><strong>Report</strong></div><div class="body-copy">${renderRichText(description)}</div>`
+            ? `<div class="report-label" style="margin-top:${history !== "Not provided." ? "12px" : "0"}"><strong>Findings</strong></div><div class="body-copy findings-copy">${renderRichText(description)}</div>`
             : "",
           impression
-            ? `<div class="body-copy" style="margin-top:${history !== "Not provided." || description ? "12px" : "0"}"><strong>Impression</strong></div><div class="body-copy">${renderRichText(impression)}</div>`
+            ? `<div class="report-label" style="margin-top:${history !== "Not provided." || description ? "12px" : "0"}"><strong>Impression</strong></div><div class="body-copy impression-copy">${renderRichText(impression)}</div>`
             : "",
         ].join("")
       : `<div class="body-copy">${renderRichText(description)}</div>`;
@@ -508,21 +508,23 @@ function composePrintableReportHtml(bundle: {
       .workspace { max-width: 940px; margin: 0 auto; display: grid; gap: 14px; }
       .actions { display: flex; justify-content: flex-end; }
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f2937; background: #ffffff; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); cursor: pointer; }
-      .echo-sheet { background: #fff; border: 1px solid #1f2937; box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08); }
-      .echo-header { padding: 16px 20px 10px; border-bottom: 1px solid #1f2937; }
+      .echo-sheet { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+      .echo-header { padding: 16px 20px 10px; border-bottom: 2px solid #16a34a; }
       .letterhead { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
       .letterhead img { width: 64px; height: 64px; object-fit: contain; }
       .letterhead-copy { display: grid; gap: 2px; }
       .letterhead-copy h1, .letterhead-copy p, .letterhead-copy h2 { margin: 0; }
-      .facility-name { font-size: 22px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; }
+      .facility-name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
       .facility-meta { font-size: 13px; line-height: 1.5; }
-      .report-title { margin-top: 8px; font-size: 18px; font-weight: 800; text-transform: uppercase; text-decoration: underline; letter-spacing: 0.03em; }
+      .report-title { margin-top: 8px; font-size: 16pt; font-weight: 700; text-transform: uppercase; }
+      .patient-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 12px 20px; padding: 12px; border-radius: 8px; background: #f3f4f6; font-size: 11pt; }
       .echo-paper .echo-print-content { padding: 18px 20px 20px; }
       .echo-section { padding: 16px 20px 18px; border-top: 1px solid #d1d5db; }
       .echo-footer { background: #fff; border: 1px solid #1f2937; padding: 16px 20px 18px; display: grid; gap: 12px; }
       .echo-watermark-wrap { position: relative; }
       .echo-watermark { position: absolute; right: 22px; top: 170px; width: 180px; opacity: 0.05; pointer-events: none; }
       .echo-footer h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
+      .echo-section h3 { color: #15803d; font-size: 10pt; text-transform: uppercase; }
       .echo-footer .body-copy { font-size: 15px; line-height: 1.65; }
       .echo-print-content .body-copy { font-size: 15px; line-height: 1.6; }
       .echo-print-content .body-copy p { margin: 0 0 0.7rem; }
@@ -536,10 +538,14 @@ function composePrintableReportHtml(bundle: {
         .signoff { grid-template-columns: 1fr; }
       }
       @media print {
+        @page { size: A4 portrait; margin: 15mm; }
         body { padding: 0; background: #fff; }
         .workspace { max-width: none; }
         .print-button { display: none; }
         .echo-sheet, .echo-footer { box-shadow: none; }
+        .echo-sheet { border: 0; }
+        .echo-section, .echo-footer, .patient-details, tr { break-inside: avoid; page-break-inside: avoid; }
+        .page-count::after { content: "Page " counter(page) " of " counter(pages); }
       }
     </style>
   </head>
@@ -559,6 +565,13 @@ function composePrintableReportHtml(bundle: {
             </div>
           </div>
         </header>
+        <div class="patient-details">
+          <div><strong>Name:</strong> ${escapeHtml(patientName)}</div>
+          <div><strong>Age / sex:</strong> ${escapeHtml(patientAge)} / ${escapeHtml(patientGender)}</div>
+          <div><strong>Date:</strong> ${escapeHtml(reportDate)}</div>
+          <div><strong>Trace code:</strong> ${escapeHtml(report.patient.traceCode)}</div>
+          <div><strong>Accession:</strong> ${escapeHtml(report.order.accessionNumber)}</div>
+        </div>
         <div class="echo-print-content">
           <div class="body-copy">${renderEchoWorksheetMarkup(description)}</div>
         </div>
@@ -580,6 +593,8 @@ function composePrintableReportHtml(bundle: {
           </div>
         </div>
         <div class="facility-note">${escapeHtml(facility.footerMessage || "Preserve the Patient Trace Code on all printed copies.")}</div>
+        ${getFacilityContactLine(facility) ? `<div class="facility-note">${escapeHtml(getFacilityContactLine(facility))}</div>` : ""}
+        <div class="facility-note page-count"></div>
       </section>
     </div>
   </body>
@@ -604,6 +619,7 @@ function composePrintableReportHtml(bundle: {
       }
 
       * { box-sizing: border-box; }
+      @page { size: A4 portrait; margin: 15mm; }
       body { margin: 0; padding: 18px; background: #f5f5f5; }
       .sheet { max-width: 820px; margin: 0 auto; background: #fff; border: 1px solid #d7d7d7; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08); }
       .hero, .meta, .section, .footer { padding: 14px 24px; }
@@ -616,19 +632,20 @@ function composePrintableReportHtml(bundle: {
       .brand-actions { display: grid; justify-items: end; gap: 12px; }
       .brand-copy p, .brand-copy h1, .brand-copy h2 { margin: 0; }
       .brand-copy p { font-size: var(--print-copy-size); }
-      .brand-copy .facility-name { font-size: calc(var(--print-title-size) - 8px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
-      .brand-copy h1 { font-size: var(--print-title-size); text-transform: uppercase; letter-spacing: 0.03em; }
+      .brand-copy .facility-name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
+      .brand-copy h1 { font-size: 16pt; text-transform: uppercase; }
       .brand-copy h2 { font-size: var(--print-copy-size); text-transform: uppercase; text-decoration: underline; margin-top: 6px; }
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f1f1f; background: #f3f4f6; cursor: pointer; }
-      .meta { border-bottom: 1px solid #e4e4e4; }
-      .rule { margin-top: 10px; border-top: 2px solid #1f1f1f; }
+      .meta { margin: 12px 24px; padding: 12px; border: 0; border-radius: 8px; background: #f3f4f6; }
+      .rule { margin-top: 10px; border-top: 2px solid #16a34a; }
       .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; }
       .meta-line { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: baseline; }
       .label { font-size: var(--print-copy-size); font-weight: 700; text-transform: uppercase; }
       .value { font-size: var(--print-body-size); }
       .section { border-bottom: 1px solid #ececec; font-size: var(--print-body-size); }
-      .section h3 { margin: 0 0 8px; font-size: var(--print-section-title-size); text-transform: uppercase; text-decoration: underline; }
-      .body-copy { line-height: 1.65; white-space: normal; font-size: 15px; }
+      .section h3, .report-label { margin: 0 0 8px; color: #15803d; font-size: 10pt; font-weight: 700; text-transform: uppercase; }
+      .body-copy { line-height: 1.5; white-space: normal; font-size: 11pt; }
+      .impression-copy { margin-top: 4px; padding: 10px 12px; border-left: 3px solid #16a34a; background: #f0fdf4; }
       .body-copy h1, .body-copy h2, .body-copy h3 { margin: 0 0 0.75rem; line-height: 1.2; }
       .body-copy h1 { font-size: 1.8rem; }
       .body-copy h2 { font-size: 1.45rem; }
@@ -651,6 +668,7 @@ function composePrintableReportHtml(bundle: {
       .developer-credit { color: #6b7280; font-size: 12px; }
       .watermark { position: absolute; right: 32px; top: 220px; width: 180px; opacity: 0.05; pointer-events: none; }
       .sheet-wrap { position: relative; }
+      table, tr, .meta-line, .signoff-block { break-inside: avoid; page-break-inside: avoid; }
       @media (max-width: 720px) {
         .brand-row, .brand-main { flex-direction: column; }
         .brand-actions { justify-items: start; }
@@ -658,8 +676,11 @@ function composePrintableReportHtml(bundle: {
       }
       @media print {
         body { background: white; padding: 0; }
-        .sheet { box-shadow: none; border: none; }
+        .sheet { width: 100%; max-width: none; min-height: 267mm; box-shadow: none; border: none; }
+        .hero, .meta, .section, .footer { padding-left: 0; padding-right: 0; }
+        .meta { padding: 12px; }
         .print-button { display: none; }
+        .page-count::after { content: "Page " counter(page) " of " counter(pages); }
         .body-copy .editor-page-break { break-before: page; page-break-before: always; border: 0; margin: 0; }
         .body-copy .editor-page-break::before { display: none; }
       }
@@ -713,6 +734,7 @@ function composePrintableReportHtml(bundle: {
       <footer class="footer">
         <div>${escapeHtml(facility.footerMessage || "Preserve the Patient Trace Code on all printed copies.")}</div>
         ${getFacilityContactLine(facility) ? `<div>${escapeHtml(getFacilityContactLine(facility))}</div>` : ""}
+        <div class="page-count"></div>
         <div class="developer-credit">${escapeHtml(getDeveloperCreditLine())}</div>
       </footer>
     </article>
@@ -735,6 +757,7 @@ async function buildReceiptBundle(prisma: PrismaClient, paymentId: string) {
       invoice: {
         include: {
           patient: true,
+          lines: true,
           order: {
             include: {
               items: {
@@ -758,9 +781,13 @@ async function buildReceiptBundle(prisma: PrismaClient, paymentId: string) {
     payment,
     patientName: `${payment.invoice.patient.firstName} ${payment.invoice.patient.lastName}`,
     orderedItems:
-      payment.invoice.order.items
-        .map((item) => item.catalogItem.name)
-        .join(", ") || "Diagnostic services",
+      payment.invoice.lines.map((line) => line.description).join(", ") ||
+      payment.invoice.order.items.map((item) => item.catalogItem.name).join(", ") ||
+      "Diagnostic services",
+    serviceLines: payment.invoice.lines.map((line) => ({
+      name: line.description,
+      amountCents: line.totalPriceCents,
+    })),
     balanceCents: Math.max(
       0,
       payment.invoice.amountDueCents - payment.invoice.amountPaidCents,
@@ -1030,6 +1057,7 @@ export async function renderPrintableReceiptHtml(
     payment,
     patientName,
     orderedItems,
+    serviceLines,
     balanceCents,
     fileName,
   } = bundle;
@@ -1037,81 +1065,151 @@ export async function renderPrintableReceiptHtml(
     payment.invoice.patient.gender?.trim() || "Not recorded";
   const receiptDate = payment.createdAt.toLocaleDateString();
   const receiptTimestamp = payment.createdAt.toLocaleString();
-  const paidAmount = `GHc ${(payment.amountCents / 100).toFixed(2)}`;
+  const money = (amountCents: number) => `GHc ${(amountCents / 100).toFixed(2)}`;
+  const paidAmount = money(payment.amountCents);
+  const numberWords = (value: number): string => {
+    const small = [
+      "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+      "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+      "Seventeen", "Eighteen", "Nineteen",
+    ];
+    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    if (value < 20) return small[value] ?? "Zero";
+    if (value < 100) return `${tens[Math.floor(value / 10)]}${value % 10 ? ` ${small[value % 10]}` : ""}`;
+    if (value < 1000) return `${small[Math.floor(value / 100)]} Hundred${value % 100 ? ` and ${numberWords(value % 100)}` : ""}`;
+    for (const [scale, label] of [[1_000_000_000, "Billion"], [1_000_000, "Million"], [1_000, "Thousand"]] as const) {
+      if (value >= scale) {
+        const remainder = value % scale;
+        return `${numberWords(Math.floor(value / scale))} ${label}${remainder ? ` ${numberWords(remainder)}` : ""}`;
+      }
+    }
+    return "Zero";
+  };
+  const wholeCedis = Math.floor(payment.amountCents / 100);
+  const pesewas = payment.amountCents % 100;
+  const amountInWords = `${numberWords(wholeCedis)} Ghana Cedis${pesewas ? ` and ${numberWords(pesewas)} Pesewas` : ""}`;
+  const serviceItems = orderedItems.split(",").map((item) => item.trim()).filter(Boolean);
+  const visibleServices = serviceItems.slice(0, 3);
+  const servicesLabel = `${visibleServices.join(", ") || "Diagnostic services"}${serviceItems.length > 3 ? ` +${serviceItems.length - 3} more` : ""}`;
+  const receiptNumber = payment.id.slice(-8).toUpperCase();
+  const receiptTitle = escapeHtml(facility.name || "MediLab Nexus");
+  const facilityContact = getFacilityContactLine(facility);
+  const paymentMethod = formatStatusLabel(payment.method);
+  const { traceCode } = payment.invoice.patient;
 
   const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Receipt ${escapeHtml(payment.invoice.patient.traceCode)}</title>
+    <title>Receipt ${escapeHtml(traceCode)}</title>
     <style>
-      :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; ${getPrintTypographyCss(facility)} color: #16304a; background: #eef5ff; }
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 24px; background: linear-gradient(180deg, #edf4ff, #f9fcff); }
-      .sheet { max-width: 760px; margin: 0 auto; background: #ffffff; border: 1px solid rgba(15, 42, 78, 0.1); border-radius: 24px; overflow: hidden; box-shadow: 0 18px 42px rgba(15, 42, 78, 0.1); }
-      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 28px 32px; background: linear-gradient(135deg, #0f6bff, #00c4b4); color: #ffffff; }
-      .hero img { width: 74px; height: 74px; object-fit: contain; border-radius: 18px; background: rgba(255,255,255,0.12); padding: 8px; }
-      .hero-side { display: grid; justify-items: end; gap: 12px; }
-      .hero h1, .hero p { margin: 0; }
-      .hero h1 { margin-top: 8px; font-size: var(--print-title-size); }
-      .contact { margin-top: 8px; opacity: 0.92; font-size: var(--print-copy-size); }
-      .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #0f3f75; background: #ffffff; cursor: pointer; }
-      .section { padding: 22px 32px; border-top: 1px solid rgba(15, 42, 78, 0.08); }
-      .meta-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-      .meta-card, .summary-card { border: 1px solid rgba(15, 42, 78, 0.08); border-radius: 18px; padding: 16px; background: #f8fbff; }
-      .label { font-size: calc(var(--print-copy-size) - 2px); text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
-      .value { margin-top: 6px; font-size: var(--print-metric-size); font-weight: 700; color: #10233d; }
-      .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-      .footer { padding: 22px 32px; color: #5b6d82; background: #f8fbff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
-      .developer-credit { color: #6b7280; font-size: 12px; }
-      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
+      :root { color-scheme: light; font-family: Georgia, "Times New Roman", serif; color: #111; background: #f3f4f6; }
+      body { margin: 0; padding: 18px; }
+      .toolbar { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 auto 14px; font: 14px Inter, system-ui, sans-serif; }
+      .toolbar button { min-height: 38px; padding: 0 14px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; cursor: pointer; }
+      .toolbar button.primary { border-color: #16a34a; background: #16a34a; color: #fff; }
+      .a4-sheet { width: 210mm; height: 297mm; margin: 0 auto; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); overflow: hidden; }
+      .receipt { position: relative; width: 210mm; height: 99mm; box-sizing: border-box; padding: 6mm; overflow: hidden; page-break-inside: avoid; border: 1px solid #111; }
+      .receipt-header { display: grid; grid-template-columns: 14mm minmax(0,1fr) auto; align-items: center; gap: 3mm; min-height: 14mm; padding-bottom: 2mm; border-bottom: 2px solid #16a34a; }
+      .receipt-logo { width: 14mm; height: 14mm; max-height: 14mm; object-fit: contain; }
+      .facility-name { margin: 0; font-size: 11pt; line-height: 1.1; font-weight: 700; text-align: center; }
+      .facility-contact { margin: 1mm 0 0; font: 8pt Inter, system-ui, sans-serif; text-align: center; }
+      .receipt-title { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 4mm; margin-top: 1mm; font-size: 12pt; font-weight: 700; }
+      .receipt-number { font-size: 10pt; white-space: nowrap; }
+      .receipt-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; padding-top: 1mm; font-size: 9.5pt; line-height: 1.1; }
+      .receipt-row { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 2mm; align-items: baseline; min-height: 6.4mm; padding: 1.2mm 0; border-bottom: 1px solid #111; }
+      .receipt-row strong { font-weight: 700; }
+      .receipt-row .value { min-width: 0; font-weight: 400; overflow-wrap: anywhere; }
+      .receipt-row .value.emphasis { font-weight: 700; }
+      .amount-words { min-height: 8mm; font-weight: 700; }
+      .signature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 1mm; font-size: 9pt; }
+      .signature-line { padding-top: 2mm; border-bottom: 1px solid #111; }
+      .receipt-footer { display: flex; justify-content: space-between; gap: 3mm; margin-top: 2mm; font: 8pt Inter, system-ui, sans-serif; }
+      .cut-line { position: absolute; right: 6mm; bottom: 0; left: 6mm; padding-top: 1mm; border-top: 1px dashed #9ca3af; color: #6b7280; font: 7pt Inter, system-ui, sans-serif; text-align: center; }
+      .cut-toggle { color: #374151; font-size: 12px; }
+      body[data-cut-line="off"] .cut-line { display: none; }
+      .thermal-content { display: none; }
+      @page { size: A4 portrait; margin: 0; }
+      @page thermal { size: 80mm auto; margin: 0; }
+      @media print {
+        body { padding: 0; background: #fff; }
+        .toolbar { display: none; }
+        .a4-sheet { margin: 0; box-shadow: none; }
+        body[data-print-mode="thermal"] .a4-sheet { page: thermal; width: 80mm; height: auto; }
+        body[data-print-mode="thermal"] .receipt { display: none; }
+        body[data-print-mode="thermal"] .thermal-content { display: block; width: 80mm; padding: 4mm; font: 10pt "Courier New", monospace; }
+        body[data-print-mode="thermal"] .thermal-header { text-align: center; font-weight: 700; }
+        body[data-print-mode="thermal"] .thermal-rule { margin: 2mm 0; border-top: 1px dashed #111; }
+        body[data-print-mode="thermal"] .thermal-line { display: flex; justify-content: space-between; gap: 2mm; }
+        body[data-print-mode="thermal"] .thermal-total { font-weight: 700; }
+      }
     </style>
   </head>
-  <body>
-    <article class="sheet">
-      <header class="hero">
-        <div>
-          ${facility.showFacilityProfileOnPrint ? `<p>${escapeHtml(facility.name)}</p>` : ""}
-          <h1>Payment Receipt</h1>
-          ${facility.showFacilityProfileOnPrint ? `<p class="contact">${escapeHtml(getFacilityContactLine(facility) || facility.code)}</p>` : ""}
+  <body data-print-mode="a4" data-cut-line="on">
+    <div class="toolbar">
+      <button class="primary" type="button" onclick="document.body.dataset.printMode='a4'; window.print()">Print A4 receipt</button>
+      <button type="button" onclick="document.body.dataset.printMode='thermal'; window.print()">Print thermal</button>
+      <label class="cut-toggle"><input type="checkbox" checked onchange="document.body.dataset.cutLine=this.checked?'on':'off'" /> Cut line</label>
+    </div>
+    <main class="a4-sheet">
+      <article class="receipt">
+        <header class="receipt-header">
+          ${facility.showFacilityProfileOnPrint ? `<img class="receipt-logo" src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : "<span></span>"}
+          <div>
+            <h1 class="facility-name">${receiptTitle}</h1>
+            ${facility.showFacilityProfileOnPrint && facilityContact ? `<p class="facility-contact">${escapeHtml(facilityContact)}</p>` : ""}
+          </div>
+          <span></span>
+          <div class="receipt-title"><span>PAYMENT RECEIPT</span><span class="receipt-number">No: ${escapeHtml(receiptNumber)}</span></div>
+        </header>
+        <div class="receipt-columns">
+          <div>
+            <div class="receipt-row"><strong>Patient</strong><span class="value">${escapeHtml(patientName)} · ${escapeHtml(patientGender)}</span></div>
+            <div class="receipt-row"><strong>Payment for</strong><span class="value">Diagnostic services</span></div>
+            <div class="receipt-row"><strong>Trace Code</strong><span class="value emphasis">${escapeHtml(traceCode)}</span></div>
+            <div class="receipt-row"><strong>Services</strong><span class="value">${escapeHtml(servicesLabel)}</span></div>
+            <div class="receipt-row amount-words"><strong>In words</strong><span class="value">${escapeHtml(amountInWords)}</span></div>
+            <div class="receipt-row"><strong>Paid by</strong><span class="value">${escapeHtml(patientName)}</span></div>
+          </div>
+          <div>
+            <div class="receipt-row"><strong>Date and time</strong><span class="value">${escapeHtml(receiptTimestamp)}</span></div>
+            <div class="receipt-row"><strong>Amount to pay</strong><span class="value">${escapeHtml(money(payment.invoice.amountDueCents))}</span></div>
+            <div class="receipt-row"><strong>Insurance cover</strong><span class="value">${escapeHtml(money(payment.invoice.insuranceCoveredCents))}</span></div>
+            <div class="receipt-row"><strong>Amount paid</strong><span class="value emphasis">${escapeHtml(paidAmount)}</span></div>
+            <div class="receipt-row"><strong>Pay mode</strong><span class="value">${escapeHtml(paymentMethod)}</span></div>
+            <div class="receipt-row"><strong>Balance</strong><span class="value emphasis">${escapeHtml(money(balanceCents))}</span></div>
+            <div class="receipt-row"><strong>Cashier</strong><span class="value">${escapeHtml(payment.receivedBy)}</span></div>
+          </div>
         </div>
-        <div class="hero-side">
-          <button class="print-button" type="button" onclick="window.print()">Print receipt</button>
-          ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
-        </div>
-      </header>
-      <section class="section">
-        <div class="meta-grid">
-          <div class="meta-card"><div class="label">Patient</div><div class="value">${escapeHtml(patientName)}</div></div>
-          <div class="meta-card"><div class="label">Gender</div><div class="value">${escapeHtml(patientGender)}</div></div>
-          <div class="meta-card"><div class="label">Trace Code</div><div class="value">${escapeHtml(payment.invoice.patient.traceCode)}</div></div>
-          <div class="meta-card"><div class="label">Receipt Date</div><div class="value">${escapeHtml(receiptDate)}</div></div>
-          <div class="meta-card"><div class="label">Amount Paid</div><div class="value">${escapeHtml(paidAmount)}</div></div>
-          <div class="meta-card"><div class="label">Accession</div><div class="value">${escapeHtml(payment.invoice.order.accessionNumber)}</div></div>
-          <div class="meta-card"><div class="label">Received At</div><div class="value">${escapeHtml(receiptTimestamp)}</div></div>
-        </div>
+        <div class="signature-row"><span>Signature: <span class="signature-line"></span></span><span>Receipt date: ${escapeHtml(receiptDate)}</span></div>
+        <footer class="receipt-footer">
+          <span>Collect results with trace code ${escapeHtml(traceCode)}</span>
+          <span>Developed by OmniWeave Softwares</span>
+        </footer>
+        <div class="cut-line">- - - - - - - - - - - - - - - - - - - - - - - cut here - - - - - - - - - - - - - - - - - - - -</div>
+      </article>
+      <section class="thermal-content">
+        <div class="thermal-header">${receiptTitle}<br />${escapeHtml(facilityContact)}</div>
+        <div class="thermal-rule"></div>
+        <div>PAYMENT RECEIPT ${escapeHtml(receiptNumber)}</div>
+        <div>${escapeHtml(receiptTimestamp)}</div>
+        <div>Patient: ${escapeHtml(patientName)}</div>
+        <div>Cashier: ${escapeHtml(payment.receivedBy)}</div>
+        <div class="thermal-rule"></div>
+        ${(serviceLines.length ? serviceLines.slice(0, 3) : visibleServices.map((name) => ({ name, amountCents: 0 }))).map((item) => `<div class="thermal-line"><span>${escapeHtml(item.name)}</span><span>${item.amountCents ? escapeHtml(money(item.amountCents)) : ""}</span></div>`).join("")}
+        ${serviceItems.length > 3 ? `<div>+${serviceItems.length - 3} more</div>` : ""}
+        <div class="thermal-rule"></div>
+        <div class="thermal-line"><span>Subtotal</span><span>${escapeHtml(money(payment.invoice.subtotalCents))}</span></div>
+        <div class="thermal-line"><span>Insurance</span><span>${escapeHtml(money(payment.invoice.insuranceCoveredCents))}</span></div>
+        <div class="thermal-line thermal-total"><span>TOTAL</span><span>${escapeHtml(money(payment.invoice.amountDueCents))}</span></div>
+        <div class="thermal-line"><span>Paid (${escapeHtml(paymentMethod)})</span><span>${escapeHtml(paidAmount)}</span></div>
+        <div class="thermal-line"><span>Balance</span><span>${escapeHtml(money(balanceCents))}</span></div>
+        <div class="thermal-rule"></div>
+        <div>Trace code: ${escapeHtml(traceCode)}</div>
       </section>
-      <section class="section">
-        <div class="summary-grid">
-          <div class="summary-card"><div class="label">Paid</div><div class="value">${escapeHtml(paidAmount)}</div></div>
-          <div class="summary-card"><div class="label">Invoice Due</div><div class="value">GHc ${(payment.invoice.amountDueCents / 100).toFixed(2)}</div></div>
-          <div class="summary-card"><div class="label">Balance</div><div class="value">GHc ${(balanceCents / 100).toFixed(2)}</div></div>
-        </div>
-      </section>
-      <section class="section">
-        <div class="meta-grid">
-          <div class="meta-card"><div class="label">Payment Method</div><div class="value">${escapeHtml(payment.method)}</div></div>
-          <div class="meta-card"><div class="label">Reference</div><div class="value">${escapeHtml(payment.reference || "Walk-in payment")}</div></div>
-          <div class="meta-card"><div class="label">Received By</div><div class="value">${escapeHtml(payment.receivedBy)}</div></div>
-          <div class="meta-card"><div class="label">Services</div><div class="value">${escapeHtml(orderedItems)}</div></div>
-        </div>
-      </section>
-      <footer class="footer">
-        <div>${escapeHtml(facility.footerMessage)} ${escapeHtml(facility.code)}${facility.location ? ` · ${escapeHtml(facility.location)}` : ""}</div>
-        <div class="developer-credit">${escapeHtml(getDeveloperCreditLine())}</div>
-      </footer>
-    </article>
+    </main>
   </body>
 </html>`;
 
@@ -1152,11 +1250,12 @@ export async function renderPrintableInvoiceHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Invoice ${escapeHtml(invoice.patient.traceCode)}</title>
     <style>
-      :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; ${getPrintTypographyCss(facility)} color: #16304a; background: #eef5ff; }
+      :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; ${getPrintTypographyCss(facility)} color: #111827; background: #f8fafc; }
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 24px; background: linear-gradient(180deg, #edf4ff, #f9fcff); }
-      .sheet { max-width: 840px; margin: 0 auto; background: #ffffff; border: 1px solid rgba(15, 42, 78, 0.1); border-radius: 24px; overflow: hidden; box-shadow: 0 18px 42px rgba(15, 42, 78, 0.1); }
-      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 28px 32px; background: linear-gradient(135deg, #0f6bff, #00c4b4); color: #ffffff; }
+      @page { size: A5 portrait; margin: 12mm; }
+      body { margin: 0; padding: 24px; background: #f8fafc; }
+      .sheet { max-width: 840px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 24px; background: #16a34a; color: #ffffff; }
       .hero img { width: 74px; height: 74px; object-fit: contain; border-radius: 18px; background: rgba(255,255,255,0.12); padding: 8px; }
       .hero-side { display: grid; justify-items: end; gap: 12px; }
       .hero h1, .hero p { margin: 0; }
@@ -1165,16 +1264,16 @@ export async function renderPrintableInvoiceHtml(
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #0f3f75; background: #ffffff; cursor: pointer; }
       .section { padding: 22px 32px; border-top: 1px solid rgba(15, 42, 78, 0.08); }
       .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-      .meta-card, .summary-card, .line-item { border: 1px solid rgba(15, 42, 78, 0.08); border-radius: 18px; padding: 16px; background: #f8fbff; }
+      .meta-card, .summary-card, .line-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
       .label { font-size: calc(var(--print-copy-size) - 2px); text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
       .value { margin-top: 6px; font-size: var(--print-metric-size); font-weight: 700; color: #10233d; }
       .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
       .line-items { display: grid; gap: 12px; }
       .line-item { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
       .line-item small { color: #64748b; }
-      .footer { padding: 22px 32px; color: #5b6d82; background: #f8fbff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
+      .footer { padding: 22px 32px; color: #6b7280; background: #fff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
       .developer-credit { color: #6b7280; font-size: 12px; }
-      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
+      @media print { body { padding: 0; background: #fff; } .sheet { width: 100%; max-width: none; min-height: 186mm; border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
     </style>
   </head>
   <body>
@@ -1270,11 +1369,12 @@ export async function renderPrintableFinanceAnalyticsHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Financial Overview - ${escapeHtml(facility.name)}</title>
     <style>
-      :root { color-scheme: light; font-family: "Segoe UI", Arial, sans-serif; ${getPrintTypographyCss(facility)} color: #16304a; background: #eef5ff; }
+      :root { color-scheme: light; font-family: Inter, system-ui, sans-serif; ${getPrintTypographyCss(facility)} color: #111827; background: #f8fafc; }
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 24px; background: linear-gradient(180deg, #edf4ff, #f9fcff); }
-      .sheet { max-width: 980px; margin: 0 auto; background: #ffffff; border: 1px solid rgba(15, 42, 78, 0.1); border-radius: 24px; overflow: hidden; box-shadow: 0 18px 42px rgba(15, 42, 78, 0.1); }
-      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 28px 32px; background: linear-gradient(135deg, #0f6bff, #00c4b4); color: #ffffff; }
+      @page { size: A4 portrait; margin: 15mm; }
+      body { margin: 0; padding: 24px; background: #f8fafc; }
+      .sheet { max-width: 980px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 24px; background: #16a34a; color: #ffffff; }
       .hero img { width: 74px; height: 74px; object-fit: contain; border-radius: 18px; background: rgba(255,255,255,0.12); padding: 8px; }
       .hero-side { display: grid; justify-items: end; gap: 12px; }
       .hero h1, .hero p { margin: 0; }
@@ -1284,14 +1384,14 @@ export async function renderPrintableFinanceAnalyticsHtml(
       .section { padding: 22px 32px; border-top: 1px solid rgba(15, 42, 78, 0.08); }
       .section-title { margin: 0 0 14px; font-size: var(--print-section-title-size); color: #10233d; }
       .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-      .metric-card, .row-card { border: 1px solid rgba(15, 42, 78, 0.08); border-radius: 18px; padding: 16px; background: #f8fbff; }
+      .metric-card, .row-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #ffffff; }
       .row-list { display: grid; gap: 12px; }
       .row-card { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
       .label { font-size: calc(var(--print-copy-size) - 2px); text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
       .value { margin-top: 6px; font-size: var(--print-metric-size); font-weight: 700; color: #10233d; }
       .footer { padding: 22px 32px; color: #5b6d82; background: #f8fbff; font-size: var(--print-copy-size); display: grid; gap: 6px; }
       .developer-credit { color: #6b7280; font-size: 12px; }
-      @media print { body { padding: 0; background: #fff; } .sheet { border: 0; border-radius: 0; box-shadow: none; } .print-button { display: none; } }
+      @media print { body { padding: 0; background: #fff; } .sheet { width: 100%; max-width: none; min-height: 267mm; border: 0; border-radius: 0; box-shadow: none; } .section { padding-left: 0; padding-right: 0; } .print-button { display: none; } .row-card, .metric-card { break-inside: avoid; page-break-inside: avoid; } }
     </style>
   </head>
   <body>

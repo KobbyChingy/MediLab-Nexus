@@ -17,6 +17,7 @@ import type {
   ChangeEventHandler,
   Dispatch,
   FormEventHandler,
+  ReactNode,
   RefObject,
   SetStateAction,
 } from "react";
@@ -698,7 +699,7 @@ export function SystemUserManagementSection(props: {
 export function SystemAttendanceSection(props: {
   attendance: AttendanceWorkspacePayload;
   attendanceDate: string;
-  setAttendanceDate: Dispatch<SetStateAction<string>>;
+  attendanceCalendar: ReactNode;
   attendanceSettingsForm: AttendanceSettingsInput;
   setAttendanceSettingsForm: Dispatch<SetStateAction<AttendanceSettingsInput>>;
   handleAttendanceSettingsSave: FormEventHandler<HTMLFormElement>;
@@ -708,7 +709,7 @@ export function SystemAttendanceSection(props: {
   const {
     attendance,
     attendanceDate,
-    setAttendanceDate,
+    attendanceCalendar,
     attendanceSettingsForm,
     setAttendanceSettingsForm,
     handleAttendanceSettingsSave,
@@ -800,14 +801,9 @@ export function SystemAttendanceSection(props: {
           </div>
         </div>
         <div className="audit-log-toolbar attendance-toolbar audit-match-toolbar">
-          <label className="audit-log-search attendance-day-picker audit-match-search">
-            <span>Date</span>
-            <input
-              type="date"
-              value={attendanceDate}
-              onChange={(event) => setAttendanceDate(event.target.value)}
-            />
-          </label>
+          <div className="attendance-day-picker audit-match-search">
+            {attendanceCalendar}
+          </div>
           <div className="audit-log-metrics audit-match-metrics attendance-match-metrics">
             <div className="metric-mini audit-log-metric audit-match-metric">
               <span>Present</span>

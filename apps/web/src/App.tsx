@@ -1276,6 +1276,163 @@ function buildCurrentDateInputValue() {
   return localDate.toISOString().slice(0, 10);
 }
 
+function formatCalendarDate(value: string) {
+  if (!value) return "Select date";
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function CalendarRangePicker({
+  value,
+  onChange,
+  defaultMode = "range",
+  label = "Date filter",
+}: {
+  value: CustomDateRange;
+  onChange: (value: CustomDateRange) => void;
+  defaultMode?: "single" | "range";
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"single" | "range">(defaultMode);
+  const [rangeStartPending, setRangeStartPending] = useState(false);
+  const activeDate = value.startDate || buildCurrentDateInputValue();
+  const activeDateParts = activeDate.split("-");
+  const year = Number(activeDateParts[0] ?? 0);
+  const month = Number(activeDateParts[1] ?? 1);
+  const [visibleMonth, setVisibleMonth] = useState(
+    () => new Date(year, month - 1, 1),
+  );
+  const monthStart = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
+  const monthLength = new Date(
+    visibleMonth.getFullYear(),
+    visibleMonth.getMonth() + 1,
+    0,
+  ).getDate();
+  const leadingDays = monthStart.getDay();
+  const calendarCells = Array.from(
+    { length: Math.ceil((leadingDays + monthLength) / 7) * 7 },
+    (_, index) => {
+      const date = index - leadingDays + 1;
+      return date > 0 && date <= monthLength ? date : null;
+    },
+  );
+  const rangeLabel = value.startDate
+    ? value.endDate && value.endDate !== value.startDate
+      ? `${formatCalendarDate(value.startDate)} - ${formatCalendarDate(value.endDate)}`
+      : formatCalendarDate(value.startDate)
+    : "Select date";
+
+  function selectDate(date: number) {
+    const nextDate = `${visibleMonth.getFullYear()}-${String(
+      visibleMonth.getMonth() + 1,
+    ).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+    if (mode === "single") {
+      onChange({ startDate: nextDate, endDate: nextDate });
+      setOpen(false);
+      return;
+    }
+    if (!rangeStartPending) {
+      onChange({ startDate: nextDate, endDate: "" });
+      setRangeStartPending(true);
+      return;
+    }
+    onChange({
+      startDate: nextDate < value.startDate ? nextDate : value.startDate,
+      endDate: nextDate < value.startDate ? value.startDate : nextDate,
+    });
+    setRangeStartPending(false);
+    setOpen(false);
+  }
+
+  return (
+    <div className="calendar-filter">
+      <span className="calendar-filter-label">{label}</span>
+      <button
+        type="button"
+        className="calendar-filter-trigger"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span aria-hidden="true">▦</span>
+        {rangeLabel}
+        <span className="calendar-trigger-caret" aria-hidden="true">⌄</span>
+      </button>
+      {open ? (
+        <div className="calendar-popover" role="dialog" aria-label={label}>
+          <div className="calendar-mode-switch" role="group" aria-label="Selection mode">
+            <button
+              type="button"
+              className={mode === "single" ? "selected" : ""}
+              onClick={() => {
+                setMode("single");
+                setRangeStartPending(false);
+                if (value.startDate) onChange({ startDate: value.startDate, endDate: value.startDate });
+              }}
+            >Single date</button>
+            <button
+              type="button"
+              className={mode === "range" ? "selected" : ""}
+              onClick={() => {
+                setMode("range");
+                setRangeStartPending(false);
+              }}
+            >Date range</button>
+          </div>
+          <div className="calendar-month-header">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}
+            >‹</button>
+            <strong>{visibleMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</strong>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}
+            >›</button>
+          </div>
+          <div className="calendar-grid calendar-weekdays" aria-hidden="true">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => <span key={weekday}>{weekday}</span>)}
+          </div>
+          <div className="calendar-grid">
+            {calendarCells.map((date, index) => {
+              if (!date) return <span key={`empty-${index}`} />;
+              const dateValue = `${visibleMonth.getFullYear()}-${String(visibleMonth.getMonth() + 1).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+              const isSelected = dateValue === value.startDate || dateValue === value.endDate;
+              const isInRange = Boolean(value.startDate && value.endDate && dateValue > value.startDate && dateValue < value.endDate);
+              return (
+                <button
+                  key={dateValue}
+                  type="button"
+                  className={`${isSelected ? "selected" : ""} ${isInRange ? "in-range" : ""}`}
+                  aria-pressed={isSelected}
+                  onClick={() => selectDate(date)}
+                >{date}</button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="calendar-today-button"
+            onClick={() => {
+              const today = buildCurrentDateInputValue();
+              onChange({ startDate: today, endDate: today });
+              setMode("single");
+              setRangeStartPending(false);
+              setVisibleMonth(new Date());
+              setOpen(false);
+            }}
+          >Today</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function buildEmptyAttendanceWorkspace(
   date: string,
 ): AttendanceWorkspacePayload {
@@ -2702,10 +2859,15 @@ export default function App() {
     () => parsePortalHash(window.location.hash)?.nav ?? "dashboard",
   );
   const [globalQuery, setGlobalQuery] = useState("");
+  const [dashboardDateRange, setDashboardDateRange] = useState<CustomDateRange>(() => {
+    const today = buildCurrentDateInputValue();
+    return { startDate: today, endDate: today };
+  });
   const [loginForm, setLoginForm] = useState({
     username: "",
     pin: "",
   });
+  const [loginError, setLoginError] = useState("");
   const [showInitialSetupForm, setShowInitialSetupForm] = useState(false);
   const [setupStatus, setSetupStatus] = useState<SetupStatusPayload | null>(
     null,
@@ -4840,7 +5002,7 @@ export default function App() {
     () =>
       workflow.reports.filter(
         (report) =>
-          !["DRAFT", "IN_REVIEW"].includes(report.status) &&
+          report.status !== "IN_REVIEW" &&
           activeReportOrderIds.has(report.orderId),
       ),
     [activeReportOrderIds, workflow.reports],
@@ -5004,14 +5166,26 @@ export default function App() {
       tone: report.criticalFlag ? "critical" : "good",
     }));
 
+    const { startDate, endDate: selectedEndDate } = dashboardDateRange;
+    const endDate = selectedEndDate || startDate;
+
     return [...invoiceEvents, ...orderEvents, ...reportEvents]
+      .filter((item) => {
+        const occurred = new Date(item.occurredAt);
+        const localDate = new Date(
+          occurred.getTime() - occurred.getTimezoneOffset() * 60 * 1000,
+        )
+          .toISOString()
+          .slice(0, 10);
+        return localDate >= startDate && localDate <= endDate;
+      })
       .sort(
         (left, right) =>
           new Date(right.occurredAt).getTime() -
           new Date(left.occurredAt).getTime(),
       )
       .slice(0, 4);
-  }, [workflow.invoices, workflow.orders, workflow.reports]);
+  }, [dashboardDateRange.endDate, dashboardDateRange.startDate, workflow.invoices, workflow.orders, workflow.reports]);
   const dashboardCollectedCents = useMemo(
     () =>
       workflow.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
@@ -5138,11 +5312,14 @@ export default function App() {
 
       const session = (await response.json()) as AuthSessionPayload;
       setAuthSession(session);
+      setLoginError("");
+      const today = buildCurrentDateInputValue();
+      setDashboardDateRange({ startDate: today, endDate: today });
       setSetupStatus(null);
       setActiveNav(resolvePortalNavForRole(session.user.role));
       setStatusText(`Signed in as ${session.user.displayName}`);
     } catch (error) {
-      setStatusText(
+      setLoginError(
         error instanceof Error
           ? error.message
           : "Login failed. Confirm the MediLab Nexus server is running.",
@@ -5162,6 +5339,8 @@ export default function App() {
         },
       );
       setAuthSession(session);
+      const today = buildCurrentDateInputValue();
+      setDashboardDateRange({ startDate: today, endDate: today });
       setSetupStatus({
         requiresSetup: false,
         hasUsers: true,
@@ -5604,6 +5783,13 @@ export default function App() {
     if (!payload) {
       return;
     }
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as
+      | HTMLButtonElement
+      | null;
+    const isSavingDraft = submitter?.value === "DRAFT";
+    if (isSavingDraft) {
+      payload.status = "DRAFT";
+    }
 
     try {
       const saved = await requestJson<SavedReportPayload>(
@@ -5633,7 +5819,7 @@ export default function App() {
       setReportImagePathsText("");
       setUltrasoundReportAssist(defaultUltrasoundReportAssistState);
       setEchoWorksheet(buildDefaultEchoWorksheetState());
-      setActiveNav("scanReports");
+      setActiveNav(isLabReportWorkspace ? "labReports" : "scanReports");
       triggerWorkflowRefresh("report");
       await loadOperationalData();
       setStatusText(
@@ -5642,6 +5828,10 @@ export default function App() {
       if (saved.status === "APPROVED" || saved.status === "RELEASED") {
         setStatusText(
           `Report ${saved.title} was saved and is now ready for the reception print queue.`,
+        );
+      } else if (saved.status === "DRAFT") {
+        setStatusText(
+          `Draft ${saved.title} was saved and sent to reception for preview and printing.`,
         );
       }
     } catch {
@@ -6030,7 +6220,7 @@ export default function App() {
         recommendation: parsed.recommendation || current.recommendation,
       }));
       setReportTemplateName(stripFileExtension(file.name));
-      setActiveNav("scanReports");
+      setActiveNav(isLabReportWorkspace ? "labReports" : "scanReports");
       setStatusText(`Loaded template from ${file.name}`);
     } catch (error) {
       const message =
@@ -6236,10 +6426,12 @@ export default function App() {
       .replaceAll("'", "&#39;");
   }
 
-  async function handlePreviewReport(reportId: string) {
+  async function handlePreviewReport(reportId: string, autoPrint = false) {
     const preview = openPreviewWindow(
-      "Popup blocked. Allow popups to preview the report.",
-      "Preparing report preview",
+      autoPrint
+        ? "Popup blocked. Allow popups to print the report."
+        : "Popup blocked. Allow popups to preview the report.",
+      autoPrint ? "Preparing report for print" : "Preparing report preview",
     );
     if (!preview) {
       return;
@@ -6250,7 +6442,12 @@ export default function App() {
         `/reports/${reportId}/printable`,
       );
       if (writePreviewWindow(preview, printable.html)) {
-        setStatusText(`Opened printable report ${printable.fileName}`);
+        if (autoPrint) {
+          triggerPreviewPrint(preview, 180);
+          setStatusText(`Printing ${printable.fileName}`);
+        } else {
+          setStatusText(`Opened printable report ${printable.fileName}`);
+        }
       } else {
         setStatusText("Preview window was closed before the report loaded");
       }
@@ -7783,10 +7980,16 @@ export default function App() {
             <p className="dashboard-kicker">Operations overview</p>
             <h1>Dashboard</h1>
             <p className="hero-copy">
-              {portalProfile?.summary ?? roleCopy[currentRole].subtitle}
+              Welcome back, {actorName}. Here&apos;s your diagnostic centre overview.
             </p>
           </div>
           <div className="dashboard-status-row">
+            <CalendarRangePicker
+              value={dashboardDateRange}
+              onChange={setDashboardDateRange}
+              defaultMode="single"
+              label="Dashboard date"
+            />
             <span className={`sync-chip ${syncTone.tone}`}>
               {syncTone.label}
             </span>
@@ -8114,32 +8317,11 @@ export default function App() {
         ) : null}
       </div>
       <div className="inline-form-grid two-up">
-        <label>
-          <span>From date</span>
-          <input
-            type="date"
-            value={patientRecordsDateRange.startDate}
-            onChange={(event) =>
-              setPatientRecordsDateRange((current) => ({
-                ...current,
-                startDate: event.target.value || buildCurrentDateInputValue(),
-              }))
-            }
-          />
-        </label>
-        <label>
-          <span>To date</span>
-          <input
-            type="date"
-            value={patientRecordsDateRange.endDate}
-            onChange={(event) =>
-              setPatientRecordsDateRange((current) => ({
-                ...current,
-                endDate: event.target.value || buildCurrentDateInputValue(),
-              }))
-            }
-          />
-        </label>
+        <CalendarRangePicker
+          value={patientRecordsDateRange}
+          onChange={setPatientRecordsDateRange}
+          label="Record date range"
+        />
         <label>
           <span>Search patient records</span>
           <input
@@ -10941,6 +11123,14 @@ export default function App() {
               >
                 Print draft
               </button>
+              <button
+                type="submit"
+                value="DRAFT"
+                className="ghost-action"
+                disabled={!canWriteReports}
+              >
+                Save Draft
+              </button>
               <button type="submit" disabled={!canWriteReports}>
                 Save report
               </button>
@@ -10959,8 +11149,8 @@ export default function App() {
               <h2>{isLabReportWorkspace ? "Lab report pickup" : "Scan report pickup"}</h2>
               <p>
                 {isLabReportWorkspace
-                  ? "Completed lab reports appear here after the lab technologist finishes them. Preview the report and print it for the patient."
-                  : "Completed reports appear here after the doctor or sonographer finishes them. Preview the report and print it for the patient."}
+                  ? "Saved lab drafts and completed reports appear here as soon as they are saved. Preview or print the report for the patient."
+                  : "Saved scan drafts and completed reports appear here as soon as they are saved. Preview or print the report for the patient."}
               </p>
             </div>
           </div>
@@ -10968,15 +11158,15 @@ export default function App() {
             <span>Reception access</span>
             <strong>Preview and print only</strong>
             <p className="muted-copy">
-              Reception can open finished reports here, but only clinical staff can write or approve them.
+              Reception can print saved drafts immediately. Only clinical staff can edit or approve report content.
             </p>
           </div>
           <div className="list-stack">
             {pickupReports.length === 0 ? (
               <div className="chart-empty audit-log-empty-state">
                 {isLabReportWorkspace
-                  ? "No finished lab reports are ready for reception pickup yet."
-                  : "No finished reports are ready for reception pickup yet."}
+                  ? "No saved lab drafts or completed reports are ready for reception pickup yet."
+                  : "No saved scan drafts or completed reports are ready for reception pickup yet."}
               </div>
             ) : (
               pickupReports.map((report) => (
@@ -10997,6 +11187,13 @@ export default function App() {
                       onClick={() => handlePreviewReport(report.id)}
                     >
                       Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="primary-action small"
+                      onClick={() => handlePreviewReport(report.id, true)}
+                    >
+                      Print
                     </button>
                     <button
                       type="button"
@@ -11749,32 +11946,11 @@ export default function App() {
         </div>
         {analyticsRange === "CUSTOM" ? (
           <div className="inline-form-grid two-up">
-            <label>
-              <span>Start date</span>
-              <input
-                type="date"
-                value={analyticsCustomDateRange.startDate}
-                onChange={(event) =>
-                  setAnalyticsCustomDateRange((current) => ({
-                    ...current,
-                    startDate: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>End date</span>
-              <input
-                type="date"
-                value={analyticsCustomDateRange.endDate}
-                onChange={(event) =>
-                  setAnalyticsCustomDateRange((current) => ({
-                    ...current,
-                    endDate: event.target.value,
-                  }))
-                }
-              />
-            </label>
+            <CalendarRangePicker
+              value={analyticsCustomDateRange}
+              onChange={setAnalyticsCustomDateRange}
+              label="Analytics date range"
+            />
           </div>
         ) : null}
         <p className="section-note">
@@ -12084,32 +12260,17 @@ export default function App() {
               ))}
             </select>
           </label>
-          <label>
-            <span>Start date</span>
-            <input
-              type="date"
-              value={expenseFilters.startDate}
-              onChange={(event) =>
-                setExpenseFilters((current) => ({
-                  ...current,
-                  startDate: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label>
-            <span>End date</span>
-            <input
-              type="date"
-              value={expenseFilters.endDate}
-              onChange={(event) =>
-                setExpenseFilters((current) => ({
-                  ...current,
-                  endDate: event.target.value,
-                }))
-              }
-            />
-          </label>
+          <CalendarRangePicker
+            value={{ startDate: expenseFilters.startDate, endDate: expenseFilters.endDate }}
+            onChange={(range) =>
+              setExpenseFilters((current) => ({
+                ...current,
+                startDate: range.startDate,
+                endDate: range.endDate,
+              }))
+            }
+            label="Expense date range"
+          />
           <div className="inline-actions">
             <button
               type="button"
@@ -13128,7 +13289,14 @@ export default function App() {
     <SystemAttendanceSection
       attendance={attendanceWorkspace}
       attendanceDate={attendanceDate}
-      setAttendanceDate={setAttendanceDate}
+      attendanceCalendar={
+        <CalendarRangePicker
+          value={{ startDate: attendanceDate, endDate: attendanceDate }}
+          onChange={({ startDate }) => setAttendanceDate(startDate)}
+          defaultMode="single"
+          label="Attendance date"
+        />
+      }
       attendanceSettingsForm={attendanceSettingsForm}
       setAttendanceSettingsForm={setAttendanceSettingsForm}
       handleAttendanceSettingsSave={handleAttendanceSettingsSave}
@@ -13410,6 +13578,14 @@ export default function App() {
               </div>
             </aside>
             <section className="login-panel">
+                <div className="login-brand">
+                  <img src={logoSrc} alt="MediLab Nexus logo" />
+                  <div>
+                    <strong>MediLab Nexus</strong>
+                    <span>Diagnostic Operations Portal</span>
+                    <small>Powered by OmniWeave Softwares</small>
+                  </div>
+                </div>
               <div>
                 <h2>Sign in</h2>
                 <p className="login-status">
@@ -13422,10 +13598,13 @@ export default function App() {
               <input
                 value={loginForm.username}
                 onChange={(event) =>
-                  setLoginForm((current) => ({
-                    ...current,
-                    username: event.target.value,
-                  }))
+                      {
+                        setLoginError("");
+                        setLoginForm((current) => ({
+                          ...current,
+                          username: event.target.value,
+                        }));
+                      }
                 }
                 placeholder="Username"
                 required
@@ -13439,10 +13618,13 @@ export default function App() {
                   inputMode="numeric"
                   value={loginForm.pin}
                   onChange={(event) =>
-                    setLoginForm((current) => ({
-                      ...current,
-                      pin: event.target.value,
-                    }))
+                      {
+                        setLoginError("");
+                        setLoginForm((current) => ({
+                          ...current,
+                          pin: event.target.value,
+                        }));
+                      }
                   }
                   placeholder="PIN"
                   required
@@ -13456,6 +13638,7 @@ export default function App() {
                 </button>
               </div>
                 </label>
+                {loginError ? <p className="login-error" role="alert">{loginError}</p> : null}
                 <div className="login-panel-meta">
                   <label className="inline-toggle">
                     <input type="checkbox" defaultChecked />
@@ -13477,7 +13660,7 @@ export default function App() {
                   type="submit"
                   className="primary-action full-width login-submit"
                 >
-                  Login
+                  Sign In
                 </button>
                 <button
                   type="button"
@@ -13655,6 +13838,13 @@ export default function App() {
 
       <div className={`workspace ${sidebarOpen ? "sidebar-visible" : ""}`}>
         <aside id="portal-sidebar" className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+          <div className="sidebar-brand">
+            <img src={logoSrc} alt="MediLab Nexus logo" />
+            <div>
+              <strong>MediLab Nexus</strong>
+              <span>Diagnostic Management System</span>
+            </div>
+          </div>
           <div className="sidebar-portal-card">
             <p className="eyebrow">{portalProfile?.label ?? "Workspace"}</p>
             <strong>{roleCopy[currentRole].title}</strong>
@@ -13678,7 +13868,7 @@ export default function App() {
               className="ghost-action small"
               onClick={handleLogout}
             >
-              Sign out
+              Logout
             </button>
           </div>
           <nav className="nav-list grouped" aria-label="Portal navigation">
