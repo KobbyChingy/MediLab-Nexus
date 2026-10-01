@@ -4211,6 +4211,22 @@ app.get("/api/workflow", async (request, reply) => {
       take: 6,
     }),
   ]);
+  const reportPrintEvents = reports.length
+    ? await prisma.auditLog.findMany({
+        where: {
+          action: "REPORT_PRINTED",
+          entityType: "Report",
+          entityId: { in: reports.map((report) => report.id) },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+  const printedAtByReportId = new Map<string, string>();
+  for (const event of reportPrintEvents) {
+    if (!printedAtByReportId.has(event.entityId)) {
+      printedAtByReportId.set(event.entityId, event.createdAt.toISOString());
+    }
+  }
 
   return {
     orders: orders.map((order) => ({
@@ -4259,6 +4275,7 @@ app.get("/api/workflow", async (request, reply) => {
       status: report.status,
       signedBy: report.signedBy,
       signedAt: report.signedAt?.toISOString() ?? null,
+      printedAt: printedAtByReportId.get(report.id) ?? null,
       pdfPath: report.pdfPath,
       criticalFlag: report.criticalFlag,
       createdAt: report.createdAt.toISOString(),
@@ -4328,6 +4345,168 @@ app.get("/api/workflow", async (request, reply) => {
     maintenance,
     notifications,
   } satisfies WorkflowPayload;
+});
+
+app.get("/api/workflow/by-date", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+
+  const { startDate, endDate } = request.query as {
+    startDate?: string;
+    endDate?: string;
+  };
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
+  const selectedStart = startDate?.trim() ?? "";
+  const selectedEnd = (endDate?.trim() || selectedStart);
+  if (!datePattern.test(selectedStart) || !datePattern.test(selectedEnd)) {
+    return reply.code(400).send({ message: "Select a valid start and end date." });
+  }
+
+  const dateRange = {
+    gte: new Date(`${selectedStart}T00:00:00.000Z`),
+    lte: new Date(`${selectedEnd}T23:59:59.999Z`),
+  };
+  if (
+    Number.isNaN(dateRange.gte.getTime()) ||
+    Number.isNaN(dateRange.lte.getTime()) ||
+    dateRange.gte > dateRange.lte
+  ) {
+    return reply.code(400).send({ message: "The selected date range is invalid." });
+  }
+
+  const orders = await prisma.diagnosticOrder.findMany({
+    where: {
+      createdAt: dateRange,
+      patient: { facilityId: request.actor.facilityId },
+    },
+    include: { patient: true, items: { include: { catalogItem: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  const orderIds = orders.map((order) => order.id);
+  const [samples, imaging, reports, payments] = await Promise.all([
+    prisma.sample.findMany({
+      where: {
+        createdAt: dateRange,
+        patient: { facilityId: request.actor.facilityId },
+      },
+      include: { patient: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.imagingStudy.findMany({
+      where: {
+        orderItem: {
+          order: { patient: { facilityId: request.actor.facilityId } },
+        },
+        OR: [
+          { scheduledAt: dateRange },
+          { scheduledAt: null, createdAt: dateRange },
+        ],
+      },
+      include: {
+        orderItem: {
+          include: { order: { include: { patient: true } }, catalogItem: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    orderIds.length
+      ? prisma.report.findMany({
+          where: { orderId: { in: orderIds } },
+          include: { patient: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    prisma.paymentRecord.findMany({
+      where: {
+        createdAt: dateRange,
+        invoice: { patient: { facilityId: request.actor.facilityId } },
+      },
+      include: { invoice: { include: { patient: true, order: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const printEvents = reports.length
+    ? await prisma.auditLog.findMany({
+        where: {
+          action: "REPORT_PRINTED",
+          entityType: "Report",
+          entityId: { in: reports.map((report) => report.id) },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+  const printedAtByReportId = new Map<string, string>();
+  for (const event of printEvents) {
+    if (!printedAtByReportId.has(event.entityId)) {
+      printedAtByReportId.set(event.entityId, event.createdAt.toISOString());
+    }
+  }
+
+  return {
+    orders: orders.map((order) => ({
+      id: order.id,
+      accessionNumber: order.accessionNumber,
+      status: order.status,
+      patientId: order.patientId,
+      patientTraceCode: order.patient.traceCode,
+      patientName: `${order.patient.firstName} ${order.patient.lastName}`,
+      payerType: order.payerType,
+      payerName: order.payerName,
+      payerCoveragePercent: order.payerCoveragePercent,
+      payerMemberId: order.payerMemberId,
+      payerAuthorizationCode: order.payerAuthorizationCode,
+      createdAt: order.createdAt.toISOString(),
+      items: order.items.map((item) => item.catalogItem.name),
+    })),
+    samples: samples.map(serializeSample),
+    imaging: imaging.map((study) => ({
+      id: study.id,
+      orderId: study.orderItem.orderId,
+      orderItemId: study.orderItemId,
+      patientId: study.orderItem.order.patientId,
+      patientTraceCode: study.orderItem.order.patient.traceCode,
+      patientName: `${study.orderItem.order.patient.firstName} ${study.orderItem.order.patient.lastName}`,
+      serviceName: study.orderItem.catalogItem.name,
+      modality: study.modality,
+      appointmentStatus: study.appointmentStatus,
+      scheduledAt: study.scheduledAt?.toISOString() ?? null,
+      sonographerName: study.sonographerName,
+      radiologistName: study.radiologistName,
+      priorStudyReference: study.priorStudyReference,
+      criticalFlag: study.criticalFlag,
+      createdAt: study.createdAt.toISOString(),
+    })),
+    reports: reports.map((report) => ({
+      id: report.id,
+      patientId: report.patientId,
+      orderId: report.orderId,
+      patientTraceCode: report.patient.traceCode,
+      patientName: `${report.patient.firstName} ${report.patient.lastName}`,
+      title: report.title,
+      status: report.status,
+      signedBy: report.signedBy,
+      signedAt: report.signedAt?.toISOString() ?? null,
+      printedAt: printedAtByReportId.get(report.id) ?? null,
+      pdfPath: report.pdfPath,
+      criticalFlag: report.criticalFlag,
+      createdAt: report.createdAt.toISOString(),
+    })),
+    payments: payments.map((payment) => ({
+      id: payment.id,
+      invoiceId: payment.invoiceId,
+      patientId: payment.invoice.patientId,
+      traceCode: payment.traceCode ?? payment.invoice.patient.traceCode,
+      accessionNumber: payment.invoice.order.accessionNumber,
+      amountCents: payment.amountCents,
+      method: payment.method,
+      responsibility: payment.responsibility,
+      reference: payment.reference,
+      receivedBy: payment.receivedBy,
+      notes: payment.notes,
+      createdAt: payment.createdAt.toISOString(),
+    })),
+  };
 });
 
 app.patch("/api/samples/:id", async (request, reply) => {
@@ -4781,6 +4960,36 @@ app.get(
     return renderPrintableReportHtml(prisma, id);
   },
 );
+
+app.post("/api/reports/:id/print-confirmation", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:view")) {
+    return deny(reply, "report:view");
+  }
+
+  const { id } = request.params as { id: string };
+  const report = await prisma.report.findUnique({
+    where: { id },
+    include: { patient: true },
+  });
+  if (!report || report.patient.facilityId !== request.actor.facilityId) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+
+  const printedAt = new Date();
+  await recordAudit(prisma, request.actor, {
+    action: "REPORT_PRINTED",
+    entityType: "Report",
+    entityId: report.id,
+    traceCode: report.patient.traceCode,
+    summary: `Report ${report.title} printed for ${report.patient.traceCode}`,
+    payload: { printedAt: printedAt.toISOString() },
+  });
+
+  return reply.send({ reportId: report.id, printedAt: printedAt.toISOString() });
+});
 
 app.get("/api/reports/:id/pdf", async (request, reply) => {
   if (!request.actor.authenticated) {

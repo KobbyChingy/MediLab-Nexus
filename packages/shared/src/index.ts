@@ -1570,6 +1570,7 @@ export type WorkflowPayload = {
     status: (typeof reportStatuses)[number];
     signedBy: string | null;
     signedAt: string | null;
+    printedAt: string | null;
     pdfPath: string | null;
     criticalFlag: boolean;
     createdAt: string;

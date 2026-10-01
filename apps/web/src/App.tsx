@@ -6,7 +6,6 @@ import {
   type AdminUserInput,
   type AdminUserSummaryPayload,
   type AuthSessionPayload,
-  analyticsRangeKeys,
   claimStatuses,
   sampleStatuses,
   type BulkServiceImportMode,
@@ -82,6 +81,11 @@ type CustomDateRange = {
   startDate: string;
   endDate: string;
 };
+
+type SelectedDateWorkflowPayload = Pick<
+  WorkflowPayload,
+  "orders" | "samples" | "imaging" | "reports" | "payments"
+>;
 
 type UltrasoundReportAssistState = ReportTemplateAssistPayload;
 
@@ -533,13 +537,6 @@ const analyticsRangeLabels: Record<FinanceAnalyticsPayload["range"], string> = {
   ALL: "All time",
 };
 
-const analyticsQuickRangeKeys: Array<FinanceAnalyticsPayload["range"]> = [
-  "TODAY",
-  "YESTERDAY",
-  "7D",
-  "30D",
-];
-
 const reportTemplateLabels: Record<ReportInput["templateKind"], string> = {
   LAB_STANDARD: "Lab standard",
   ULTRASOUND_STANDARD: "Ultrasound general",
@@ -728,7 +725,7 @@ const navItems: Array<{ key: NavKey; label: string; short: string }> = [
   { key: "dashboard", label: "Dashboard", short: "DB" },
   { key: "patients", label: "Patients", short: "PT" },
   { key: "patientRecords", label: "Patient Records", short: "PR" },
-  { key: "sonography", label: "Sonography Worklist", short: "SG" },
+  { key: "sonography", label: "Lab Worklist", short: "LW" },
   { key: "labReports", label: "Lab Reports", short: "LR" },
   { key: "scanReports", label: "Scan Reports", short: "SR" },
   { key: "analytics", label: "Operations Report", short: "RP" },
@@ -1275,7 +1272,6 @@ function buildCurrentDateInputValue() {
   );
   return localDate.toISOString().slice(0, 10);
 }
-
 function formatCalendarDate(value: string) {
   if (!value) return "Select date";
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {
@@ -2885,14 +2881,22 @@ export default function App() {
     fallbackAdminOverview,
   );
   const [workflow, setWorkflow] = useState<WorkflowPayload>(emptyWorkflow);
+  const [selectedDateWorkflow, setSelectedDateWorkflow] =
+    useState<SelectedDateWorkflowPayload>({
+      orders: [],
+      samples: [],
+      imaging: [],
+      reports: [],
+      payments: [],
+    });
   const [financeAnalytics, setFinanceAnalytics] =
     useState<FinanceAnalyticsPayload>(fallbackFinanceAnalytics);
   const [analyticsRange, setAnalyticsRange] = useState<
     FinanceAnalyticsPayload["range"]
-  >(fallbackFinanceAnalytics.range);
-  const [analyticsCustomDateRange, setAnalyticsCustomDateRange] = useState({
-    startDate: "",
-    endDate: "",
+  >("CUSTOM");
+  const [analyticsCustomDateRange, setAnalyticsCustomDateRange] = useState(() => {
+    const today = buildCurrentDateInputValue();
+    return { startDate: today, endDate: today };
   });
   const [selectedAnalyticsStudy, setSelectedAnalyticsStudy] = useState("");
   const [analyticsStudyDepartmentFilter, setAnalyticsStudyDepartmentFilter] =
@@ -3680,6 +3684,37 @@ export default function App() {
     }
   }
 
+  async function loadSelectedDateWorkflow() {
+    if (!authSession) {
+      setSelectedDateWorkflow({
+        orders: [],
+        samples: [],
+        imaging: [],
+        reports: [],
+        payments: [],
+      });
+      return;
+    }
+
+    const { startDate, endDate: selectedEndDate } = dashboardDateRange;
+    const endDate = selectedEndDate || startDate;
+    const params = new URLSearchParams({ startDate, endDate });
+    try {
+      const payload = await requestJson<SelectedDateWorkflowPayload>(
+        `/workflow/by-date?${params.toString()}`,
+      );
+      setSelectedDateWorkflow(payload);
+    } catch {
+      setSelectedDateWorkflow({
+        orders: [],
+        samples: [],
+        imaging: [],
+        reports: [],
+        payments: [],
+      });
+    }
+  }
+
   async function loadAttendanceWorkspace() {
     if (!authSession || !allowedActions.includes("admin:view")) {
       setAttendanceWorkspace(buildEmptyAttendanceWorkspace(attendanceDate));
@@ -3701,10 +3736,12 @@ export default function App() {
   useEffect(() => {
     const handleWorkflowRefresh = () => {
       void loadOperationalData();
+      void loadSelectedDateWorkflow();
     };
     const handleStorageWorkflowRefresh = (event: StorageEvent) => {
       if (event.key === "medilab-workflow-refresh") {
         void loadOperationalData();
+        void loadSelectedDateWorkflow();
       }
     };
 
@@ -3715,7 +3752,11 @@ export default function App() {
       window.removeEventListener("medilab-workflow-refresh", handleWorkflowRefresh);
       window.removeEventListener("storage", handleStorageWorkflowRefresh);
     };
-  }, [authSession?.user.id]);
+  }, [
+    authSession?.user.id,
+    dashboardDateRange.startDate,
+    dashboardDateRange.endDate,
+  ]);
 
   useEffect(() => {
     void loadOperationalData();
@@ -3724,6 +3765,14 @@ export default function App() {
     analyticsRange,
     analyticsCustomDateRange.startDate,
     analyticsCustomDateRange.endDate,
+  ]);
+
+  useEffect(() => {
+    void loadSelectedDateWorkflow();
+  }, [
+    authSession?.user.id,
+    dashboardDateRange.startDate,
+    dashboardDateRange.endDate,
   ]);
 
   useEffect(() => {
@@ -4210,6 +4259,24 @@ export default function App() {
         }),
     [workflow.imaging],
   );
+  const waitingResultOrders = useMemo(
+    () =>
+      selectedDateWorkflow.orders
+        .filter((order) => order.status !== "CANCELLED")
+        .map((order) => ({
+          order,
+          report: selectedDateWorkflow.reports.find(
+            (report) => report.orderId === order.id,
+          ) ?? null,
+        }))
+        .filter(({ report }) => !report?.printedAt)
+        .sort(
+          (left, right) =>
+            new Date(right.order.createdAt).getTime() -
+            new Date(left.order.createdAt).getTime(),
+        ),
+    [selectedDateWorkflow.orders, selectedDateWorkflow.reports],
+  );
   const specimenBoard = useMemo(
     () => [
       {
@@ -4431,8 +4498,13 @@ export default function App() {
     [filteredOrders],
   );
   const recentCritical = useMemo(
-    () => adminOverview.aiFlags.filter((flag) => flag.severity === "high"),
-    [adminOverview.aiFlags],
+    () =>
+      selectedDateWorkflow.imaging
+        .filter((study) => study.criticalFlag)
+        .map((study) => ({
+          title: `${study.patientTraceCode} · ${study.serviceName}`,
+        })),
+    [selectedDateWorkflow.imaging],
   );
   const totalCents = useMemo(
     () =>
@@ -5003,6 +5075,7 @@ export default function App() {
       workflow.reports.filter(
         (report) =>
           report.status !== "IN_REVIEW" &&
+          !report.printedAt &&
           activeReportOrderIds.has(report.orderId),
       ),
     [activeReportOrderIds, workflow.reports],
@@ -5139,26 +5212,21 @@ export default function App() {
     [dashboardPortalItems, portalQuickActions],
   );
   const dashboardActivityItems = useMemo(() => {
-    const invoiceEvents = workflow.invoices.map((invoice) => ({
-      id: `invoice-${invoice.id}`,
-      label:
-        invoice.amountPaidCents > 0 ? "Payment recorded" : "Invoice opened",
-      meta: `${invoice.traceCode} · ${formatMoney(
-        invoice.amountPaidCents > 0
-          ? invoice.amountPaidCents
-          : invoice.totalDueCents,
-      )}`,
-      occurredAt: invoice.createdAt,
-      tone: invoice.balanceCents > 0 ? "warn" : "good",
+    const paymentEvents = selectedDateWorkflow.payments.map((payment) => ({
+      id: `payment-${payment.id}`,
+      label: "Payment recorded",
+      meta: `${payment.traceCode} · ${formatMoney(payment.amountCents)}`,
+      occurredAt: payment.createdAt,
+      tone: "good" as const,
     }));
-    const orderEvents = workflow.orders.map((order) => ({
+    const orderEvents = selectedDateWorkflow.orders.map((order) => ({
       id: `order-${order.id}`,
       label: "Order created",
       meta: `${order.patientTraceCode} · ${order.items[0] ?? "Request"}`,
       occurredAt: order.createdAt,
       tone: "neutral" as const,
     }));
-    const reportEvents = workflow.reports.map((report) => ({
+    const reportEvents = selectedDateWorkflow.reports.map((report) => ({
       id: `report-${report.id}`,
       label: report.signedAt ? "Report signed" : "Report drafted",
       meta: `${report.title} · ${report.signedBy ?? "Pending signature"}`,
@@ -5166,75 +5234,71 @@ export default function App() {
       tone: report.criticalFlag ? "critical" : "good",
     }));
 
-    const { startDate, endDate: selectedEndDate } = dashboardDateRange;
-    const endDate = selectedEndDate || startDate;
-
-    return [...invoiceEvents, ...orderEvents, ...reportEvents]
-      .filter((item) => {
-        const occurred = new Date(item.occurredAt);
-        const localDate = new Date(
-          occurred.getTime() - occurred.getTimezoneOffset() * 60 * 1000,
-        )
-          .toISOString()
-          .slice(0, 10);
-        return localDate >= startDate && localDate <= endDate;
-      })
+    return [...paymentEvents, ...orderEvents, ...reportEvents]
       .sort(
         (left, right) =>
           new Date(right.occurredAt).getTime() -
           new Date(left.occurredAt).getTime(),
       )
       .slice(0, 4);
-  }, [dashboardDateRange.endDate, dashboardDateRange.startDate, workflow.invoices, workflow.orders, workflow.reports]);
-  const dashboardCollectedCents = useMemo(
-    () =>
-      workflow.payments.reduce((sum, payment) => sum + payment.amountCents, 0),
-    [workflow.payments],
-  );
+  }, [selectedDateWorkflow.orders, selectedDateWorkflow.payments, selectedDateWorkflow.reports]);
+  const dashboardCollectedCents = financeAnalytics.summary.collectedCents;
+  const dashboardTransactionCount = selectedDateWorkflow.payments.length;
   const dashboardAveragePaymentCents =
-    workflow.payments.length > 0
-      ? Math.round(dashboardCollectedCents / workflow.payments.length)
+    dashboardTransactionCount > 0
+      ? Math.round(dashboardCollectedCents / dashboardTransactionCount)
       : 0;
   const dashboardPendingItems =
-    workflow.orders.length +
-    workflow.samples.length +
-    workflow.reports.filter((report) => !report.signedAt).length;
-  const dashboardLabPendingCount = useMemo(
-    () =>
-      workflow.samples.filter((sample) => sample.status === "PENDING").length,
-    [workflow.samples],
-  );
-  const dashboardLabBenchCount = useMemo(
-    () =>
-      workflow.samples.filter((sample) =>
-        ["COLLECTED", "RECEIVED", "PROCESSING"].includes(sample.status),
-      ).length,
-    [workflow.samples],
-  );
-  const dashboardImagingScheduledCount = useMemo(
-    () =>
-      workflow.imaging.filter((study) =>
-        ["SCHEDULED", "ARRIVED"].includes(study.appointmentStatus),
-      ).length,
-    [workflow.imaging],
-  );
-  const dashboardImagingActiveCount = useMemo(
-    () =>
-      workflow.imaging.filter((study) =>
-        ["SCANNING", "REPORTED"].includes(study.appointmentStatus),
-      ).length,
-    [workflow.imaging],
-  );
-  const dashboardReportsDraftCount = useMemo(
-    () =>
-      workflow.reports.filter((report) => report.status === "DRAFT").length,
-    [workflow.reports],
-  );
-  const dashboardReportsReviewCount = useMemo(
-    () =>
-      workflow.reports.filter((report) => report.status === "IN_REVIEW").length,
-    [workflow.reports],
-  );
+    selectedDateWorkflow.orders.length +
+    selectedDateWorkflow.samples.length +
+    selectedDateWorkflow.reports.filter((report) => !report.signedAt).length;
+  const dashboardLabPendingCount = selectedDateWorkflow.samples.filter(
+    (sample) => sample.status === "PENDING",
+  ).length;
+  const dashboardLabBenchCount = selectedDateWorkflow.samples.filter((sample) =>
+    ["COLLECTED", "RECEIVED", "PROCESSING"].includes(sample.status),
+  ).length;
+  const dashboardImagingScheduledCount = selectedDateWorkflow.imaging.filter(
+    (study) => ["SCHEDULED", "ARRIVED"].includes(study.appointmentStatus),
+  ).length;
+  const dashboardImagingActiveCount = selectedDateWorkflow.imaging.filter(
+    (study) => ["SCANNING", "REPORTED"].includes(study.appointmentStatus),
+  ).length;
+  const dashboardReportsDraftCount = selectedDateWorkflow.reports.filter(
+    (report) => report.status === "DRAFT",
+  ).length;
+  const dashboardReportsReviewCount = selectedDateWorkflow.reports.filter(
+    (report) => report.status === "IN_REVIEW",
+  ).length;
+  const dashboardReadyReportsCount = selectedDateWorkflow.reports.filter(
+    (report) => ["APPROVED", "RELEASED"].includes(report.status),
+  ).length;
+  const dashboardMetricValues: Record<string, string | number> = {
+    "Lab queue": selectedDateWorkflow.samples.length,
+    "Imaging queue": selectedDateWorkflow.imaging.length,
+    "Ready to report": dashboardReadyReportsCount,
+    "Open referrals": financeAnalytics.topReferrers.length,
+    "Today's scans": selectedDateWorkflow.imaging.length,
+    "Scanning now": selectedDateWorkflow.imaging.filter(
+      (study) => study.appointmentStatus === "SCANNING",
+    ).length,
+    "Critical alerts": selectedDateWorkflow.imaging.filter(
+      (study) => study.criticalFlag,
+    ).length,
+    Outstanding: formatMoney(financeAnalytics.summary.outstandingCents),
+    "Today's appointments": new Set(
+      selectedDateWorkflow.orders.map((order) => order.patientId),
+    ).size,
+    "Open diagnostics": selectedDateWorkflow.samples.length + selectedDateWorkflow.imaging.length,
+    "Recent patients": new Set(
+      selectedDateWorkflow.orders.map((order) => order.patientId),
+    ).size,
+  };
+  const dashboardMetricLabels: Record<string, string> = {
+    "Today's appointments": "Appointments in period",
+    "Today's scans": "Scans in period",
+    "Recent patients": "Patients in period",
+  };
 
   useEffect(() => {
     const firstVisibleNavItem = visibleNavItems[0];
@@ -5315,6 +5379,9 @@ export default function App() {
       setLoginError("");
       const today = buildCurrentDateInputValue();
       setDashboardDateRange({ startDate: today, endDate: today });
+      setAnalyticsRange("CUSTOM");
+      setAnalyticsCustomDateRange({ startDate: today, endDate: today });
+      setExpenseFilters((current) => ({ ...current, startDate: today, endDate: today }));
       setSetupStatus(null);
       setActiveNav(resolvePortalNavForRole(session.user.role));
       setStatusText(`Signed in as ${session.user.displayName}`);
@@ -5341,6 +5408,9 @@ export default function App() {
       setAuthSession(session);
       const today = buildCurrentDateInputValue();
       setDashboardDateRange({ startDate: today, endDate: today });
+      setAnalyticsRange("CUSTOM");
+      setAnalyticsCustomDateRange({ startDate: today, endDate: today });
+      setExpenseFilters((current) => ({ ...current, startDate: today, endDate: today }));
       setSetupStatus({
         requiresSetup: false,
         hasUsers: true,
@@ -5356,6 +5426,22 @@ export default function App() {
           : "Initial setup failed. Confirm the MediLab Nexus server is running.",
       );
     }
+  }
+
+  function handleSelectedDateRangeChange(range: CustomDateRange) {
+    const startDate = range.startDate || buildCurrentDateInputValue();
+    const selectedRange = {
+      startDate,
+      endDate: range.endDate || startDate,
+    };
+    setDashboardDateRange(selectedRange);
+    setAnalyticsCustomDateRange(selectedRange);
+    setAnalyticsRange("CUSTOM");
+    setExpenseFilters((current) => ({
+      ...current,
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+    }));
   }
 
   async function handleDeletePatient() {
@@ -6334,6 +6420,57 @@ export default function App() {
     setActiveNav("scanReports");
   }
 
+  function openReportDraftForOrder(orderId: string) {
+    const order = selectedDateWorkflow.orders.find((item) => item.id === orderId);
+    if (!order) {
+      setStatusText("This order is no longer in the selected date window.");
+      return;
+    }
+
+    const imagingStudy = selectedDateWorkflow.imaging.find(
+      (study) => study.orderId === order.id,
+    );
+    const scanServiceName =
+      imagingStudy?.serviceName ?? order.items.find(isSonographyServiceLabel);
+    const templateKind = scanServiceName
+      ? resolveUltrasoundTemplate(scanServiceName)
+      : "LAB_STANDARD";
+    const preset = scanServiceName
+      ? ultrasoundTemplatePresets[
+          resolveUltrasoundTemplate(scanServiceName)
+        ]
+      : null;
+
+    setSelectedPatientId(order.patientId);
+    setReportPatientQuery(`${order.patientTraceCode} · ${order.patientName}`);
+    setEditingReportId("");
+    setSelectedReportTemplateId("");
+    setReportTemplateName("");
+    setReportImagePathsText("");
+    setReportForm((current) => ({
+      ...current,
+      patientId: order.patientId,
+      orderId: order.id,
+      title: `${order.items[0] ?? (imagingStudy ? "Scan" : "Lab")} Report`,
+      medicalHistory: "",
+      summary: "",
+      findings: preset ? ensureRichTextHtml(preset.findingsStarter) : "",
+      impression: preset ? ensureRichTextHtml(preset.impressionStarter) : "",
+      signedBy: actorName,
+      status: "DRAFT",
+      templateKind,
+      criticalFlag: false,
+      imagePaths: [],
+    }));
+    setUltrasoundReportAssist({
+      ...defaultUltrasoundReportAssistState,
+      sonographerName: imagingStudy?.sonographerName ?? "",
+      technique: preset?.techniquePlaceholder ?? "",
+    });
+    setEchoWorksheet(buildDefaultEchoWorksheetState());
+    setActiveNav(scanServiceName ? "scanReports" : "labReports");
+  }
+
   function updateUltrasoundAssistField(
     field: keyof UltrasoundReportAssistState,
     value: string,
@@ -6443,6 +6580,26 @@ export default function App() {
       );
       if (writePreviewWindow(preview, printable.html)) {
         if (autoPrint) {
+          preview.addEventListener(
+            "afterprint",
+            () => {
+              void requestJson<{ reportId: string; printedAt: string }>(
+                `/reports/${reportId}/print-confirmation`,
+                { method: "POST", body: JSON.stringify({}) },
+              )
+                .then(async () => {
+                  await Promise.all([
+                    loadOperationalData(),
+                    loadSelectedDateWorkflow(),
+                  ]);
+                  setStatusText(`Printed ${printable.fileName}`);
+                })
+                .catch(() => {
+                  setStatusText("Print completed, but the worklist could not be updated. Refresh the page to retry.");
+                });
+            },
+            { once: true },
+          );
           triggerPreviewPrint(preview, 180);
           setStatusText(`Printing ${printable.fileName}`);
         } else {
@@ -7986,7 +8143,7 @@ export default function App() {
           <div className="dashboard-status-row">
             <CalendarRangePicker
               value={dashboardDateRange}
-              onChange={setDashboardDateRange}
+              onChange={handleSelectedDateRangeChange}
               defaultMode="single"
               label="Dashboard date"
             />
@@ -8004,42 +8161,44 @@ export default function App() {
         </div>
 
         <section className="dashboard-summary-grid">
-          {metrics.map((metric, index) => (
-            <article
-              key={metric.label}
-              className={`dashboard-stat-card accent-${(index % 4) + 1}`}
-            >
-              <div className="dashboard-stat-top">
-                <div>
-                  <span>{metric.label}</span>
-                  <strong>{metric.value}</strong>
+          {metrics.map((metric, index) => {
+            const selectedValue = dashboardMetricValues[metric.label] ?? metric.value;
+            return (
+              <article
+                key={metric.label}
+                className={`dashboard-stat-card accent-${(index % 4) + 1}`}
+              >
+                <div className="dashboard-stat-top">
+                  <div>
+                    <span>{dashboardMetricLabels[metric.label] ?? metric.label}</span>
+                    <strong>{selectedValue}</strong>
+                  </div>
+                  <div className="dashboard-stat-icon">
+                    {metric.label.slice(0, 2).toUpperCase()}
+                  </div>
                 </div>
-                <div className="dashboard-stat-icon">
-                  {metric.label.slice(0, 2).toUpperCase()}
-                </div>
-              </div>
-              <p>{metric.note}</p>
-            </article>
-          ))}
+                <p>{metric.note}</p>
+              </article>
+            );
+          })}
         </section>
 
         {(currentRole === "ADMIN" || currentRole === "MANAGER") && (
           <section className="dashboard-feature-grid">
             <article className="surface-card dashboard-revenue-card">
-              <span>Today&apos;s revenue</span>
+              <span>Revenue in selected period</span>
               <strong>
-                {formatMoney(adminOverview.finance.revenueTodayCents)}
+                {formatMoney(financeAnalytics.summary.grossBilledCents)}
               </strong>
               <p>
-                Outstanding balances:{" "}
-                {formatMoney(adminOverview.finance.outstandingCents)}
+                Outstanding balances: {formatMoney(financeAnalytics.summary.outstandingCents)}
               </p>
             </article>
             <article className="surface-card dashboard-performance-card">
               <div className="section-head compact-head">
                 <div>
                   <h3>Performance snapshot</h3>
-                  <p>Collections and workflow movement in the current workspace.</p>
+                  <p>Collections and workflow movement for the selected period.</p>
                 </div>
               </div>
               <div className="dashboard-performance-metrics">
@@ -8049,7 +8208,7 @@ export default function App() {
                 </div>
                 <div className="dashboard-performance-metric">
                   <span>Transactions</span>
-                  <strong>{workflow.payments.length}</strong>
+                  <strong>{dashboardTransactionCount}</strong>
                 </div>
                 <div className="dashboard-performance-metric">
                   <span>Avg. payment</span>
@@ -8072,7 +8231,7 @@ export default function App() {
                 <h3>Bench queue</h3>
               </div>
               <span className="dashboard-workstream-total">
-                {workflow.samples.length}
+                {selectedDateWorkflow.samples.length}
               </span>
             </div>
             <div className="dashboard-workstream-stats">
@@ -8104,7 +8263,7 @@ export default function App() {
                 <h3>Room flow</h3>
               </div>
               <span className="dashboard-workstream-total">
-                {workflow.imaging.length}
+                {selectedDateWorkflow.imaging.length}
               </span>
             </div>
             <div className="dashboard-workstream-stats">
@@ -8124,7 +8283,7 @@ export default function App() {
                 className="ghost-action small"
                 onClick={() => setActiveNav("sonography")}
               >
-                Open imaging worklist
+                Open lab worklist
               </button>
             ) : null}
           </article>
@@ -8136,7 +8295,7 @@ export default function App() {
                 <h3>Result release</h3>
               </div>
               <span className="dashboard-workstream-total">
-                {workflow.reports.length}
+                {selectedDateWorkflow.reports.length}
               </span>
             </div>
             <div className="dashboard-workstream-stats">
@@ -8253,26 +8412,26 @@ export default function App() {
             {[
               {
                 label: "Registrations",
-                count: bootstrap.metrics.patientsToday,
-                note: "Patients booked in today",
+                count: new Set(selectedDateWorkflow.orders.map((order) => order.patientId)).size,
+                note: "Patients booked in this period",
               },
               {
                 label: "Scheduled scans",
-                count: workflow.imaging.filter(
+                count: selectedDateWorkflow.imaging.filter(
                   (study) => study.appointmentStatus === "SCHEDULED",
                 ).length,
                 note: "Waiting for arrival",
               },
               {
                 label: "Scanning",
-                count: workflow.imaging.filter(
+                count: selectedDateWorkflow.imaging.filter(
                   (study) => study.appointmentStatus === "SCANNING",
                 ).length,
                 note: "On the sonography bench",
               },
               {
                 label: "Ready to report",
-                count: workflow.imaging.filter(
+                count: selectedDateWorkflow.imaging.filter(
                   (study) =>
                     study.appointmentStatus === "REPORTED" ||
                     study.appointmentStatus === "COMPLETED",
@@ -10054,88 +10213,76 @@ export default function App() {
       <article className="surface-card workspace-feature-card">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Imaging operations</p>
-            <h2>Imaging worklist</h2>
+            <p className="eyebrow">Diagnostic results</p>
+            <h2>Lab Worklist</h2>
             <p>
-              Scheduled ultrasound studies with slot time, assigned staff, and
-              direct reporting context for the diagnostic team.
+              Patients with orders in the selected date window remain here until their report is printed.
             </p>
           </div>
+          <CalendarRangePicker
+            value={dashboardDateRange}
+            onChange={handleSelectedDateRangeChange}
+            label="Worklist date range"
+          />
         </div>
         <div className="history-summary-grid sonography-summary-grid">
           <div className="summary-panel">
-            <span>Scheduled</span>
-            <strong>
-              {
-                sonographyStudies.filter(
-                  (study) => study.appointmentStatus === "SCHEDULED",
-                ).length
-              }
-            </strong>
-            <p className="muted-copy">Patients still expected today.</p>
+            <span>Waiting for report</span>
+            <strong>{waitingResultOrders.filter(({ report }) => !report).length}</strong>
+            <p className="muted-copy">Orders without a saved report.</p>
           </div>
           <div className="summary-panel">
-            <span>Scanning</span>
-            <strong>
-              {
-                sonographyStudies.filter(
-                  (study) => study.appointmentStatus === "SCANNING",
-                ).length
-              }
-            </strong>
-            <p className="muted-copy">Studies currently on the bench.</p>
+            <span>Saved, awaiting print</span>
+            <strong>{waitingResultOrders.filter(({ report }) => Boolean(report)).length}</strong>
+            <p className="muted-copy">Reports remain until printing is confirmed.</p>
           </div>
           <div className="summary-panel">
-            <span>Ready to report</span>
-            <strong>
-              {
-                sonographyStudies.filter(
-                  (study) =>
-                    study.appointmentStatus === "REPORTED" ||
-                    study.appointmentStatus === "COMPLETED",
-                ).length
-              }
-            </strong>
-            <p className="muted-copy">Scans ready for interpretation.</p>
+            <span>Orders in period</span>
+            <strong>{selectedDateWorkflow.orders.length}</strong>
+            <p className="muted-copy">All diagnostic services in the selected window.</p>
           </div>
         </div>
         <div className="list-stack">
-          {sonographyStudies.map((study) => (
-            <button
-              key={study.id}
-              type="button"
-              className={`imaging-row button-row ${
-                selectedImagingStudy?.id === study.id ? "selected-study" : ""
-              }`}
-              onClick={() => {
-                setSelectedImagingStudyId(study.id);
-                setSelectedPatientId(study.patientId);
-              }}
-            >
-              <div className="thumb-placeholder">IMG</div>
+          {waitingResultOrders.length === 0 ? (
+            <div className="chart-empty audit-log-empty-state">
+              No patients are waiting for results in the selected date range.
+            </div>
+          ) : null}
+          {waitingResultOrders.map(({ order, report }) => (
+            <div key={order.id} className="report-card-row">
               <div>
-                <strong>{study.patientTraceCode}</strong>
-                <span>{study.patientName}</span>
+                <strong>{order.patientTraceCode} · {order.patientName}</strong>
+                <span>{order.accessionNumber} · {order.items.join(", ")}</span>
                 <small>
-                  {study.serviceName}
-                  {study.scheduledAt
-                    ? ` · ${formatDate(study.scheduledAt)}`
-                    : " · No slot set"}
+                  {report ? `${report.title} · ${formatStatusLabel(report.status)}` : "Awaiting report"}
+                  {` · ${formatDate(order.createdAt)}`}
                 </small>
               </div>
-              <small
-                className={`status-pill tone-${getOrderTone(
-                  study.appointmentStatus === "REPORTED" ||
-                    study.appointmentStatus === "COMPLETED"
-                    ? "READY_FOR_REVIEW"
-                    : study.appointmentStatus === "SCANNING"
-                      ? "IN_PROGRESS"
-                      : "REGISTERED",
-                )}`}
-              >
-                {study.appointmentStatus}
-              </small>
-            </button>
+              <div className="inline-actions">
+                <small className={`status-pill tone-${getOrderTone(report?.status ?? "REGISTERED")}`}>
+                  {report ? formatStatusLabel(report.status) : "Waiting"}
+                </small>
+                {report ? (
+                  <>
+                    <button type="button" className="ghost-action small" onClick={() => handlePreviewReport(report.id)}>
+                      Preview
+                    </button>
+                    {canWriteReports ? (
+                      <button type="button" className="ghost-action small" onClick={() => void handleEditSavedReport(report.id)}>
+                        Edit
+                      </button>
+                    ) : null}
+                    <button type="button" className="primary-action small" onClick={() => handlePreviewReport(report.id, true)}>
+                      Print
+                    </button>
+                  </>
+                ) : canWriteReports ? (
+                  <button type="button" className="primary-action small" onClick={() => openReportDraftForOrder(order.id)}>
+                    Prepare report
+                  </button>
+                ) : null}
+              </div>
+            </div>
           ))}
         </div>
       </article>
@@ -11915,27 +12062,13 @@ export default function App() {
               Six core figures for revenue, profit, expenses, collections,
               payer cover, and referral obligations.
             </p>
-            <div className="inline-actions">
-              {analyticsQuickRangeKeys.map((rangeKey) => (
-                <button
-                  key={rangeKey}
-                  type="button"
-                  onClick={() => setAnalyticsRange(rangeKey)}
-                  disabled={analyticsRange === rangeKey}
-                >
-                  {analyticsRangeLabels[rangeKey]}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setAnalyticsRange("CUSTOM")}
-                disabled={analyticsRange === "CUSTOM"}
-              >
-                {analyticsRangeLabels.CUSTOM}
-              </button>
-            </div>
           </div>
           <div className="inline-actions">
+            <CalendarRangePicker
+              value={dashboardDateRange}
+              onChange={handleSelectedDateRangeChange}
+              label="Operations report date"
+            />
             <button type="button" onClick={handleDownloadAnalyticsCsv}>
               Export CSV
             </button>
@@ -11944,15 +12077,6 @@ export default function App() {
             </button>
           </div>
         </div>
-        {analyticsRange === "CUSTOM" ? (
-          <div className="inline-form-grid two-up">
-            <CalendarRangePicker
-              value={analyticsCustomDateRange}
-              onChange={setAnalyticsCustomDateRange}
-              label="Analytics date range"
-            />
-          </div>
-        ) : null}
         <p className="section-note">
           Range: {analyticsRangeSummaryLabel} · Generated{" "}
           {new Date(financeAnalytics.generatedAt).toLocaleString()}
@@ -12178,20 +12302,13 @@ export default function App() {
               Record day-to-day expenses like utilities, transport, consumables,
               or maintenance from one front-desk page.
             </p>
-            <div className="inline-actions">
-              {analyticsRangeKeys.map((rangeKey) => (
-                <button
-                  key={`expenses-range-${rangeKey}`}
-                  type="button"
-                  onClick={() => setAnalyticsRange(rangeKey)}
-                  disabled={analyticsRange === rangeKey}
-                >
-                  {analyticsRangeLabels[rangeKey]}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="inline-actions">
+            <CalendarRangePicker
+              value={dashboardDateRange}
+              onChange={handleSelectedDateRangeChange}
+              label="Expense report date"
+            />
             <button type="button" onClick={() => setActiveNav("analytics")}>
               Open operations report
             </button>
@@ -12212,7 +12329,7 @@ export default function App() {
           </div>
           <div className="metric-mini">
             <span>Range</span>
-            <strong>{analyticsRangeLabels[expenseWorkspace.range]}</strong>
+            <strong>{analyticsRangeSummaryLabel}</strong>
           </div>
           <div className="metric-mini">
             <span>Visible entries</span>
@@ -12261,14 +12378,8 @@ export default function App() {
             </select>
           </label>
           <CalendarRangePicker
-            value={{ startDate: expenseFilters.startDate, endDate: expenseFilters.endDate }}
-            onChange={(range) =>
-              setExpenseFilters((current) => ({
-                ...current,
-                startDate: range.startDate,
-                endDate: range.endDate,
-              }))
-            }
+            value={dashboardDateRange}
+            onChange={handleSelectedDateRangeChange}
             label="Expense date range"
           />
           <div className="inline-actions">
@@ -12277,8 +12388,8 @@ export default function App() {
               onClick={() =>
                 setExpenseFilters({
                   category: "ALL",
-                  startDate: "",
-                  endDate: "",
+                  startDate: dashboardDateRange.startDate,
+                  endDate: dashboardDateRange.endDate,
                 })
               }
             >
@@ -12548,14 +12659,33 @@ export default function App() {
           ) : null}
         </div>
         {serviceEditorOpen ? (
-          <div className="bordered-top">
+          <div
+            className="service-editor-overlay"
+            role="presentation"
+            onClick={resetServiceEditor}
+          >
+          <section
+            className="service-editor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="service-editor-title"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="section-head stacked-head">
               <div>
-                <h3>{selectedServiceId ? "Edit service or test" : "Add service or test"}</h3>
+                <h3 id="service-editor-title">{selectedServiceId ? "Edit service or test" : "Add service or test"}</h3>
                 <p>
                   Enter the code, type, pricing, and turnaround time, then save it to the live catalog.
                 </p>
               </div>
+              <button
+                type="button"
+                className="ghost-action small"
+                onClick={resetServiceEditor}
+                aria-label="Close service editor"
+              >
+                Close
+              </button>
             </div>
             <form className="form-grid" onSubmit={handleServiceSubmit}>
               <label>
@@ -12717,6 +12847,7 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </section>
           </div>
         ) : null}
         <div className="audit-log-toolbar">
