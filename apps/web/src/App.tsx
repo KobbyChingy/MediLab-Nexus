@@ -12304,11 +12304,6 @@ export default function App() {
             </p>
           </div>
           <div className="inline-actions">
-            <CalendarRangePicker
-              value={dashboardDateRange}
-              onChange={handleSelectedDateRangeChange}
-              label="Expense report date"
-            />
             <button type="button" onClick={() => setActiveNav("analytics")}>
               Open operations report
             </button>
