@@ -1,8 +1,8 @@
 import { prisma } from "../src/index.js";
-import { bootstrapRequestedServices } from "../../../scripts/bootstrap-requested-services.ts";
+import { bootstrapRequestedReportTemplates } from "../../../scripts/bootstrap-requested-services.ts";
 
 async function main() {
-  await bootstrapRequestedServices(prisma);
+  await bootstrapRequestedReportTemplates(prisma);
   console.log(
     "MediLab Nexus seed task completed without demo patient data.",
   );

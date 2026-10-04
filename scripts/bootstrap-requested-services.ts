@@ -869,6 +869,12 @@ export async function bootstrapRequestedServices(prisma: PrismaClient) {
   if (shouldBootstrapServices) {
     await upsertServices(prisma);
   }
+  await bootstrapRequestedReportTemplates(prisma);
+}
+
+export async function bootstrapRequestedReportTemplates(
+  prisma: PrismaClient,
+) {
   await upsertTemplates(prisma);
 }
 
