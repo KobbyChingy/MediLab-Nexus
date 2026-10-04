@@ -1,4 +1,5 @@
 import { PrismaClient, CatalogKind, Department, UserRole } from "@prisma/client";
+import { pathToFileURL } from "node:url";
 
 type RequestedService = {
   code: string;
@@ -863,23 +864,36 @@ async function upsertTemplates(prisma: PrismaClient) {
 }
 
 export async function bootstrapRequestedServices(prisma: PrismaClient) {
-  await upsertServices(prisma);
+  const shouldBootstrapServices =
+    process.env.MEDILAB_SKIP_SERVICE_BOOTSTRAP !== "true";
+  if (shouldBootstrapServices) {
+    await upsertServices(prisma);
+  }
   await upsertTemplates(prisma);
 }
 
 async function main() {
   const prisma = new PrismaClient();
-  await bootstrapRequestedServices(prisma);
-  console.log(
-    `Bootstrapped ${requestedServices.length} services and ${requestedTemplates.length} named templates.`,
-  );
-  await prisma.$disconnect();
+  try {
+    await bootstrapRequestedServices(prisma);
+    const bootstrappedServices =
+      process.env.MEDILAB_SKIP_SERVICE_BOOTSTRAP === "true"
+        ? 0
+        : requestedServices.length;
+    console.log(
+      `Bootstrapped ${bootstrappedServices} services and ${requestedTemplates.length} named templates.`,
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch(async (error) => {
-    const prisma = new PrismaClient();
+if (
+  process.argv[1] &&
+  pathToFileURL(process.argv[1]).href === import.meta.url
+) {
+  main().catch((error) => {
     console.error(error);
-    await prisma.$disconnect();
-    process.exit(1);
+    process.exitCode = 1;
   });
+}

@@ -1403,6 +1403,7 @@ export type BootstrapPayload = {
 
 export type Capability =
   | "patient:write"
+  | "patient:delete"
   | "report:view"
   | "order:write"
   | "report:write"
@@ -1490,6 +1491,7 @@ export const roleCapabilities: Record<
   ],
   ADMIN: [
     "patient:write",
+    "patient:delete",
     "order:write",
     "report:view",
     "report:write",
@@ -1522,6 +1524,13 @@ export type WorkflowPayload = {
     payerAuthorizationCode: string | null;
     createdAt: string;
     items: string[];
+    orderItems?: Array<{
+      id: string;
+      serviceName: string;
+      kind: "TEST" | "IMAGING";
+      status: string;
+      createdAt: string;
+    }>;
   }>;
   samples: Array<{
     id: string;

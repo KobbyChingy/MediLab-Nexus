@@ -12,6 +12,7 @@ coverage/
 dist-desktop/
 apps/api/storage/reports/
 apps/api/storage/backups/
+storage/backups/
 .tmp-*.txt
 .tmp-*.json
 desktop.ini

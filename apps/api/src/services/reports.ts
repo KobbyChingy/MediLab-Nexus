@@ -14,6 +14,11 @@ const storageRoot =
   process.env.MEDILAB_STORAGE_ROOT?.trim() ||
   path.resolve(process.cwd(), "storage");
 const reportsDir = path.join(storageRoot, "reports");
+const reportPrintSettings = Object.freeze({
+  headerSpace: 62,
+  footerSpace: 24,
+  sideMargin: 18,
+});
 const brandSvgMarkup = `<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bg" x1="18" y1="10" x2="104" y2="110" gradientUnits="userSpaceOnUse"><stop stop-color="#0F6BFF"/><stop offset="1" stop-color="#00C4B4"/></linearGradient><linearGradient id="rod" x1="44" y1="18" x2="82" y2="94" gradientUnits="userSpaceOnUse"><stop stop-color="#E7FBFF"/><stop offset="1" stop-color="#9ED7FF"/></linearGradient></defs><rect width="120" height="120" rx="28" fill="#0F172A"/><rect width="120" height="120" rx="28" fill="url(#bg)" fill-opacity="0.24"/><path d="M37 15C53 25 71 42 76 60C80 77 70 88 56 100" stroke="url(#bg)" stroke-width="8" stroke-linecap="round"/><path d="M83 15C67 25 49 42 44 60C40 77 50 88 64 100" stroke="#7CC6FF" stroke-width="8" stroke-linecap="round"/><path d="M45 30H75" stroke="url(#rod)" stroke-width="5" stroke-linecap="round"/><path d="M39 48H81" stroke="url(#rod)" stroke-width="5" stroke-linecap="round"/><path d="M39 70H81" stroke="url(#rod)" stroke-width="5" stroke-linecap="round"/><path d="M45 90H75" stroke="url(#rod)" stroke-width="5" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="#F8FFFF" fill-opacity="0.96"/><path d="M60 53V67" stroke="#0F6BFF" stroke-width="4" stroke-linecap="round"/><path d="M53 60H67" stroke="#0F6BFF" stroke-width="4" stroke-linecap="round"/></svg>`;
 const brandSvgDataUri = `data:image/svg+xml;utf8,${encodeURIComponent(brandSvgMarkup)}`;
 const developerCredit = "Software developed by OmniWeave Softwares.";
@@ -46,6 +51,10 @@ function escapeHtml(value: string) {
     .replace(/>/gu, "&gt;")
     .replace(/"/gu, "&quot;")
     .replace(/'/gu, "&#39;");
+}
+
+function escapeCssString(value: string) {
+  return `"${value.replace(/[\u0000-\u001f\u007f"\\<]/gu, (character) => `\\${character.charCodeAt(0).toString(16)} `)}"`;
 }
 
 function formatStatusLabel(value: string) {
@@ -131,6 +140,8 @@ function renderRichText(value: string) {
 function htmlToText(value: string) {
   return value
     .replace(/<br\s*\/?>/giu, "\n")
+    .replace(/<\/t[dh]>/giu, " | ")
+    .replace(/<\/tr>/giu, "\n")
     .replace(/<\/p>|<\/div>|<\/li>|<\/h[1-6]>/giu, "\n")
     .replace(/<[^>]+>/gu, " ")
     .replace(/&nbsp;/gu, " ")
@@ -140,8 +151,13 @@ function htmlToText(value: string) {
     .replace(/&quot;/gu, '"')
     .replace(/&#39;/gu, "'")
     .replace(/\n{3,}/gu, "\n\n")
+    .replace(/[ \t]*\|[ \t]*\n/gu, "\n")
     .replace(/[ \t]+/gu, " ")
     .trim();
+}
+
+function narrativeIsHtml(value: string) {
+  return /<\/?[a-z][^>]*>/iu.test(value);
 }
 
 function renderEchoWorksheetMarkup(value: string) {
@@ -267,8 +283,13 @@ function calculateAge(
   return `${Math.max(age, 0)} years`;
 }
 
-function formatReportDate(value: Date) {
-  return value.toLocaleDateString();
+function formatReportPrintDate(value: Date) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(value);
 }
 
 function isEchoWorksheetReport(report: {
@@ -283,95 +304,51 @@ function isEchoWorksheetReport(report: {
   );
 }
 
-function getPdfImageBuffer(dataUrl: string) {
-  const match = dataUrl.match(/^data:(image\/(?:png|jpeg|jpg));base64,(.+)$/u);
-  if (!match) {
-    return null;
-  }
-
-  const encodedImage = match[2];
-  if (!encodedImage) {
-    return null;
-  }
-
-  try {
-    return Buffer.from(encodedImage, "base64");
-  } catch {
-    return null;
-  }
-}
-
-function drawPdfBrand(doc: PDFKit.PDFDocument, facility: FacilityProfile) {
-  const logoBuffer = getPdfImageBuffer(facility.logoDataUrl);
-  if (logoBuffer) {
-    doc.save();
-    try {
-      doc.roundedRect(40, 30, 48, 48, 14).fillOpacity(0.08).fill("#0F6BFF");
-      doc.image(logoBuffer, 44, 34, { fit: [40, 40], align: "center" });
-      return;
-    } catch {
-      // Fall back to the built-in mark when the uploaded image format is unsupported.
-    } finally {
-      doc.restore();
-    }
-  }
-
-  doc.save();
-  doc.roundedRect(42, 32, 42, 42, 12).fillOpacity(1).fill("#0F172A");
-  doc
-    .moveTo(54, 42)
-    .lineTo(71, 64)
-    .strokeOpacity(0.95)
-    .lineWidth(3)
-    .stroke("#6DB7FF");
-  doc
-    .moveTo(72, 42)
-    .lineTo(55, 64)
-    .strokeOpacity(0.95)
-    .lineWidth(3)
-    .stroke("#00C4B4");
-  doc
-    .moveTo(56, 48)
-    .lineTo(70, 48)
-    .strokeOpacity(0.95)
-    .lineWidth(2)
-    .stroke("#E7FBFF");
-  doc
-    .moveTo(53, 58)
-    .lineTo(73, 58)
-    .strokeOpacity(0.95)
-    .lineWidth(2)
-    .stroke("#E7FBFF");
-  doc
-    .fontSize(8)
-    .fillColor("#F8FBFF")
-    .text("MN", 50, 68, { width: 26, align: "center" });
-  doc.restore();
-}
-
 async function buildReportBundle(prisma: PrismaClient, reportId: string) {
-  const report = await prisma.report.findUniqueOrThrow({
-    where: { id: reportId },
-    include: {
-      patient: true,
-      order: {
-        include: {
-          items: {
-            include: {
-              catalogItem: true,
+  const [report, latestSignedVersion] = await Promise.all([
+    prisma.report.findUniqueOrThrow({
+      where: { id: reportId },
+      include: {
+        patient: true,
+        order: {
+          include: {
+            items: {
+              include: {
+                catalogItem: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.reportVersion.findFirst({
+      where: { reportId, signedAt: { not: null } },
+      orderBy: { versionNumber: "desc" },
+    }),
+  ]);
   const facility = await resolveFacilityProfile(prisma, report.patient.facilityId);
+  const printableReport = latestSignedVersion
+    ? {
+        ...report,
+        title: latestSignedVersion.title,
+        medicalHistory: latestSignedVersion.medicalHistory,
+        summary: latestSignedVersion.summary,
+        findings: latestSignedVersion.findings,
+        impression: latestSignedVersion.impression,
+        status: latestSignedVersion.status,
+        signedBy: latestSignedVersion.signedBy,
+        signedAt: latestSignedVersion.signedAt,
+        createdAt: latestSignedVersion.createdAt,
+        pdfPath: null,
+      }
+    : report;
 
   const imagePaths = JSON.parse(report.imagePathsJson) as string[];
   const fileStem = [
     report.patient.traceCode,
-    sanitizeFilePart(report.title),
+    sanitizeFilePart(printableReport.title),
     report.id.slice(-6),
+    `v${latestSignedVersion?.versionNumber ?? "print-v2"}`,
   ]
     .filter(Boolean)
     .join("-");
@@ -379,14 +356,29 @@ async function buildReportBundle(prisma: PrismaClient, reportId: string) {
 
   return {
     facility,
-    report,
+    report: printableReport,
     imagePaths,
     fileName,
     filePath: path.join(reportsDir, fileName),
   };
 }
 
-async function buildDraftReportBundle(prisma: PrismaClient, payload: ReportInput) {
+type PrintableReportDraftInput = Pick<
+  ReportInput,
+  | "patientId"
+  | "orderId"
+  | "title"
+  | "medicalHistory"
+  | "findings"
+  | "impression"
+  | "signedBy"
+  | "imagePaths"
+>;
+
+async function buildDraftReportBundle(
+  prisma: PrismaClient,
+  payload: PrintableReportDraftInput,
+) {
   const patient = await prisma.patient.findUniqueOrThrow({
     where: { id: payload.patientId },
   });
@@ -437,11 +429,13 @@ function composePrintableReportHtml(bundle: {
     findings: string;
     impression: string;
     signedBy: string | null;
+    signedAt?: Date | null;
     createdAt: Date;
     pdfPath?: string | null;
     patient: {
       traceCode: string;
       firstName: string;
+      middleName?: string | null;
       lastName: string;
       gender: string | null;
       dateOfBirth: Date | null;
@@ -450,6 +444,7 @@ function composePrintableReportHtml(bundle: {
     order: {
       accessionNumber: string;
       items: Array<{
+        catalogNameSnapshot?: string | null;
         catalogItem: {
           name: string;
         };
@@ -459,34 +454,42 @@ function composePrintableReportHtml(bundle: {
   imagePaths: string[];
   fileName: string;
 }) {
-  const { facility, report, imagePaths, fileName } = bundle;
-  const patientName = `${report.patient.firstName} ${report.patient.lastName}`;
+  const { facility, report, fileName } = bundle;
+  const patientName = `${report.patient.firstName} ${report.patient.middleName ?? ""} ${report.patient.lastName}`
+    .replace(/\s+/gu, " ")
+    .trim();
   const patientGender = report.patient.gender?.trim() || "Not recorded";
-  const patientLocation = report.patient.location?.trim() || "Not recorded";
   const patientAge = calculateAge(report.patient.dateOfBirth, report.createdAt);
   const orderedItems =
-    report.order.items.map((item) => item.catalogItem.name).join(", ") ||
+    report.order.items
+      .map((item) => item.catalogNameSnapshot || item.catalogItem.name)
+      .join(", ") ||
     report.title;
-  const reportDate = formatReportDate(report.createdAt);
+  const reportDate = formatReportPrintDate(report.createdAt);
   const history = report.medicalHistory?.trim() || "Not provided.";
   const description = report.findings.trim();
   const impression = report.impression.trim();
-  const reportedBy = report.signedBy?.trim() || "Pending sign-off";
+  const reportedBy = report.signedBy?.trim() || "";
+  const reportTypeLabel = isEchoWorksheetReport(report)
+    ? "ECHOCARDIOGRAPHY REPORT"
+    : /ultrasound|sonography|scan|echo/iu.test(`${report.title} ${orderedItems}`)
+      ? "SCAN REPORT"
+      : "LAB REPORT";
   const facilityWatermarkSrc = getFacilityWatermarkSrc(facility);
   const standardReportNarrativeHtml =
-    history !== "Not provided." || impression
+    history !== "Not provided."
       ? [
-          history !== "Not provided."
-            ? `<div class="report-label"><strong>History</strong></div><div class="body-copy history-copy">${renderRichText(history)}</div>`
-            : "",
+          `<div class="report-label"><strong>History</strong></div><div class="body-copy history-copy">${renderRichText(history)}</div>`,
           description
-            ? `<div class="report-label" style="margin-top:${history !== "Not provided." ? "12px" : "0"}"><strong>Findings</strong></div><div class="body-copy findings-copy">${renderRichText(description)}</div>`
-            : "",
-          impression
-            ? `<div class="report-label" style="margin-top:${history !== "Not provided." || description ? "12px" : "0"}"><strong>Impression</strong></div><div class="body-copy impression-copy">${renderRichText(impression)}</div>`
+            ? `<div class="report-label" style="margin-top:12px"><strong>Findings</strong></div><div class="body-copy findings-copy">${renderRichText(description)}</div>`
             : "",
         ].join("")
       : `<div class="body-copy">${renderRichText(description)}</div>`;
+  const showReportedBy = Boolean(report.signedAt && reportedBy);
+  const finalReportBlock =
+    impression || showReportedBy
+      ? `<div class="final-report-block">${impression ? `<div class="report-label"><strong>Impression</strong></div><div class="body-copy impression-copy">${renderRichText(impression)}</div>` : ""}${showReportedBy ? `<div class="reported-by"><strong>${escapeHtml(reportedBy)}</strong><span>Reported by</span><span>${escapeHtml(reportDate)}</span></div>` : ""}</div>`
+      : "";
 
   if (isEchoWorksheetReport(report)) {
     const html = `<!doctype html>
@@ -504,11 +507,14 @@ function composePrintableReportHtml(bundle: {
         background: #efefed;
       }
       * { box-sizing: border-box; }
-      body { margin: 0; padding: 18px; background: #efefed; }
+      @page { size: A4 portrait; margin: 0; }
+      body { margin: 0; padding: 18px; background: #f8fafc; color: #111; font: 11pt Georgia, "Times New Roman", serif; }
       .workspace { max-width: 940px; margin: 0 auto; display: grid; gap: 14px; }
       .actions { display: flex; justify-content: flex-end; }
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f2937; background: #ffffff; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08); cursor: pointer; }
-      .echo-sheet { background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+      .print-toolbar { display: flex; justify-content: flex-end; gap: 8px; font: 13px Inter, system-ui, sans-serif; }
+      .print-toolbar button { min-height: 36px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; cursor: pointer; }
+      .echo-sheet { display: flex; flex-direction: column; min-height: 297mm; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
       .echo-header { padding: 16px 20px 10px; border-bottom: 2px solid #16a34a; }
       .letterhead { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
       .letterhead img { width: 64px; height: 64px; object-fit: contain; }
@@ -517,12 +523,17 @@ function composePrintableReportHtml(bundle: {
       .facility-name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
       .facility-meta { font-size: 13px; line-height: 1.5; }
       .report-title { margin-top: 8px; font-size: 16pt; font-weight: 700; text-transform: uppercase; }
-      .patient-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; margin: 12px 20px; padding: 12px; border-radius: 8px; background: #f3f4f6; font-size: 11pt; }
+      .patient-details { display: grid; gap: 1mm; margin: 4mm 0; padding: 0 0 3mm; border-bottom: 0.5pt solid #111; font-size: 10.5pt; }
+      .patient-detail-line { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 3mm; }
+      .patient-detail { display: flex; gap: 1.5mm; min-width: 0; }
+      .patient-detail strong { flex: 0 0 auto; font-size: 9pt; text-transform: uppercase; }
+      .patient-detail span { min-width: 0; overflow-wrap: anywhere; }
+      .report-title-print { margin: 0 0 4mm; text-align: center; font-size: 13pt; font-weight: 700; text-transform: uppercase; }
       .echo-paper .echo-print-content { padding: 18px 20px 20px; }
       .echo-section { padding: 16px 20px 18px; border-top: 1px solid #d1d5db; }
       .echo-footer { background: #fff; border: 1px solid #1f2937; padding: 16px 20px 18px; display: grid; gap: 12px; }
       .echo-watermark-wrap { position: relative; }
-      .echo-watermark { position: absolute; right: 22px; top: 170px; width: 180px; opacity: 0.05; pointer-events: none; }
+      .echo-watermark { display: none; }
       .echo-footer h3 { margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
       .echo-section h3 { color: #15803d; font-size: 10pt; text-transform: uppercase; }
       .echo-footer .body-copy { font-size: 15px; line-height: 1.65; }
@@ -534,22 +545,72 @@ function composePrintableReportHtml(bundle: {
       .signoff-line { border-top: 1px solid #1f1f1f; padding-top: 6px; font-size: 14px; }
       .signoff-role { margin-top: 4px; font-size: 12px; text-transform: uppercase; color: #4b5563; }
       .facility-note { font-size: 12px; color: #4b5563; text-align: center; }
+      .reported-by { display: flex; flex-direction: column; margin-top: auto; padding-top: 8mm; break-inside: avoid; page-break-inside: avoid; }
+      .reported-by strong { font-size: 11pt; }
+      .reported-by span { font-size: 9.5pt; }
+      .final-report-block { display: flex; flex: 1; flex-direction: column; break-inside: avoid; page-break-inside: avoid; }
+      .print-test-sheet { display: none; }
+      .print-test-mark { position: absolute; width: 5mm; height: 5mm; border-color: #111; border-style: solid; }
+      .print-test-mark.top-left { top: -2.5mm; left: -2.5mm; border-width: 0.5pt 0 0 0.5pt; }
+      .print-test-mark.top-right { top: -2.5mm; right: -2.5mm; border-width: 0.5pt 0.5pt 0 0; }
+      .print-test-mark.bottom-left { bottom: -2.5mm; left: -2.5mm; border-width: 0 0 0.5pt 0.5pt; }
+      .print-test-mark.bottom-right { right: -2.5mm; bottom: -2.5mm; border-width: 0 0.5pt 0.5pt 0; }
       @media (max-width: 720px) {
         .signoff { grid-template-columns: 1fr; }
       }
       @media print {
-        @page { size: A4 portrait; margin: 15mm; }
-        body { padding: 0; background: #fff; }
-        .workspace { max-width: none; }
-        .print-button { display: none; }
-        .echo-sheet, .echo-footer { box-shadow: none; }
-        .echo-sheet { border: 0; }
-        .echo-section, .echo-footer, .patient-details, tr { break-inside: avoid; page-break-inside: avoid; }
-        .page-count::after { content: "Page " counter(page) " of " counter(pages); }
+        body { padding: 0; background: #fff; color: #111; font: 11pt Georgia, "Times New Roman", serif; }
+        .print-toolbar { display: none; }
+        .workspace { display: block; max-width: none; }
+        .actions { display: none; }
+        .echo-sheet { min-height: 297mm; padding: ${reportPrintSettings.headerSpace}mm ${reportPrintSettings.sideMargin}mm ${reportPrintSettings.footerSpace}mm; border: 0; box-shadow: none; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+        body[data-print-mode="letterhead"] .echo-sheet { padding: 12mm ${reportPrintSettings.sideMargin}mm; }
+        body[data-print-mode="preprinted"] .echo-header,
+        body[data-print-mode="preprinted"] .echo-footer { display: none !important; }
+        .echo-section, .patient-details, tr { break-inside: avoid; page-break-inside: avoid; }
+        .echo-print-content .body-copy { color: #111; font-size: 11pt; line-height: 1.5; }
+        .echo-print-content .body-copy table { width: 100%; border-collapse: collapse; }
+        .echo-print-content .body-copy th,
+        .echo-print-content .body-copy td { border: 0 !important; border-bottom: 0.5pt solid #111 !important; padding: 2mm 1.5mm; text-align: left; vertical-align: top; }
+        .echo-section h3 { color: #111; }
+        .echo-section, .echo-footer { border: 0; background: #fff; padding: 0; }
+        .echo-print-content .body-copy table, .echo-print-content .body-copy tr { break-inside: avoid; page-break-inside: avoid; }
+        .echo-paper .echo-print-content { padding: 0; }
+        body[data-print-mode="preprinted"] * { color: #111 !important; background-color: transparent !important; background-image: none !important; box-shadow: none !important; }
+        body[data-print-mode="preprinted"] { background: #fff !important; }
+        body[data-print-mode="preprinted"] .echo-sheet,
+        body[data-print-mode="preprinted"] .echo-section { background: #fff !important; }
+        body[data-print-mode="preprinted"] img { display: none !important; }
+        body[data-print-mode="test"] .workspace { display: none; }
+        body[data-print-mode="test"] .print-test-sheet { display: block; position: relative; width: 210mm; height: 297mm; }
+        body[data-print-mode="test"] .print-test-body { position: absolute; top: ${reportPrintSettings.headerSpace}mm; right: ${reportPrintSettings.sideMargin}mm; bottom: ${reportPrintSettings.footerSpace}mm; left: ${reportPrintSettings.sideMargin}mm; border: 0.5pt solid #111; }
       }
     </style>
+    <style id="continuation-page-style">
+      @page {
+        @top-left {
+          content: ${escapeCssString(`${patientName} - ${report.patient.traceCode}`)};
+          margin-top: ${reportPrintSettings.headerSpace}mm;
+          margin-left: ${reportPrintSettings.sideMargin}mm;
+          font: 8pt Georgia, "Times New Roman", serif;
+        }
+      }
+      @page :first { @top-left { content: none; } }
+    </style>
+    <script>
+      function setReportPrintMode(mode) {
+        document.body.dataset.printMode = mode;
+        document.getElementById("continuation-page-style").disabled = mode !== "preprinted";
+        window.print();
+      }
+    </script>
   </head>
-  <body>
+  <body data-print-mode="preprinted">
+    <div class="print-toolbar">
+      <button type="button" onclick="setReportPrintMode('preprinted')">Print pre-printed letterhead</button>
+      <button type="button" onclick="setReportPrintMode('letterhead')">Print with letterhead</button>
+      <button type="button" onclick="setReportPrintMode('test')">Print test sheet</button>
+    </div>
     <div class="workspace">
       <div class="actions">
         <button class="print-button" type="button" onclick="window.print()">Print report</button>
@@ -561,42 +622,32 @@ function composePrintableReportHtml(bundle: {
             ${facility.showFacilityProfileOnPrint ? `<img src="${getFacilityLogoSrc(facility)}" alt="Facility logo" />` : ""}
             <div class="letterhead-copy">
               ${facility.showFacilityProfileOnPrint ? `<h1 class="facility-name">${escapeHtml(facility.name)}</h1>${facility.location ? `<p class="facility-meta">${escapeHtml(facility.location)}</p>` : ""}${facility.phone || facility.email ? `<p class="facility-meta">${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}` : ""}
-              <h2 class="report-title">${escapeHtml(report.title)}</h2>
             </div>
           </div>
         </header>
         <div class="patient-details">
-          <div><strong>Name:</strong> ${escapeHtml(patientName)}</div>
-          <div><strong>Age / sex:</strong> ${escapeHtml(patientAge)} / ${escapeHtml(patientGender)}</div>
-          <div><strong>Date:</strong> ${escapeHtml(reportDate)}</div>
-          <div><strong>Trace code:</strong> ${escapeHtml(report.patient.traceCode)}</div>
-          <div><strong>Accession:</strong> ${escapeHtml(report.order.accessionNumber)}</div>
+          <div class="patient-detail-line">
+            <div class="patient-detail"><strong>Name</strong><span>${escapeHtml(patientName)}</span></div>
+            <div class="patient-detail"><strong>Age</strong><span>${escapeHtml(patientAge)}</span></div>
+            <div class="patient-detail"><strong>Gender</strong><span>${escapeHtml(patientGender)}</span></div>
+          </div>
+          <div class="patient-detail-line">
+            <div class="patient-detail"><strong>Trace code</strong><span>${escapeHtml(report.patient.traceCode)}</span></div>
+            <div class="patient-detail"><strong>Date</strong><span>${escapeHtml(reportDate)}</span></div>
+            <div class="patient-detail"></div>
+          </div>
         </div>
-        <div class="echo-print-content">
-          <div class="body-copy">${renderEchoWorksheetMarkup(description)}</div>
-        </div>
-        ${(history && history !== "Not provided.") || impression || imagePaths.length ? `<section class="echo-section">` : ""}
-        ${(history && history !== "Not provided.") ? `<div><h3>Clinical History</h3><div class="body-copy">${renderRichText(history)}</div></div>` : ""}
-        ${impression ? `<div style="margin-top:${history && history !== "Not provided." ? "14px" : "0"}"><h3>Conclusion / Impression</h3><div class="body-copy">${renderRichText(impression)}</div></div>` : ""}
-        ${imagePaths.length ? `<div style="margin-top:${(history && history !== "Not provided.") || impression ? "14px" : "0"}"><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></div>` : ""}
-        ${(history && history !== "Not provided.") || impression || imagePaths.length ? `</section>` : ""}
+        <h1 class="report-title-print">${escapeHtml(reportTypeLabel)}</h1>
+        ${history !== "Not provided." ? `<section class="echo-section"><h3>HISTORY</h3><div class="body-copy">${renderRichText(history)}</div></section>` : ""}
+        <section class="echo-section"><h3>FINDINGS</h3><div class="echo-print-content"><div class="body-copy">${renderEchoWorksheetMarkup(description)}</div></div></section>
+        ${impression || showReportedBy ? `<div class="final-report-block">${impression ? `<section class="echo-section"><h3>IMPRESSION</h3><div class="body-copy">${renderRichText(impression)}</div></section>` : ""}${showReportedBy ? `<div class="reported-by"><strong>${escapeHtml(reportedBy)}</strong><span>Reported by</span><span>${escapeHtml(reportDate)}</span></div>` : ""}</div>` : ""}
       </article>
       <section class="echo-footer">
-        <div class="signoff">
-          <div class="signoff-block">
-            <div class="signoff-line">${escapeHtml(reportedBy)}</div>
-            <div class="signoff-role">Reported by</div>
-          </div>
-          <div class="signoff-block">
-            <div class="signoff-line">${escapeHtml(reportDate)}</div>
-            <div class="signoff-role">Date</div>
-          </div>
-        </div>
-        <div class="facility-note">${escapeHtml(facility.footerMessage || "Preserve the Patient Trace Code on all printed copies.")}</div>
+        <div class="facility-note">${escapeHtml(facility.footerMessage || "MED-ONE: Saving Lives Through Prevention")}</div>
         ${getFacilityContactLine(facility) ? `<div class="facility-note">${escapeHtml(getFacilityContactLine(facility))}</div>` : ""}
-        <div class="facility-note page-count"></div>
       </section>
     </div>
+    <div class="print-test-sheet" aria-hidden="true"><div class="print-test-body"><span class="print-test-mark top-left"></span><span class="print-test-mark top-right"></span><span class="print-test-mark bottom-left"></span><span class="print-test-mark bottom-right"></span></div></div>
   </body>
 </html>`;
 
@@ -619,9 +670,13 @@ function composePrintableReportHtml(bundle: {
       }
 
       * { box-sizing: border-box; }
-      @page { size: A4 portrait; margin: 15mm; }
-      body { margin: 0; padding: 18px; background: #f5f5f5; }
-      .sheet { max-width: 820px; margin: 0 auto; background: #fff; border: 1px solid #d7d7d7; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08); }
+      @page { size: A4 portrait; margin: 0; }
+      body { margin: 0; padding: 18px; background: #f8fafc; color: #111; font-family: Georgia, "Times New Roman", serif; }
+      .print-toolbar { display: flex; justify-content: flex-end; gap: 8px; max-width: 820px; margin: 0 auto 12px; font: 13px Inter, system-ui, sans-serif; }
+      .print-toolbar button { min-height: 36px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; cursor: pointer; }
+      .sheet-wrap { --header-space: ${reportPrintSettings.headerSpace}mm; --footer-space: ${reportPrintSettings.footerSpace}mm; --side-margin: ${reportPrintSettings.sideMargin}mm; position: relative; }
+      .print-page-area { max-width: 820px; margin: 0 auto; background: #fff; border: 1px solid #d7d7d7; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08); }
+      .sheet { display: flex; flex-direction: column; min-height: 297mm; padding: 16mm var(--side-margin) 12mm; background: #fff; }
       .hero, .meta, .section, .footer { padding: 14px 24px; }
       .hero { border-bottom: 1px solid #d7d7d7; }
       .brand-row { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
@@ -633,19 +688,20 @@ function composePrintableReportHtml(bundle: {
       .brand-copy p, .brand-copy h1, .brand-copy h2 { margin: 0; }
       .brand-copy p { font-size: var(--print-copy-size); }
       .brand-copy .facility-name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
-      .brand-copy h1 { font-size: 16pt; text-transform: uppercase; }
-      .brand-copy h2 { font-size: var(--print-copy-size); text-transform: uppercase; text-decoration: underline; margin-top: 6px; }
+      .brand-copy h1, .brand-copy h2 { display: none; }
       .print-button { border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 700; color: #1f1f1f; background: #f3f4f6; cursor: pointer; }
-      .meta { margin: 12px 24px; padding: 12px; border: 0; border-radius: 8px; background: #f3f4f6; }
-      .rule { margin-top: 10px; border-top: 2px solid #16a34a; }
-      .meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; }
-      .meta-line { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: baseline; }
-      .label { font-size: var(--print-copy-size); font-weight: 700; text-transform: uppercase; }
-      .value { font-size: var(--print-body-size); }
-      .section { border-bottom: 1px solid #ececec; font-size: var(--print-body-size); }
-      .section h3, .report-label { margin: 0 0 8px; color: #15803d; font-size: 10pt; font-weight: 700; text-transform: uppercase; }
+      .meta { margin: 0 0 4mm; padding: 0 0 3mm; border: 0; border-bottom: 0.5pt solid #111; background: transparent; }
+      .meta-grid { display: grid; gap: 1mm; }
+      .patient-detail-line { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; }
+      .patient-detail { display: flex; gap: 1.5mm; min-width: 0; font-size: 10.5pt; }
+      .patient-detail strong { flex: 0 0 auto; font-size: 9pt; text-transform: uppercase; }
+      .patient-detail span { min-width: 0; overflow-wrap: anywhere; }
+      .report-title-print { margin: 0 0 4mm; text-align: center; font-size: 13pt; font-weight: 700; text-transform: uppercase; }
+      .section { display: flex; flex: 1; flex-direction: column; padding: 0; border: 0; font-size: 11pt; }
+      .section > h3 { display: none; }
+      .section h3, .report-label { margin: 0 0 8px; color: #111; font-size: 11pt; font-weight: 700; text-transform: uppercase; }
       .body-copy { line-height: 1.5; white-space: normal; font-size: 11pt; }
-      .impression-copy { margin-top: 4px; padding: 10px 12px; border-left: 3px solid #16a34a; background: #f0fdf4; }
+      .impression-copy { margin-top: 4px; padding: 0; border: 0; background: transparent; }
       .body-copy h1, .body-copy h2, .body-copy h3 { margin: 0 0 0.75rem; line-height: 1.2; }
       .body-copy h1 { font-size: 1.8rem; }
       .body-copy h2 { font-size: 1.45rem; }
@@ -654,43 +710,89 @@ function composePrintableReportHtml(bundle: {
       .body-copy p:last-child { margin-bottom: 0; }
       .body-copy ul, .body-copy ol { margin: 0.5rem 0 0.8rem 1.2rem; }
       .body-copy mark { padding: 0.05rem 0.18rem; border-radius: 4px; }
-      .body-copy img { display: block; max-width: 100%; height: auto; margin: 0.85rem auto; border-radius: 10px; }
+      .body-copy img { display: none; }
       .body-copy table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
       .body-copy th, .body-copy td { border: 1px solid #cbd5e1; padding: 8px 10px; vertical-align: top; }
-      .body-copy th { background: #eff6ff; text-align: left; }
+      .body-copy th { background: transparent; text-align: left; }
       .body-copy .editor-page-break { margin: 1.2rem 0; border-top: 2px dashed #94a3b8; }
       .body-copy .editor-page-break::before { content: "Page break"; display: inline-block; margin-top: -0.7rem; padding: 0.12rem 0.5rem; background: #fff; color: #475569; font-size: 11px; font-weight: 700; }
-      .signoff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 22px 24px 16px; }
-      .signoff-block { min-height: 74px; display: flex; flex-direction: column; justify-content: flex-end; }
-      .signoff-line { border-top: 1px solid #1f1f1f; padding-top: 6px; font-size: 14px; }
-      .signoff-role { margin-top: 4px; font-size: 12px; text-transform: uppercase; color: #4b5563; }
+      .reported-by { display: flex; flex-direction: column; margin-top: auto; padding-top: 8mm; break-inside: avoid; page-break-inside: avoid; }
+      .reported-by strong { font-size: 11pt; }
+      .reported-by span { font-size: 9.5pt; }
+      .final-report-block { display: flex; flex: 1; flex-direction: column; break-inside: avoid; page-break-inside: avoid; }
       .footer { display: grid; gap: 6px; text-align: center; font-size: 13px; }
       .developer-credit { color: #6b7280; font-size: 12px; }
-      .watermark { position: absolute; right: 32px; top: 220px; width: 180px; opacity: 0.05; pointer-events: none; }
-      .sheet-wrap { position: relative; }
-      table, tr, .meta-line, .signoff-block { break-inside: avoid; page-break-inside: avoid; }
+      .watermark { display: none; }
+      table, tr { break-inside: avoid; page-break-inside: avoid; }
+      .print-test-sheet { display: none; }
+      .print-test-mark { position: absolute; width: 5mm; height: 5mm; border-color: #111; border-style: solid; }
+      .print-test-mark.top-left { top: -2.5mm; left: -2.5mm; border-width: 0.5pt 0 0 0.5pt; }
+      .print-test-mark.top-right { top: -2.5mm; right: -2.5mm; border-width: 0.5pt 0.5pt 0 0; }
+      .print-test-mark.bottom-left { bottom: -2.5mm; left: -2.5mm; border-width: 0 0 0.5pt 0.5pt; }
+      .print-test-mark.bottom-right { right: -2.5mm; bottom: -2.5mm; border-width: 0 0.5pt 0.5pt 0; }
       @media (max-width: 720px) {
         .brand-row, .brand-main { flex-direction: column; }
         .brand-actions { justify-items: start; }
         .meta-grid, .signoff { grid-template-columns: 1fr; }
       }
       @media print {
-        body { background: white; padding: 0; }
-        .sheet { width: 100%; max-width: none; min-height: 267mm; box-shadow: none; border: none; }
-        .hero, .meta, .section, .footer { padding-left: 0; padding-right: 0; }
-        .meta { padding: 12px; }
-        .print-button { display: none; }
-        .page-count::after { content: "Page " counter(page) " of " counter(pages); }
+        body { background: #fff; padding: 0; color: #111; font: 11pt Georgia, "Times New Roman", serif; }
+        .print-toolbar { display: none; }
+        .print-page-area { max-width: none; min-height: 297mm; margin: 0; border: 0; box-shadow: none; }
+        .sheet { width: auto; min-height: 297mm; padding: var(--header-space) var(--side-margin) var(--footer-space); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+        body[data-print-mode="letterhead"] .sheet { padding: 12mm var(--side-margin); }
+        body[data-print-mode="preprinted"] .letterhead-header,
+        body[data-print-mode="preprinted"] .letterhead-footer { display: none !important; }
+        body[data-print-mode="preprinted"] .sheet,
+        body[data-print-mode="preprinted"] .print-page-area { background: #fff !important; }
+        body[data-print-mode="preprinted"] * { color: #111 !important; background-color: transparent !important; background-image: none !important; box-shadow: none !important; }
+        body[data-print-mode="preprinted"] .sheet,
+        body[data-print-mode="preprinted"] .print-page-area { background: #fff !important; }
+        body[data-print-mode="preprinted"] img,
+        body[data-print-mode="preprinted"] svg { display: none !important; }
+        body[data-print-mode="test"] .print-page-area { display: none; }
+        body[data-print-mode="test"] .print-test-sheet { display: block; position: relative; width: 210mm; height: 297mm; background: #fff; }
+        body[data-print-mode="test"] .print-test-body { position: absolute; top: var(--header-space); right: var(--side-margin); bottom: var(--footer-space); left: var(--side-margin); border: 0.5pt solid #111; }
+        .letterhead-header, .letterhead-footer { break-inside: avoid; page-break-inside: avoid; }
+        .reported-by { margin-top: auto; }
+        .section h3, .report-label { color: #111 !important; }
+        .body-copy table { border-collapse: collapse !important; }
+        .body-copy th,
+        .body-copy td { border: 0 !important; border-bottom: 0.5pt solid #111 !important; padding: 2mm 1.5mm; text-align: left; vertical-align: top; background: transparent !important; }
         .body-copy .editor-page-break { break-before: page; page-break-before: always; border: 0; margin: 0; }
         .body-copy .editor-page-break::before { display: none; }
       }
     </style>
+    <style id="continuation-page-style">
+      @page {
+        @top-left {
+          content: ${escapeCssString(`${patientName} - ${report.patient.traceCode}`)};
+          margin-top: ${reportPrintSettings.headerSpace}mm;
+          margin-left: ${reportPrintSettings.sideMargin}mm;
+          font: 8pt Georgia, "Times New Roman", serif;
+        }
+      }
+      @page :first { @top-left { content: none; } }
+    </style>
+    <script>
+      function setReportPrintMode(mode) {
+        document.body.dataset.printMode = mode;
+        document.getElementById("continuation-page-style").disabled = mode !== "preprinted";
+        window.print();
+      }
+    </script>
   </head>
-  <body>
+  <body data-print-mode="preprinted">
+    <div class="print-toolbar">
+      <button type="button" onclick="setReportPrintMode('preprinted')">Print pre-printed letterhead</button>
+      <button type="button" onclick="setReportPrintMode('letterhead')">Print with letterhead</button>
+      <button type="button" onclick="setReportPrintMode('test')">Print test sheet</button>
+    </div>
     <div class="sheet-wrap">
     ${facilityWatermarkSrc ? `<img class="watermark" src="${facilityWatermarkSrc}" alt="" />` : ""}
+    <div class="print-page-area">
     <article class="sheet">
-      <header class="hero">
+      <header class="hero letterhead-header">
         <div class="brand-row">
           <div class="brand-main">
             <div class="brand-mark">
@@ -698,9 +800,7 @@ function composePrintableReportHtml(bundle: {
             </div>
             <div class="brand-copy">
               ${facility.showFacilityProfileOnPrint ? `<p class="facility-name">${escapeHtml(facility.name)}</p>${facility.location ? `<p>${escapeHtml(facility.location)}</p>` : ""}${facility.phone || facility.email ? `<p>${escapeHtml([facility.phone, facility.email].filter(Boolean).join(" / "))}</p>` : ""}` : ""}
-              <h1>${escapeHtml(report.title)}</h1>
-              <h2>${escapeHtml(orderedItems)}</h2>
-              <div class="rule"></div>
+              <p>${escapeHtml(orderedItems)}</p>
             </div>
           </div>
           <div class="brand-actions">
@@ -709,35 +809,28 @@ function composePrintableReportHtml(bundle: {
         </div>
       </header>
       <section class="meta">
-        <div class="meta-grid">
-          <div class="meta-line"><div class="label">Name:</div><div class="value">${escapeHtml(patientName)}</div></div>
-          <div class="meta-line"><div class="label">Age:</div><div class="value">${escapeHtml(patientAge)}</div></div>
-          <div class="meta-line"><div class="label">Date:</div><div class="value">${escapeHtml(reportDate)}</div></div>
-          <div class="meta-line"><div class="label">Gender:</div><div class="value">${escapeHtml(patientGender)}</div></div>
-          <div class="meta-line"><div class="label">Location:</div><div class="value">${escapeHtml(patientLocation)}</div></div>
-          <div class="meta-line"><div class="label">Trace Code:</div><div class="value">${escapeHtml(report.patient.traceCode)}</div></div>
-          <div class="meta-line"><div class="label">Accession:</div><div class="value">${escapeHtml(report.order.accessionNumber)}</div></div>
+        <div class="meta-grid patient-details-print">
+          <div class="patient-detail-line">
+            <div class="patient-detail"><strong>Name</strong><span>${escapeHtml(patientName)}</span></div>
+            <div class="patient-detail"><strong>Age</strong><span>${escapeHtml(patientAge)}</span></div>
+            <div class="patient-detail"><strong>Gender</strong><span>${escapeHtml(patientGender)}</span></div>
+          </div>
+          <div class="patient-detail-line">
+            <div class="patient-detail"><strong>Trace code</strong><span>${escapeHtml(report.patient.traceCode)}</span></div>
+            <div class="patient-detail"><strong>Date</strong><span>${escapeHtml(reportDate)}</span></div>
+            <div class="patient-detail"></div>
+          </div>
         </div>
       </section>
-      <section class="section"><h3>Report</h3>${standardReportNarrativeHtml}</section>
-      ${imagePaths.length ? `<section class="section"><h3>Image References</h3><div class="body-copy">${imagePaths.map((item) => escapeHtml(item)).join("<br />")}</div></section>` : ""}
-      <section class="signoff">
-        <div class="signoff-block">
-          <div class="signoff-line">${escapeHtml(reportedBy)}</div>
-          <div class="signoff-role">Reported by</div>
-        </div>
-        <div class="signoff-block">
-          <div class="signoff-line">${escapeHtml(reportDate)}</div>
-          <div class="signoff-role">Date</div>
-        </div>
-      </section>
-      <footer class="footer">
+      <h1 class="report-title-print">${escapeHtml(reportTypeLabel)}</h1>
+      <section class="section report-content">${standardReportNarrativeHtml}${finalReportBlock}</section>
+    </article>
+      <footer class="footer letterhead-footer">
         <div>${escapeHtml(facility.footerMessage || "Preserve the Patient Trace Code on all printed copies.")}</div>
         ${getFacilityContactLine(facility) ? `<div>${escapeHtml(getFacilityContactLine(facility))}</div>` : ""}
-        <div class="page-count"></div>
-        <div class="developer-credit">${escapeHtml(getDeveloperCreditLine())}</div>
       </footer>
-    </article>
+    </div>
+    <div class="print-test-sheet" aria-hidden="true"><div class="print-test-body"><span class="print-test-mark top-left"></span><span class="print-test-mark top-right"></span><span class="print-test-mark bottom-left"></span><span class="print-test-mark bottom-right"></span></div></div>
     </div>
   </body>
 </html>`;
@@ -801,6 +894,7 @@ async function buildInvoiceBundle(prisma: PrismaClient, invoiceId: string) {
     where: { id: invoiceId },
     include: {
       patient: true,
+      lines: true,
       order: {
         include: {
           items: {
@@ -819,10 +913,10 @@ async function buildInvoiceBundle(prisma: PrismaClient, invoiceId: string) {
     facility,
     invoice,
     patientName: `${invoice.patient.firstName} ${invoice.patient.lastName}`,
-    orderedItems: invoice.order.items.map((item) => ({
-      id: item.id,
-      name: item.catalogItem.name,
-      priceCents: item.catalogItem.priceCents,
+    orderedItems: invoice.lines.map((line) => ({
+      id: line.id,
+      name: line.description,
+      priceCents: line.unitPriceCents,
     })),
     balanceCents: Math.max(0, invoice.amountDueCents - invoice.amountPaidCents),
     fileName: `${invoice.patient.traceCode}-invoice-${invoice.id.slice(-6)}.html`,
@@ -838,7 +932,7 @@ export async function renderPrintableReportHtml(
 
 export async function renderDraftPrintableReportHtml(
   prisma: PrismaClient,
-  payload: ReportInput,
+  payload: PrintableReportDraftInput,
 ) {
   return composePrintableReportHtml(await buildDraftReportBundle(prisma, payload));
 }
@@ -846,7 +940,10 @@ export async function renderDraftPrintableReportHtml(
 export async function ensureReportPdf(prisma: PrismaClient, reportId: string) {
   const bundle = await buildReportBundle(prisma, reportId);
 
-  if (bundle.report.pdfPath) {
+  if (
+    bundle.report.pdfPath &&
+    path.resolve(bundle.report.pdfPath) === path.resolve(bundle.filePath)
+  ) {
     try {
       await access(bundle.report.pdfPath);
       return bundle.report.pdfPath;
@@ -856,178 +953,193 @@ export async function ensureReportPdf(prisma: PrismaClient, reportId: string) {
   }
 
   await mkdir(reportsDir, { recursive: true });
-  const doc = new PDFDocument({ margin: 42, size: "A4" });
+  const mmToPoints = 72 / 25.4;
+  const margins = {
+    top: reportPrintSettings.headerSpace * mmToPoints,
+    bottom: reportPrintSettings.footerSpace * mmToPoints,
+    left: reportPrintSettings.sideMargin * mmToPoints,
+    right: reportPrintSettings.sideMargin * mmToPoints,
+  };
+  const doc = new PDFDocument({ size: "A4", margins });
   const stream = createWriteStream(bundle.filePath);
-  const patientName = `${bundle.report.patient.firstName} ${bundle.report.patient.lastName}`;
+  const patientName = `${bundle.report.patient.firstName} ${bundle.report.patient.middleName ?? ""} ${bundle.report.patient.lastName}`
+    .replace(/\s+/gu, " ")
+    .trim();
   const orderedItems =
-    bundle.report.order.items.map((item) => item.catalogItem.name).join(", ") ||
+    bundle.report.order.items
+      .map((item) => item.catalogNameSnapshot || item.catalogItem.name)
+      .join(", ") ||
     bundle.report.title;
   const patientGender = bundle.report.patient.gender?.trim() || "Not recorded";
-  const patientLocation =
-    bundle.report.patient.location?.trim() || "Not recorded";
   const patientAge = calculateAge(
     bundle.report.patient.dateOfBirth,
     bundle.report.createdAt,
   );
-  const reportDate = formatReportDate(bundle.report.createdAt);
-  const reportedBy = bundle.report.signedBy?.trim() || "Pending sign-off";
-  const narrativeLines = [
+  const reportDate = formatReportPrintDate(bundle.report.createdAt);
+  const reportedBy = bundle.report.signedAt
+    ? bundle.report.signedBy?.trim() || ""
+    : "";
+  const reportTypeLabel = isEchoWorksheetReport(bundle.report)
+    ? "ECHOCARDIOGRAPHY REPORT"
+    : /ultrasound|sonography|scan|echo/iu.test(`${bundle.report.title} ${orderedItems}`)
+      ? "SCAN REPORT"
+      : "LAB REPORT";
+  const findings = bundle.report.findings.trim()
+    ? narrativeIsHtml(bundle.report.findings)
+      ? htmlToText(bundle.report.findings)
+      : bundle.report.findings.trim()
+    : "";
+  const impression = bundle.report.impression.trim()
+    ? narrativeIsHtml(bundle.report.impression)
+      ? htmlToText(bundle.report.impression)
+      : bundle.report.impression.trim()
+    : "";
+  const history =
     bundle.report.medicalHistory?.trim() &&
     bundle.report.medicalHistory.trim() !== "Not provided."
-      ? `History\n${bundle.report.medicalHistory.trim()}`
-      : "",
-    bundle.report.findings.trim()
-      ? narrativeIsHtml(bundle.report.findings)
-        ? htmlToText(bundle.report.findings)
-        : bundle.report.findings.trim()
-      : "",
-    bundle.report.impression.trim()
-      ? `Impression\n${bundle.report.impression.trim()}`
-      : "",
-  ].filter(Boolean);
-  const sections = [["Report", narrativeLines.join("\n\n")]].filter(
-    ([, value]) => Boolean(value),
-  ) as Array<[string, string]>;
+      ? bundle.report.medicalHistory.trim()
+      : "";
 
   await new Promise<void>((resolve, reject) => {
     doc.pipe(stream);
-    if (bundle.facility.showFacilityProfileOnPrint) {
-      drawPdfBrand(doc, bundle.facility);
-      doc.fontSize(11).fillColor("#5d6d67").text(bundle.facility.code, 96, 36);
-      doc.fontSize(13).fillColor("#14231f").text(bundle.facility.name);
-    if (bundle.facility.location) {
-      doc
-        .moveDown(0.15)
-        .fontSize(9)
-        .fillColor("#5d6d67")
-        .text(bundle.facility.location);
-    }
-    if (bundle.facility.phone || bundle.facility.email) {
-      doc
-        .moveDown(0.15)
-        .fontSize(9)
-        .fillColor("#5d6d67")
-        .text(
-          [bundle.facility.phone, bundle.facility.email]
-            .filter(Boolean)
-            .join(" / "),
-        );
-    }
-    }
-    doc.moveDown(0.45);
-    doc
-      .fontSize(20)
-      .fillColor("#14231f")
-      .text(bundle.report.title, { align: "center" });
-    doc.moveDown(0.15);
-    doc
-      .fontSize(12)
-      .fillColor("#0d5f58")
-      .text(orderedItems, { align: "center", underline: true });
-    doc.moveDown(1);
-
-    doc
-      .fontSize(11)
-      .fillColor("#0d5f58")
-      .text("Patient Details", { underline: true });
-    doc.moveDown(0.35);
-    doc.fillColor("#14231f").text(`Name: ${patientName}`);
-    doc.text(`Age: ${patientAge}`);
-    doc.text(`Date: ${reportDate}`);
-    doc.text(`Gender: ${patientGender}`);
-    doc.text(`Location: ${patientLocation}`);
-    doc.text(`Trace Code: ${bundle.report.patient.traceCode}`);
-    doc.text(`Accession: ${bundle.report.order.accessionNumber}`);
-    doc.moveDown(0.8);
-
-    for (const [heading, value] of sections) {
-      doc.fontSize(11).fillColor("#0d5f58").text(heading, { underline: true });
-      doc.moveDown(0.25);
-      doc.fontSize(11).fillColor("#14231f").text(value, { lineGap: 3 });
-      doc.moveDown(0.8);
-    }
-
-    doc
-      .fontSize(11)
-      .fillColor("#0d5f58")
-      .text("Image References", { underline: true });
-    doc.moveDown(0.25);
-    if (bundle.imagePaths.length === 0) {
-      doc
-        .fontSize(11)
-        .fillColor("#14231f")
-        .text("No image references attached.");
-    } else {
-      for (const imagePath of bundle.imagePaths) {
-        doc.fontSize(11).fillColor("#14231f").text(`- ${imagePath}`);
+    let pageNumber = 1;
+    doc.on("pageAdded", () => {
+      pageNumber += 1;
+      if (pageNumber > 1) {
+        doc
+          .font("Times-Roman")
+          .fontSize(8)
+          .fillColor("#111111")
+          .text(
+            `${patientName} · ${bundle.report.patient.traceCode}`,
+            margins.left,
+            margins.top,
+            {
+              width: doc.page.width - margins.left - margins.right,
+              lineBreak: false,
+            },
+          );
+        doc.y = margins.top + 13;
       }
-    }
+    });
 
-    const signoffTop = doc.y + 18;
+    const pageWidth = doc.page.width - margins.left - margins.right;
+    const columnWidth = pageWidth / 3;
+    const drawPatientRow = (
+      fields: Array<{ label: string; value: string }>,
+    ) => {
+      const rowTop = doc.y;
+      let rowHeight = 0;
+      fields.forEach((field, index) => {
+        if (!field.label) {
+          return;
+        }
+        const value = field.value || "Not recorded";
+        const x = margins.left + index * columnWidth;
+        const plainText = `${field.label}: ${value}`;
+        doc.font("Times-Roman").fontSize(10.5);
+        rowHeight = Math.max(
+          rowHeight,
+          doc.heightOfString(plainText, {
+            width: columnWidth - 4,
+          }),
+        );
+        doc
+          .font("Times-Bold")
+          .fontSize(8)
+          .fillColor("#111111")
+          .text(`${field.label.toUpperCase()}: `, x, rowTop, {
+            continued: true,
+            width: columnWidth - 4,
+          });
+        doc
+          .font("Times-Roman")
+          .fontSize(10.5)
+          .fillColor("#111111")
+          .text(value, { width: columnWidth - 4 });
+      });
+      doc.y = rowTop + rowHeight + 3;
+    };
+
+    drawPatientRow([
+      { label: "Name", value: patientName },
+      { label: "Age", value: patientAge },
+      { label: "Gender", value: patientGender },
+    ]);
+    drawPatientRow([
+      { label: "Trace code", value: bundle.report.patient.traceCode },
+      { label: "Date", value: reportDate },
+      { label: "", value: "" },
+    ]);
     doc
-      .moveTo(42, signoffTop)
-      .lineTo(245, signoffTop)
-      .lineWidth(1)
-      .strokeColor("#1f1f1f")
+      .moveTo(margins.left, doc.y + 2)
+      .lineTo(doc.page.width - margins.right, doc.y + 2)
+      .lineWidth(0.5)
+      .strokeColor("#111111")
       .stroke();
+    doc.y += 8;
     doc
-      .moveTo(320, signoffTop)
-      .lineTo(520, signoffTop)
-      .lineWidth(1)
-      .strokeColor("#1f1f1f")
-      .stroke();
-    doc
-      .fontSize(10)
-      .fillColor("#14231f")
-      .text(reportedBy, 42, signoffTop + 6, { width: 203, align: "center" });
-    doc
-      .fontSize(8)
-      .fillColor("#5d6d67")
-      .text("Reported by", 42, signoffTop + 22, {
-        width: 203,
+      .font("Times-Bold")
+      .fontSize(13)
+      .fillColor("#111111")
+      .text(reportTypeLabel, margins.left, doc.y, {
+        width: pageWidth,
         align: "center",
       });
-    doc
-      .fontSize(10)
-      .fillColor("#14231f")
-      .text(reportDate, 320, signoffTop + 6, { width: 200, align: "center" });
-    doc
-      .fontSize(8)
-      .fillColor("#5d6d67")
-      .text("Date", 320, signoffTop + 22, { width: 200, align: "center" });
-    doc.y = signoffTop + 48;
+    doc.moveDown(0.7);
 
-    doc.moveDown(1.2);
-    doc
-      .fillOpacity(0.08)
-      .fontSize(54)
-      .fillColor("#0F6BFF")
-      .text("MediLab Nexus", 120, 320, { width: 380, align: "center" });
-    doc.fillOpacity(1);
-    doc
-      .fontSize(9)
-      .fillColor("#5d6d67")
-      .text(
-        bundle.facility.footerMessage ||
-          "Preserve the Patient Trace Code on all printed copies.",
-        {
-          align: "center",
-        },
-      );
-    if (getFacilityContactLine(bundle.facility)) {
+    const writeSection = (heading: string, text: string) => {
+      if (!text) {
+        return;
+      }
       doc
-        .moveDown(0.25)
-        .fontSize(9)
-        .fillColor("#5d6d67")
-        .text(getFacilityContactLine(bundle.facility), { align: "center" });
-    }
-    doc
-      .moveDown(0.25)
-      .fontSize(8)
-      .fillColor("#7b8794")
-      .text(getDeveloperCreditLine(), {
-        align: "center",
+        .font("Times-Bold")
+        .fontSize(11)
+        .fillColor("#111111")
+        .text(heading.toUpperCase(), { lineGap: 0 });
+      doc.moveDown(0.2);
+      doc
+        .font("Times-Roman")
+        .fontSize(11)
+        .fillColor("#111111")
+        .text(text, { width: pageWidth, lineGap: 5.5 });
+      doc.moveDown(0.65);
+    };
+
+    writeSection("History", history);
+    writeSection("Findings", findings);
+    if (impression) {
+      doc.font("Times-Roman").fontSize(11);
+      const impressionHeight = doc.heightOfString(impression, {
+        width: pageWidth,
+        lineGap: 5.5,
       });
+      const signoffHeight = reportedBy ? 44 : 0;
+      if (
+        doc.y + impressionHeight + signoffHeight + 30 >
+        doc.page.height - margins.bottom
+      ) {
+        doc.addPage();
+      }
+      writeSection("Impression", impression);
+    }
+    if (reportedBy) {
+      const bottom = doc.page.height - margins.bottom;
+      if (doc.y + 40 > bottom) {
+        doc.addPage();
+      }
+      doc.y = Math.max(doc.y + 8, bottom - 34);
+      doc
+        .font("Times-Bold")
+        .fontSize(11)
+        .fillColor("#111111")
+        .text(reportedBy, { width: pageWidth });
+      doc
+        .font("Times-Roman")
+        .fontSize(9.5)
+        .fillColor("#111111")
+        .text(`Reported by\n${reportDate}`, { width: pageWidth });
+    }
     doc.end();
 
     stream.on("finish", resolve);

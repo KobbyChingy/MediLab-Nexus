@@ -83,8 +83,12 @@ function reviveDates<T>(value: T): T {
 async function collectSnapshot(prisma: PrismaClient) {
   const [
     facilities,
+    expenses,
+    referralDoctors,
     users,
     sessions,
+    attendanceSettings,
+    attendanceRecords,
     catalogItems,
     patients,
     orders,
@@ -92,6 +96,8 @@ async function collectSnapshot(prisma: PrismaClient) {
     samples,
     imagingStudies,
     reports,
+    reportVersions,
+    reportTemplates,
     invoices,
     invoiceLines,
     inventoryItems,
@@ -105,8 +111,12 @@ async function collectSnapshot(prisma: PrismaClient) {
     auditLogs,
   ] = await Promise.all([
     prisma.facility.findMany(),
+    prisma.expenseRecord.findMany(),
+    prisma.referralDoctor.findMany(),
     prisma.appUser.findMany(),
     prisma.appSession.findMany(),
+    prisma.attendanceSettings.findMany(),
+    prisma.attendanceRecord.findMany(),
     prisma.catalogItem.findMany(),
     prisma.patient.findMany(),
     prisma.diagnosticOrder.findMany(),
@@ -114,6 +124,8 @@ async function collectSnapshot(prisma: PrismaClient) {
     prisma.sample.findMany(),
     prisma.imagingStudy.findMany(),
     prisma.report.findMany(),
+    prisma.reportVersion.findMany(),
+    prisma.reportTemplate.findMany(),
     prisma.invoice.findMany(),
     prisma.invoiceLine.findMany(),
     prisma.inventoryItem.findMany(),
@@ -128,11 +140,15 @@ async function collectSnapshot(prisma: PrismaClient) {
   ]);
 
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     facilities,
+    expenses,
+    referralDoctors,
     users,
     sessions,
+    attendanceSettings,
+    attendanceRecords,
     catalogItems,
     patients,
     orders,
@@ -140,6 +156,8 @@ async function collectSnapshot(prisma: PrismaClient) {
     samples,
     imagingStudies,
     reports,
+    reportVersions,
+    reportTemplates,
     invoices,
     invoiceLines,
     inventoryItems,
@@ -260,12 +278,16 @@ export async function restoreBackup(
     await tx.paymentRecord.deleteMany();
     await tx.invoiceLine.deleteMany();
     await tx.invoice.deleteMany();
+    await tx.reportVersion.deleteMany();
     await tx.report.deleteMany();
     await tx.imagingStudy.deleteMany();
     await tx.sample.deleteMany();
     await tx.orderItem.deleteMany();
     await tx.diagnosticOrder.deleteMany();
     await tx.patient.deleteMany();
+    await tx.reportTemplate.deleteMany();
+    await tx.attendanceRecord.deleteMany();
+    await tx.attendanceSettings.deleteMany();
     await tx.inventoryTransaction.deleteMany();
     await tx.inventoryItem.deleteMany();
     await tx.maintenanceEvent.deleteMany();
@@ -274,12 +296,22 @@ export async function restoreBackup(
     await tx.syncEvent.deleteMany();
     await tx.appSession.deleteMany();
     await tx.appUser.deleteMany();
+    await tx.referralDoctor.deleteMany();
+    await tx.expenseRecord.deleteMany();
     await tx.catalogItem.deleteMany();
     await tx.facility.deleteMany();
 
     await tx.facility.createMany({ data: restored.facilities });
+    await tx.expenseRecord.createMany({ data: restored.expenses ?? [] });
+    await tx.referralDoctor.createMany({ data: restored.referralDoctors ?? [] });
     await tx.appUser.createMany({ data: restored.users });
     await tx.appSession.createMany({ data: restored.sessions });
+    await tx.attendanceSettings.createMany({
+      data: restored.attendanceSettings ?? [],
+    });
+    await tx.attendanceRecord.createMany({
+      data: restored.attendanceRecords ?? [],
+    });
     await tx.catalogItem.createMany({ data: restored.catalogItems });
     await tx.patient.createMany({ data: restored.patients });
     await tx.instrument.createMany({ data: restored.instruments });
@@ -288,6 +320,10 @@ export async function restoreBackup(
     await tx.sample.createMany({ data: restored.samples });
     await tx.imagingStudy.createMany({ data: restored.imagingStudies });
     await tx.report.createMany({ data: restored.reports });
+    await tx.reportVersion.createMany({ data: restored.reportVersions ?? [] });
+    await tx.reportTemplate.createMany({
+      data: restored.reportTemplates ?? [],
+    });
     await tx.invoice.createMany({ data: restored.invoices });
     await tx.invoiceLine.createMany({ data: restored.invoiceLines });
     await tx.inventoryItem.createMany({ data: restored.inventoryItems });

@@ -328,6 +328,8 @@ model OrderItem {
   id              String         @id @default(cuid())
   orderId         String
   catalogItemId   String
+  catalogNameSnapshot String?
+  unitPriceCentsSnapshot Int?
   notes           String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -384,6 +386,29 @@ model Report {
   updatedAt      DateTime     @updatedAt
 
   study          ImagingStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  versions       ReportVersion[]
+}
+
+model ReportVersion {
+  id             String      @id @default(cuid())
+  reportId       String
+  versionNumber  Int
+  action         String
+  title          String
+  medicalHistory String?
+  summary        String?
+  findings       String
+  impression     String
+  status         ReportStatus
+  signedBy       String?
+  signedAt       DateTime?
+  actorName      String
+  actorRole      UserRole
+  createdAt      DateTime    @default(now())
+  report         Report      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, versionNumber])
+  @@index([reportId, createdAt])
 }
 
 model ReportTemplate {

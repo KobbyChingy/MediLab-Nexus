@@ -15,7 +15,6 @@ import {
   attendanceSettingsInputSchema,
   analyticsRangeKeys,
   bulkServiceInputSchema,
-  catalogSeed,
   changeOwnPinInputSchema,
   expenseInputSchema,
   facilitySettingsInputSchema,
@@ -1173,58 +1172,12 @@ function buildCatalogItemData(payload: {
 
 async function ensureCatalogItemsForOrderSelection(itemIds: string[]) {
   const normalizedItemIds = itemIds.map((itemId) => itemId.trim().toUpperCase());
-  let catalogItems = await prisma.catalogItem.findMany({
+  const catalogItems = await prisma.catalogItem.findMany({
     where: {
       OR: [{ id: { in: itemIds } }, { code: { in: normalizedItemIds } }],
+      isActive: true,
     },
   });
-
-  const existingKeys = new Set(
-    catalogItems.flatMap((item) => [item.id, item.code.trim().toUpperCase()]),
-  );
-  const missingSeedItems = catalogSeed.filter(
-    (item) =>
-      normalizedItemIds.includes(item.code.trim().toUpperCase()) &&
-      !existingKeys.has(item.code.trim().toUpperCase()),
-  );
-
-  if (missingSeedItems.length > 0) {
-    await prisma.$transaction(
-      missingSeedItems.map((item) =>
-        prisma.catalogItem.upsert({
-          where: { code: item.code.trim().toUpperCase() },
-          update: {
-            ...buildCatalogItemData({
-              code: item.code,
-              name: item.name,
-              kind: item.kind,
-              specimenType: item.specimenType ?? "",
-              modality: item.modality ?? "",
-              priceCents: item.priceCents,
-              tatMinutes: item.tatMinutes,
-              isActive: item.isActive ?? true,
-            }),
-          },
-          create: buildCatalogItemData({
-            code: item.code,
-            name: item.name,
-            kind: item.kind,
-            specimenType: item.specimenType ?? "",
-            modality: item.modality ?? "",
-            priceCents: item.priceCents,
-            tatMinutes: item.tatMinutes,
-            isActive: item.isActive ?? true,
-          }),
-        }),
-      ),
-    );
-
-    catalogItems = await prisma.catalogItem.findMany({
-      where: {
-        OR: [{ id: { in: itemIds } }, { code: { in: normalizedItemIds } }],
-      },
-    });
-  }
 
   return catalogItems;
 }
@@ -3146,6 +3099,15 @@ app.post("/api/admin/services", async (request, reply) => {
   }
 
   const payload = serviceInputSchema.parse(request.body);
+  const existingCode = await prisma.catalogItem.findUnique({
+    where: { code: payload.code.trim().toUpperCase() },
+    select: { id: true },
+  });
+  if (existingCode) {
+    return reply.code(409).send({
+      message: "A service with this code already exists.",
+    });
+  }
   const created = await prisma.catalogItem.create({
     data: buildCatalogItemData(payload),
   });
@@ -3198,11 +3160,14 @@ app.post("/api/admin/services/bulk", async (request, reply) => {
         where: {
           code: { in: normalizedServices.map((service) => service.code) },
         },
-        select: { code: true },
+        select: { id: true, code: true, name: true, priceCents: true },
       })
     : [];
   const existingCodes = new Set(
     existingServices.map((service) => service.code),
+  );
+  const existingServiceByCode = new Map(
+    existingServices.map((service) => [service.code, service]),
   );
 
   const servicesToCreate = normalizedServices.filter(
@@ -3234,11 +3199,30 @@ app.post("/api/admin/services/bulk", async (request, reply) => {
       )
     : [];
   const updated = servicesToUpdate.length
-    ? await prisma.$transaction(
-        servicesToUpdate.map((service) =>
-          prisma.catalogItem.update({
-            where: { code: service.code },
-            data: buildCatalogItemData(service),
+    ? await prisma.$transaction(async (tx) =>
+        Promise.all(
+          servicesToUpdate.map(async (service) => {
+            const existing = existingServiceByCode.get(service.code);
+            if (!existing) {
+              throw new Error(
+                `Service ${service.code} disappeared during bulk update.`,
+              );
+            }
+            await tx.orderItem.updateMany({
+              where: { catalogItemId: existing.id, catalogNameSnapshot: null },
+              data: { catalogNameSnapshot: existing.name },
+            });
+            await tx.orderItem.updateMany({
+              where: {
+                catalogItemId: existing.id,
+                unitPriceCentsSnapshot: null,
+              },
+              data: { unitPriceCentsSnapshot: existing.priceCents },
+            });
+            return tx.catalogItem.update({
+              where: { id: existing.id },
+              data: buildCatalogItemData(service),
+            });
           }),
         ),
       )
@@ -3287,9 +3271,34 @@ app.put("/api/admin/services/:id", async (request, reply) => {
 
   const id = (request.params as { id: string }).id;
   const payload = serviceInputSchema.parse(request.body);
-  const updated = await prisma.catalogItem.update({
+  const existing = await prisma.catalogItem.findUnique({
     where: { id },
-    data: buildCatalogItemData(payload),
+  });
+  if (!existing) {
+    return reply.code(404).send({ message: "Service not found." });
+  }
+  const conflictingCode = await prisma.catalogItem.findFirst({
+    where: { code: payload.code.trim().toUpperCase(), id: { not: id } },
+    select: { id: true },
+  });
+  if (conflictingCode) {
+    return reply.code(409).send({
+      message: "A service with this code already exists.",
+    });
+  }
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.orderItem.updateMany({
+      where: { catalogItemId: id, catalogNameSnapshot: null },
+      data: { catalogNameSnapshot: existing.name },
+    });
+    await tx.orderItem.updateMany({
+      where: { catalogItemId: id, unitPriceCentsSnapshot: null },
+      data: { unitPriceCentsSnapshot: existing.priceCents },
+    });
+    return tx.catalogItem.update({
+      where: { id },
+      data: buildCatalogItemData(payload),
+    });
   });
 
   await recordAudit(prisma, request.actor, {
@@ -3321,67 +3330,80 @@ app.delete("/api/admin/services/:id", async (request, reply) => {
     return reply.code(404).send({ message: "Service not found." });
   }
 
-  const linkedOrderItems = await prisma.orderItem.findMany({
+  const linkedOrderItemCount = await prisma.orderItem.count({
     where: { catalogItemId: existing.id },
-    select: { orderId: true },
   });
-  const orderIds = [...new Set(linkedOrderItems.map((item) => item.orderId))];
-  const orderItemIds = orderIds.length
-    ? (
-        await prisma.orderItem.findMany({
-          where: { orderId: { in: orderIds } },
-          select: { id: true },
-        })
-      ).map((item) => item.id)
-    : [];
-  const invoiceIds = orderIds.length
-    ? (
-        await prisma.invoice.findMany({
-          where: { orderId: { in: orderIds } },
-          select: { id: true },
-        })
-      ).map((invoice) => invoice.id)
-    : [];
-
-  await prisma.$transaction(async (tx) => {
-    if (invoiceIds.length > 0) {
-      await tx.paymentRecord.deleteMany({
-        where: { invoiceId: { in: invoiceIds } },
+  if (linkedOrderItemCount > 0) {
+    const archived = await prisma.$transaction(async (tx) => {
+      await tx.orderItem.updateMany({
+        where: {
+          catalogItemId: existing.id,
+          catalogNameSnapshot: null,
+        },
+        data: { catalogNameSnapshot: existing.name },
       });
-      await tx.invoiceLine.deleteMany({
-        where: { invoiceId: { in: invoiceIds } },
+      await tx.orderItem.updateMany({
+        where: {
+          catalogItemId: existing.id,
+          unitPriceCentsSnapshot: null,
+        },
+        data: { unitPriceCentsSnapshot: existing.priceCents },
       });
-      await tx.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
-    }
-
-    if (orderItemIds.length > 0) {
-      await tx.imagingStudy.deleteMany({
-        where: { orderItemId: { in: orderItemIds } },
+      return tx.catalogItem.update({
+        where: { id: existing.id },
+        data: { isActive: false },
       });
+    });
+    await recordAudit(prisma, request.actor, {
+      action: "SERVICE_ARCHIVED",
+      entityType: "CatalogItem",
+      entityId: archived.id,
+      summary: `Service ${archived.code} archived and kept for ${linkedOrderItemCount} historical order item(s)`,
+      payload: { ...serializeCatalogItem(archived), linkedOrderItemCount },
+    });
+    await recordDispatchEvent("CatalogItem", archived.id, archived);
+
+    return reply.send({
+      action: "ARCHIVED",
+      linkedOrderItemCount,
+      service: serializeCatalogItem(archived),
+    });
+  }
+
+  try {
+    await prisma.catalogItem.delete({ where: { id: existing.id } });
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "P2003"
+    ) {
+      throw error;
     }
-
-    if (orderIds.length > 0) {
-      await tx.report.deleteMany({ where: { orderId: { in: orderIds } } });
-      await tx.sample.deleteMany({ where: { orderId: { in: orderIds } } });
-      await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
-      await tx.diagnosticOrder.deleteMany({ where: { id: { in: orderIds } } });
-    }
-
-    await tx.catalogItem.delete({ where: { id: existing.id } });
-  });
-
+    const archived = await prisma.catalogItem.update({
+      where: { id: existing.id },
+      data: { isActive: false },
+    });
+    await recordAudit(prisma, request.actor, {
+      action: "SERVICE_ARCHIVED",
+      entityType: "CatalogItem",
+      entityId: archived.id,
+      summary: `Service ${archived.code} archived after a concurrent order referenced it`,
+      payload: { ...serializeCatalogItem(archived), linkedOrderItemCount: 1 },
+    });
+    await recordDispatchEvent("CatalogItem", archived.id, archived);
+    return reply.send({
+      action: "ARCHIVED",
+      linkedOrderItemCount: 1,
+      service: serializeCatalogItem(archived),
+    });
+  }
   await recordAudit(prisma, request.actor, {
     action: "SERVICE_DELETED",
     entityType: "CatalogItem",
     entityId: existing.id,
-    summary:
-      orderIds.length > 0
-        ? `Service ${existing.code} deleted and ${orderIds.length} linked order(s) removed`
-        : `Service ${existing.code} deleted`,
-    payload: {
-      ...serializeCatalogItem(existing),
-      linkedOrderCount: orderIds.length,
-    },
+    summary: `Unused service ${existing.code} deleted`,
+    payload: serializeCatalogItem(existing),
   });
   await recordDeleteDispatchEvent("CatalogItem", existing.id, existing);
 
@@ -3628,8 +3650,8 @@ app.delete("/api/patients/:id", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
   }
-  if (!hasCapability(request.actor, "patient:write")) {
-    return deny(reply, "patient:write");
+  if (!hasCapability(request.actor, "patient:delete")) {
+    return deny(reply, "patient:delete");
   }
 
   const { id } = request.params as { id: string };
@@ -3731,8 +3753,8 @@ app.delete("/api/patients", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
   }
-  if (!hasCapability(request.actor, "patient:write")) {
-    return deny(reply, "patient:write");
+  if (!hasCapability(request.actor, "patient:delete")) {
+    return deny(reply, "patient:delete");
   }
 
   const patientsToDelete = await prisma.patient.findMany({
@@ -3958,7 +3980,9 @@ app.post("/api/orders", async (request, reply) => {
   if (catalogItems.length !== payload.itemIds.length) {
     return reply
       .code(400)
-      .send({ message: "One or more catalog items were not found." });
+      .send({
+        message: "One or more selected services are inactive or unavailable.",
+      });
   }
 
   const catalogItemLookup = new Map(
@@ -3974,7 +3998,9 @@ app.post("/api/orders", async (request, reply) => {
   if (selectedCatalogItems.length !== payload.itemIds.length) {
     return reply
       .code(400)
-      .send({ message: "One or more catalog items were not found." });
+      .send({
+        message: "One or more selected services are inactive or unavailable.",
+      });
   }
 
   const totalAmountCents = selectedCatalogItems.reduce(
@@ -4033,6 +4059,8 @@ app.post("/api/orders", async (request, reply) => {
         id,
         orderId,
         catalogItemId: catalogItem.id,
+        catalogNameSnapshot: catalogItem.name,
+        unitPriceCentsSnapshot: catalogItem.priceCents,
         status: catalogItem.kind === "IMAGING" ? "REGISTERED" : "COLLECTED",
       })),
     }),
@@ -4242,7 +4270,16 @@ app.get("/api/workflow", async (request, reply) => {
       payerMemberId: order.payerMemberId,
       payerAuthorizationCode: order.payerAuthorizationCode,
       createdAt: order.createdAt.toISOString(),
-      items: order.items.map((item) => item.catalogItem.name),
+      items: order.items.map(
+        (item) => item.catalogNameSnapshot || item.catalogItem.name,
+      ),
+      orderItems: order.items.map((item) => ({
+        id: item.id,
+        serviceName: item.catalogNameSnapshot || item.catalogItem.name,
+        kind: item.catalogItem.kind,
+        status: item.status,
+        createdAt: item.createdAt.toISOString(),
+      })),
     })),
     samples: samples.map(serializeSample),
     imaging: imaging.map((study) => ({
@@ -4252,7 +4289,9 @@ app.get("/api/workflow", async (request, reply) => {
       patientId: study.orderItem.order.patientId,
       patientTraceCode: study.orderItem.order.patient.traceCode,
       patientName: `${study.orderItem.order.patient.firstName} ${study.orderItem.order.patient.lastName}`,
-      serviceName: study.orderItem.catalogItem.name,
+      serviceName:
+        study.orderItem.catalogNameSnapshot ||
+        study.orderItem.catalogItem.name,
       modality: study.modality,
       appointmentStatus: study.appointmentStatus,
       scheduledAt: study.scheduledAt?.toISOString() ?? null,
@@ -4457,7 +4496,16 @@ app.get("/api/workflow/by-date", async (request, reply) => {
       payerMemberId: order.payerMemberId,
       payerAuthorizationCode: order.payerAuthorizationCode,
       createdAt: order.createdAt.toISOString(),
-      items: order.items.map((item) => item.catalogItem.name),
+      items: order.items.map(
+        (item) => item.catalogNameSnapshot || item.catalogItem.name,
+      ),
+      orderItems: order.items.map((item) => ({
+        id: item.id,
+        serviceName: item.catalogNameSnapshot || item.catalogItem.name,
+        kind: item.catalogItem.kind,
+        status: item.status,
+        createdAt: item.createdAt.toISOString(),
+      })),
     })),
     samples: samples.map(serializeSample),
     imaging: imaging.map((study) => ({
@@ -4467,7 +4515,9 @@ app.get("/api/workflow/by-date", async (request, reply) => {
       patientId: study.orderItem.order.patientId,
       patientTraceCode: study.orderItem.order.patient.traceCode,
       patientName: `${study.orderItem.order.patient.firstName} ${study.orderItem.order.patient.lastName}`,
-      serviceName: study.orderItem.catalogItem.name,
+      serviceName:
+        study.orderItem.catalogNameSnapshot ||
+        study.orderItem.catalogItem.name,
       modality: study.modality,
       appointmentStatus: study.appointmentStatus,
       scheduledAt: study.scheduledAt?.toISOString() ?? null,
@@ -4719,21 +4769,41 @@ app.post("/api/reports", async (request, reply) => {
 
   const payload = reportInputSchema.parse(request.body);
   const reportLifecycle = resolveReportLifecycle(payload.status, payload.signedBy);
-  const report = await prisma.report.create({
-    data: {
-      patientId: payload.patientId,
-      orderId: payload.orderId,
-      title: payload.title,
-      medicalHistory: payload.medicalHistory,
-      summary: payload.summary,
-      findings: payload.findings,
-      impression: payload.impression,
-      signedBy: reportLifecycle.signedBy,
-      signedAt: reportLifecycle.signedAt,
-      status: reportLifecycle.status,
-      criticalFlag: payload.criticalFlag,
-      imagePathsJson: JSON.stringify(payload.imagePaths),
-    },
+  const report = await prisma.$transaction(async (tx) => {
+    const created = await tx.report.create({
+      data: {
+        patientId: payload.patientId,
+        orderId: payload.orderId,
+        title: payload.title,
+        medicalHistory: payload.medicalHistory,
+        summary: payload.summary,
+        findings: payload.findings,
+        impression: payload.impression,
+        signedBy: reportLifecycle.signedBy,
+        signedAt: reportLifecycle.signedAt,
+        status: reportLifecycle.status,
+        criticalFlag: payload.criticalFlag,
+        imagePathsJson: JSON.stringify(payload.imagePaths),
+      },
+    });
+    await tx.reportVersion.create({
+      data: {
+        reportId: created.id,
+        versionNumber: 1,
+        action: reportLifecycle.signedAt ? "REPORT_RELEASED" : "REPORT_DRAFTED",
+        title: created.title,
+        medicalHistory: created.medicalHistory,
+        summary: created.summary,
+        findings: created.findings,
+        impression: created.impression,
+        status: created.status,
+        signedBy: created.signedBy,
+        signedAt: created.signedAt,
+        actorName: request.actor.displayName,
+        actorRole: request.actor.role,
+      },
+    });
+    return created;
   });
 
   if (reportLifecycle.requiresPdf) {
@@ -4792,6 +4862,91 @@ app.get("/api/reports/:id", async (request, reply) => {
   return serializeSavedReport(report);
 });
 
+app.get("/api/reports/:id/history", async (request, reply) => {
+  if (!request.actor.authenticated) {
+    return unauthorized(reply);
+  }
+  if (!hasCapability(request.actor, "report:view")) {
+    return deny(reply, "report:view");
+  }
+
+  const { id } = request.params as { id: string };
+  const report = await prisma.report.findUnique({
+    where: { id },
+    include: { patient: true },
+  });
+  if (!report || report.patient.facilityId !== request.actor.facilityId) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+
+  const [versions, printEvents] = await Promise.all([
+    prisma.reportVersion.findMany({
+      where: { reportId: id },
+      orderBy: { versionNumber: "desc" },
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        entityType: "Report",
+        entityId: id,
+        action: "REPORT_PRINTED",
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  if (versions.length > 0) {
+    return [
+      ...versions.map((entry) => ({
+        id: entry.id,
+        actorName: entry.actorName,
+        actorRole: entry.actorRole,
+        action: entry.action,
+        summary: entry.action,
+        createdAt: entry.createdAt.toISOString(),
+        signedAt: entry.signedAt?.toISOString() ?? null,
+      })),
+      ...printEvents.map((entry) => ({
+        id: entry.id,
+        actorName: entry.actorName,
+        actorRole: entry.actorRole,
+        action: entry.action,
+        summary: entry.summary,
+        createdAt: entry.createdAt.toISOString(),
+        signedAt: null,
+      })),
+    ];
+  }
+
+  const legacyHistory = await prisma.auditLog.findMany({
+    where: {
+      entityType: "Report",
+      entityId: id,
+      action: {
+        in: [
+          "REPORT_DRAFTED",
+          "REPORT_SUBMITTED",
+          "REPORT_UPDATED",
+          "REPORT_APPROVED",
+          "REPORT_RELEASED",
+          "REPORT_AMENDED",
+          "REPORT_PRINTED",
+        ],
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return legacyHistory.map((entry) => ({
+    id: entry.id,
+    actorName: entry.actorName,
+    actorRole: entry.actorRole,
+    action: entry.action,
+    summary: entry.summary,
+    createdAt: entry.createdAt.toISOString(),
+    signedAt: null,
+  }));
+});
+
 app.put("/api/reports/:id", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
@@ -4824,33 +4979,59 @@ app.put("/api/reports/:id", async (request, reply) => {
   }
 
   const reportLifecycle = resolveReportLifecycle(payload.status, payload.signedBy);
-  const updated = await prisma.report.update({
-    where: { id: existing.id },
-    data: {
-      title: payload.title,
-      medicalHistory: payload.medicalHistory,
-      summary: payload.summary,
-      findings: payload.findings,
-      impression: payload.impression,
-      signedBy: reportLifecycle.signedBy,
-      signedAt: reportLifecycle.signedAt,
-      status: reportLifecycle.status,
-      criticalFlag: payload.criticalFlag,
-      imagePathsJson: JSON.stringify(payload.imagePaths),
-      pdfPath: null,
-    },
-    include: {
-      patient: true,
-      order: {
-        include: {
-          items: {
-            include: {
-              catalogItem: true,
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedReport = await tx.report.update({
+      where: { id: existing.id },
+      data: {
+        title: payload.title,
+        medicalHistory: payload.medicalHistory,
+        summary: payload.summary,
+        findings: payload.findings,
+        impression: payload.impression,
+        signedBy: reportLifecycle.signedBy,
+        signedAt: reportLifecycle.signedAt,
+        status: reportLifecycle.status,
+        criticalFlag: payload.criticalFlag,
+        imagePathsJson: JSON.stringify(payload.imagePaths),
+        pdfPath: null,
+      },
+      include: {
+        patient: true,
+        order: {
+          include: {
+            items: {
+              include: {
+                catalogItem: true,
+              },
             },
           },
         },
       },
-    },
+    });
+    const versionNumber =
+      (await tx.reportVersion.count({ where: { reportId: existing.id } })) + 1;
+    await tx.reportVersion.create({
+      data: {
+        reportId: existing.id,
+        versionNumber,
+        action: reportLifecycle.signedAt
+          ? existing.signedAt
+            ? "REPORT_AMENDED"
+            : "REPORT_RELEASED"
+          : "REPORT_UPDATED",
+        title: updatedReport.title,
+        medicalHistory: updatedReport.medicalHistory,
+        summary: updatedReport.summary,
+        findings: updatedReport.findings,
+        impression: updatedReport.impression,
+        status: updatedReport.status,
+        signedBy: updatedReport.signedBy,
+        signedAt: updatedReport.signedAt,
+        actorName: request.actor.displayName,
+        actorRole: request.actor.role,
+      },
+    });
+    return updatedReport;
   });
 
   if (reportLifecycle.requiresPdf) {
@@ -4919,13 +5100,39 @@ app.patch("/api/reports/:id/status", async (request, reply) => {
     payload.status,
     payload.signedBy.trim() || request.actor.displayName,
   );
-  const updated = await prisma.report.update({
-    where: { id: existing.id },
-    data: {
-      status: reportLifecycle.status,
-      signedBy: reportLifecycle.signedBy,
-      signedAt: reportLifecycle.signedAt,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedReport = await tx.report.update({
+      where: { id: existing.id },
+      data: {
+        status: reportLifecycle.status,
+        signedBy: reportLifecycle.signedBy,
+        signedAt: reportLifecycle.signedAt,
+      },
+    });
+    const versionNumber =
+      (await tx.reportVersion.count({ where: { reportId: existing.id } })) + 1;
+    await tx.reportVersion.create({
+      data: {
+        reportId: existing.id,
+        versionNumber,
+        action: reportLifecycle.signedAt
+          ? existing.signedAt
+            ? "REPORT_AMENDED"
+            : "REPORT_RELEASED"
+          : "REPORT_UPDATED",
+        title: existing.title,
+        medicalHistory: existing.medicalHistory,
+        summary: existing.summary,
+        findings: existing.findings,
+        impression: existing.impression,
+        status: updatedReport.status,
+        signedBy: updatedReport.signedBy,
+        signedAt: updatedReport.signedAt,
+        actorName: request.actor.displayName,
+        actorRole: request.actor.role,
+      },
+    });
+    return updatedReport;
   });
 
   if (reportLifecycle.requiresPdf) {
@@ -4955,8 +5162,43 @@ app.get(
     if (!request.actor.authenticated) {
       return unauthorized(reply);
     }
+    if (!hasCapability(request.actor, "report:view")) {
+      return deny(reply, "report:view");
+    }
 
-    const id = (request.params as { id: string }).id;
+    const { id } = request.params as { id: string };
+    const report = await prisma.report.findUnique({
+      where: { id },
+      include: { patient: true },
+    });
+    if (!report || report.patient.facilityId !== request.actor.facilityId) {
+      return reply.code(404).send({ message: "Report not found." });
+    }
+    const latestSignedVersion = await prisma.reportVersion.findFirst({
+      where: { reportId: id, signedAt: { not: null } },
+      orderBy: { versionNumber: "desc" },
+      select: { id: true },
+    });
+    if (!report.signedAt && !latestSignedVersion) {
+      if (!hasCapability(request.actor, "report:write")) {
+        return reply.code(409).send({
+          message: "Only signed-off reports can be viewed by this role.",
+        });
+      }
+      const savedReport = await prisma.report.findUniqueOrThrow({
+        where: { id },
+      });
+      return renderDraftPrintableReportHtml(prisma, {
+        patientId: savedReport.patientId,
+        orderId: savedReport.orderId,
+        title: savedReport.title,
+        medicalHistory: savedReport.medicalHistory ?? "",
+        findings: savedReport.findings,
+        impression: savedReport.impression,
+        signedBy: savedReport.signedBy ?? "",
+        imagePaths: JSON.parse(savedReport.imagePathsJson) as string[],
+      });
+    }
     return renderPrintableReportHtml(prisma, id);
   },
 );
@@ -4977,6 +5219,16 @@ app.post("/api/reports/:id/print-confirmation", async (request, reply) => {
   if (!report || report.patient.facilityId !== request.actor.facilityId) {
     return reply.code(404).send({ message: "Report not found." });
   }
+  const latestSignedVersion = await prisma.reportVersion.findFirst({
+    where: { reportId: id, signedAt: { not: null } },
+    orderBy: { versionNumber: "desc" },
+    select: { id: true },
+  });
+  if (!report.signedAt && !latestSignedVersion) {
+    return reply.code(409).send({
+      message: "Only signed-off reports can be marked printed.",
+    });
+  }
 
   const printedAt = new Date();
   await recordAudit(prisma, request.actor, {
@@ -4995,8 +5247,28 @@ app.get("/api/reports/:id/pdf", async (request, reply) => {
   if (!request.actor.authenticated) {
     return unauthorized(reply);
   }
+  if (!hasCapability(request.actor, "report:view")) {
+    return deny(reply, "report:view");
+  }
 
-  const id = (request.params as { id: string }).id;
+  const { id } = request.params as { id: string };
+  const report = await prisma.report.findUnique({
+    where: { id },
+    include: { patient: true },
+  });
+  if (!report || report.patient.facilityId !== request.actor.facilityId) {
+    return reply.code(404).send({ message: "Report not found." });
+  }
+  const latestSignedVersion = await prisma.reportVersion.findFirst({
+    where: { reportId: id, signedAt: { not: null } },
+    orderBy: { versionNumber: "desc" },
+    select: { id: true },
+  });
+  if (!report.signedAt && !latestSignedVersion) {
+    return reply.code(409).send({
+      message: "Only signed-off reports can be downloaded.",
+    });
+  }
   const pdfBuffer = await readReportPdf(prisma, id);
   reply.type("application/pdf");
   return reply.send(pdfBuffer);

@@ -281,6 +281,16 @@ type PatientTimelineEntry = {
   tone: "good" | "warn" | "critical" | "neutral";
 };
 
+type ReportHistoryEntry = {
+  id: string;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  summary: string;
+  createdAt: string;
+  signedAt: string | null;
+};
+
 type SampleRecord = WorkflowPayload["samples"][number];
 type ReportRecord = WorkflowPayload["reports"][number];
 type InvoiceRecord = WorkflowPayload["invoices"][number];
@@ -1163,6 +1173,7 @@ const portalProfiles: Partial<
       "dashboard",
       "patients",
       "patientRecords",
+      "sonography",
       "expenses",
       "services",
       "scanReports",
@@ -3134,6 +3145,12 @@ export default function App() {
     endDate: buildCurrentDateInputValue(),
   });
   const [patientRecordDetailOpen, setPatientRecordDetailOpen] = useState(false);
+  const [patientRecordActiveTab, setPatientRecordActiveTab] = useState<
+    "tests" | "billing" | "timeline"
+  >( "tests");
+  const [reportHistoryById, setReportHistoryById] = useState<
+    Record<string, ReportHistoryEntry[]>
+  >({});
   const [expenseFilters, setExpenseFilters] = useState<ExpenseFiltersState>({
     category: "ALL",
     startDate: buildCurrentDateInputValue(),
@@ -4150,6 +4167,47 @@ export default function App() {
         : ([] as WorkflowPayload["reports"]),
     [selectedPatient, workflow.reports],
   );
+  const selectedPatientOrders = useMemo(
+    () =>
+      selectedPatient
+        ? workflow.orders.filter((order) => order.patientId === selectedPatient.id)
+        : [],
+    [selectedPatient, workflow.orders],
+  );
+  const selectedPatientInvoices = useMemo(
+    () =>
+      selectedPatient
+        ? workflow.invoices.filter((invoice) => invoice.patientId === selectedPatient.id)
+        : [],
+    [selectedPatient, workflow.invoices],
+  );
+  useEffect(() => {
+    if (!selectedPatient || !patientRecordDetailOpen) {
+      return;
+    }
+
+    let current = true;
+    void Promise.all(
+      selectedPatientReports.map(async (report) => {
+        try {
+          const history = await requestJson<ReportHistoryEntry[]>(
+            `/reports/${report.id}/history`,
+          );
+          return [report.id, history] as const;
+        } catch {
+          return [report.id, []] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (current) {
+        setReportHistoryById(Object.fromEntries(entries));
+      }
+    });
+
+    return () => {
+      current = false;
+    };
+  }, [patientRecordDetailOpen, selectedPatient, selectedPatientReports]);
   const filteredPatientRecords = useMemo(() => {
     const query = patientRecordsQuery.trim();
     const rankedPatients = [...patients].sort(
@@ -4437,6 +4495,7 @@ export default function App() {
   const showPatientIntakeTools =
     currentRole !== "DOCTOR" && currentRole !== "SONOGRAPHER";
   const canEditPatientRecords = allowedActions.includes("patient:write");
+  const canDeletePatients = allowedActions.includes("patient:delete");
   const [orderSearchQuery, setOrderSearchQuery] = useState("");
   const [selectedOrderStatus, setSelectedOrderStatus] = useState<
     "ALL" | string
@@ -4902,7 +4961,7 @@ export default function App() {
   >("ALL");
   const [selectedServiceState, setSelectedServiceState] = useState<
     "ALL" | "ACTIVE" | "ARCHIVED"
-  >("ALL");
+  >("ACTIVE");
   const filteredServiceRows = useMemo(() => {
     const query = serviceSearchQuery.trim().toLowerCase();
 
@@ -5595,6 +5654,7 @@ export default function App() {
   function openPatient(patient: PatientRecord, nextNav: NavKey = "patients") {
     setSelectedPatientId(patient.id);
     setPatientRecordDetailOpen(nextNav === "patientRecords");
+    setPatientRecordActiveTab("tests");
     setOrderForm((current) => ({ ...current, patientId: patient.id }));
     setNotificationForm((current) => ({
       ...current,
@@ -7406,6 +7466,10 @@ export default function App() {
   }
 
   function startEditServiceEditor(serviceId: string) {
+    if (!services.some((service) => service.id === serviceId)) {
+      setStatusText("This service does not have a database ID and cannot be edited.");
+      return;
+    }
     setServiceEditorOpen(true);
     setSelectedServiceId(serviceId);
   }
@@ -7448,8 +7512,12 @@ export default function App() {
           ? `${service.name} reactivated for ordering`
           : `${service.name} archived from active ordering`,
       );
-    } catch {
-      setStatusText("Service status could not be updated right now");
+    } catch (error) {
+      setStatusText(
+        error instanceof Error
+          ? error.message
+          : "Service status could not be updated right now",
+      );
     }
   }
 
@@ -7461,21 +7529,28 @@ export default function App() {
 
     if (
       !window.confirm(
-        `Delete ${service.name}? This removes the service and deletes any linked orders, reports, scans, invoices, and payments that use it.`,
+        `Remove ${service.name} from the catalogue? If it has been used, it will be archived and all historical orders, reports, invoices, and payments will be preserved.`,
       )
     ) {
       return;
     }
 
     try {
-      await requestJson(`/admin/services/${service.id}`, {
+      const result = await requestJson<
+        | { action: "ARCHIVED"; linkedOrderItemCount: number }
+        | undefined
+      >(`/admin/services/${service.id}`, {
         method: "DELETE",
       });
       if (selectedServiceId === service.id) {
         resetServiceEditor();
       }
       await loadOperationalData();
-      setStatusText(`Deleted service ${service.name}`);
+      setStatusText(
+        result?.action === "ARCHIVED"
+          ? `${service.name} was archived and kept for ${result.linkedOrderItemCount} historical order item(s).`
+          : `Unused service ${service.name} was deleted.`,
+      );
     } catch (error) {
       setStatusText(
         error instanceof Error
@@ -7532,32 +7607,34 @@ export default function App() {
                     </span>
                   </td>
                   <td>
-                    <div className="table-actions compact">
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() => startEditServiceEditor(service.id ?? service.code)}
-                        disabled={!canManageServices}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-action small"
-                        onClick={() => handleToggleServiceActive(service)}
-                        disabled={!canManageServices || !service.id}
-                      >
-                        {service.isActive === false ? "Restore" : "Archive"}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-action small danger"
-                        onClick={() => handleDeleteService(service)}
-                        disabled={!canManageServices || !service.id}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {canManageServices ? (
+                      <div className="table-actions compact">
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => startEditServiceEditor(service.id ?? "")}
+                          disabled={!service.id}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-action small"
+                          onClick={() => handleToggleServiceActive(service)}
+                          disabled={!service.id}
+                        >
+                          {service.isActive === false ? "Restore" : "Archive"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-action small danger"
+                          onClick={() => handleDeleteService(service)}
+                          disabled={!service.id}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               );
@@ -8462,7 +8539,7 @@ export default function App() {
             ordered tests, imaging history, reports, and billing status.
           </p>
         </div>
-        {canEditPatientRecords ? (
+        {canDeletePatients ? (
           <div className="inline-actions">
             <button
               type="button"
@@ -8547,107 +8624,198 @@ export default function App() {
       </div>
       {selectedPatient && patientRecordDetailOpen ? (
         <div
-          className="overlay"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.48)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-          }}
+          className="patient-record-overlay"
           onClick={() => setPatientRecordDetailOpen(false)}
         >
-          <div
-            className="surface-card"
-            style={{
-              width: "min(1100px, 92vw)",
-              maxHeight: "88vh",
-              overflowY: "auto",
-              padding: "1.25rem",
-            }}
+          <section
+            className="patient-record-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="patient-record-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="section-head">
+            <header className="patient-record-sheet-header">
               <div>
-                <h3>Selected patient record</h3>
-                <p>Review the patient’s tests, billing summary, and visit timeline.</p>
+                <h2 id="patient-record-title">Patient record</h2>
+                <p>Details, tests, reports and billing</p>
               </div>
               <button
                 type="button"
-                className="ghost-action small"
+                className="ghost-action"
                 onClick={() => setPatientRecordDetailOpen(false)}
               >
                 Close
               </button>
-            </div>
-            <div className="summary-panel full-width">
-              <span>Patient details</span>
-              <strong>
-                {selectedPatient.firstName}{" "}
-                {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ""}
-                {selectedPatient.lastName}
-              </strong>
-              <p className="muted-copy">
-                {selectedPatient.traceCode} · {selectedPatient.gender || "Gender not recorded"}
-                {selectedPatient.dateOfBirth ? ` · DOB ${selectedPatient.dateOfBirth}` : ""}
-                {selectedPatient.location ? ` · ${selectedPatient.location}` : ""}
-                {selectedPatient.nhisId ? ` · NHIS ${selectedPatient.nhisId}` : ""}
-              </p>
-              <p className="muted-copy">
-                {selectedPatient.allergies || selectedPatient.medicalHistory
-                  ? [selectedPatient.allergies, selectedPatient.medicalHistory].filter(Boolean).join(" · ")
-                  : "No allergies or medical history recorded yet."}
-              </p>
-              <div className="inline-actions">
+            </header>
+            <section className="patient-record-details">
+              <div className="patient-record-name-row">
+                <div>
+                  <h3>{selectedPatient.firstName} {selectedPatient.middleName ? `${selectedPatient.middleName} ` : ""}{selectedPatient.lastName}</h3>
+                  <span>Trace code {selectedPatient.traceCode}</span>
+                </div>
+                <span className={`status-pill ${selectedPatientHistorySummary?.outstandingBalanceCents ? "warning" : "success"}`}>
+                  {selectedPatientHistorySummary?.outstandingBalanceCents ? "Balance due" : "Paid in full"}
+                </span>
+              </div>
+              <div className="patient-record-detail-grid">
+                <div><span>Gender / Age</span><strong>{selectedPatient.gender || "Not recorded"} / {formatPatientAge(selectedPatient.dateOfBirth)}</strong></div>
+                <div><span>Date of birth</span><strong>{formatDateOnly(selectedPatient.dateOfBirth)}</strong></div>
+                <div><span>Phone</span><strong>{selectedPatient.phone || "Not recorded"}</strong></div>
+                <div><span>Location</span><strong>{selectedPatient.location || "Not recorded"}</strong></div>
+                <div><span>NHIS no.</span><strong>{selectedPatient.nhisId || "-"}</strong></div>
+                <div><span>Allergies / history</span><strong>{[selectedPatient.allergies, selectedPatient.medicalHistory].filter(Boolean).join(" · ") || "None recorded"}</strong></div>
+              </div>
+              <div className="patient-record-actions">
                 {canEditPatientRecords ? (
                   <button
                     type="button"
-                    className="ghost-action small"
+                    className="ghost-action"
                     onClick={() => {
-                      setIsEditingPatientRecord((current) => !current);
+                      setPatientRecordDraft(buildPatientDraft(selectedPatient));
+                      setPatientRecordDetailOpen(false);
+                      setIsEditingPatientRecord(true);
                     }}
-                  >
-                    {isEditingPatientRecord ? "Close editor" : "Edit record"}
-                  </button>
+                  >Edit</button>
                 ) : null}
-                {canEditPatientRecords ? (
-                  <button
-                    type="button"
-                    className="ghost-action small"
-                    onClick={() => void handleDeletePatient()}
-                  >
-                    Delete patient
-                  </button>
+                <button type="button" className="primary-action" onClick={handlePrintPatientRecord}>Print record</button>
+                {canDeletePatients ? (
+                  <button type="button" className="ghost-action danger" onClick={() => void handleDeletePatient()}>Delete</button>
                 ) : null}
+              </div>
+            </section>
+            <nav className="patient-record-tabs" aria-label="Patient record sections">
+              {([
+                ["tests", "Tests and reports"],
+                ...(canManageFinance ? [["billing", "Billing"] as const] : []),
+                ["timeline", "Timeline"],
+              ] as const).map(([tab, label]) => (
                 <button
+                  key={tab}
                   type="button"
-                  className="primary-action small"
-                  onClick={handlePrintPatientRecord}
-                >
-                  Print record
-                </button>
-              </div>
+                  className={patientRecordActiveTab === tab ? "active" : ""}
+                  aria-current={patientRecordActiveTab === tab ? "page" : undefined}
+                  onClick={() => setPatientRecordActiveTab(tab)}
+                >{label}</button>
+              ))}
+            </nav>
+            <div className="patient-record-tab-content">
+              {patientRecordActiveTab === "tests" ? (
+                <div className="patient-record-test-list">
+                  {selectedPatientOrders.length === 0 ? (
+                    <div className="chart-empty">No tests or scans ordered for this patient.</div>
+                  ) : selectedPatientOrders.flatMap((order) => {
+                    const report = selectedPatientReports.find((entry) => entry.orderId === order.id);
+                    const orderItems = order.orderItems?.length
+                      ? order.orderItems
+                      : order.items.map((serviceName, index) => ({
+                          id: `${order.id}-${index}`,
+                          serviceName,
+                          kind: orderIncludesSonography(order.items)
+                            ? "IMAGING" as const
+                            : "TEST" as const,
+                          status: order.status,
+                          createdAt: order.createdAt,
+                        }));
+                    return orderItems.map((item) => {
+                      const reportHistory = report
+                        ? reportHistoryById[report.id] ?? []
+                        : [];
+                      const hasSignedVersion = Boolean(
+                        report?.signedAt ||
+                          reportHistory.some((entry) => entry.signedAt),
+                      );
+                      const reportStatus = hasSignedVersion
+                        ? "Report ready"
+                        : report?.status === "IN_REVIEW"
+                          ? "Awaiting sign-off"
+                          : report
+                            ? "In progress"
+                            : ["IN_PROGRESS", "READY_FOR_REVIEW"].includes(item.status)
+                              ? "In progress"
+                              : "Ordered";
+                      const canViewReport = Boolean(
+                        report && (hasSignedVersion || canWriteReports),
+                      );
+                      return (
+                      <article key={item.id} className="patient-record-test-card">
+                        <div className="patient-record-test-head">
+                          <div>
+                            <strong>{item.serviceName}</strong>
+                            <span>{item.kind === "IMAGING" ? "Scan" : "Lab"} · Ordered {formatDate(item.createdAt)}</span>
+                          </div>
+                          <span className={`status-pill ${reportStatus === "Report ready" ? "success" : reportStatus === "Awaiting sign-off" ? "warning" : "muted"}`}>{reportStatus}</span>
+                        </div>
+                        {report ? (
+                          <div className="report-history">
+                            <h4>Report history</h4>
+                            {(reportHistoryById[report.id] ?? []).length ? (
+                              (reportHistoryById[report.id] ?? []).map((entry) => {
+                                const action = entry.action === "REPORT_UPDATED"
+                                  ? "Edited"
+                                  : ["REPORT_APPROVED", "REPORT_RELEASED"].includes(entry.action)
+                                    ? "Signed off"
+                                    : entry.action === "REPORT_AMENDED"
+                                      ? "Edited"
+                                    : entry.action === "REPORT_PRINTED"
+                                      ? "Printed"
+                                      : entry.action === "REPORT_SUBMITTED"
+                                        ? "Submitted"
+                                        : "Draft";
+                                return <div className="report-history-entry" key={entry.id}><span><strong>{entry.actorName}</strong> · {formatStatusLabel(entry.actorRole)} · {action}</span><time>{formatDate(entry.createdAt)}</time></div>;
+                              })
+                            ) : (
+                              <div className="report-history-entry"><span>{report.signedBy || "Report author"} · {report.signedAt ? "Signed off" : "Draft"}</span><time>{formatDate(report.signedAt ?? report.createdAt)}</time></div>
+                            )}
+                          </div>
+                        ) : null}
+                        <div className="patient-record-report-actions">
+                          <button
+                            type="button"
+                            className="primary-action"
+                            disabled={!hasSignedVersion}
+                            onClick={() => report && hasSignedVersion && handlePreviewReport(report.id, true)}
+                          >Print report</button>
+                          <button
+                            type="button"
+                            className="ghost-action"
+                            disabled={!canViewReport}
+                            onClick={() => report && canViewReport && handlePreviewReport(report.id)}
+                          >View</button>
+                        </div>
+                        {!hasSignedVersion ? <p className="patient-record-print-note">Print available after sign-off</p> : null}
+                      </article>
+                    );
+                    });
+                  })}
+                </div>
+              ) : null}
+              {patientRecordActiveTab === "billing" ? (
+                <div className="patient-record-billing-list">
+                  {selectedPatientInvoices.length === 0 ? <div className="chart-empty">No invoices recorded for this patient.</div> : null}
+                  {selectedPatientInvoices.map((invoice) => {
+                    const latestPayment = selectedPatientPayments.find((payment) => payment.invoiceId === invoice.id);
+                    return <article key={invoice.id} className="patient-record-invoice-card">
+                      <div><strong>Invoice {invoice.id.slice(-8).toUpperCase()}</strong><span>{invoice.accessionNumber} · {formatDate(invoice.createdAt)}</span></div>
+                      <div><span>Amount due</span><strong>{formatMoney(invoice.amountDueCents)}</strong></div>
+                      <div><span>Amount paid</span><strong>{formatMoney(invoice.amountPaidCents)}</strong></div>
+                      <div><span>Balance</span><strong>{formatMoney(invoice.balanceCents)}</strong></div>
+                      {latestPayment && canManageFinance ? <button type="button" className="ghost-action" onClick={() => handlePreviewReceipt(latestPayment.id)}>Reprint receipt</button> : null}
+                    </article>;
+                  })}
+                </div>
+              ) : null}
+              {patientRecordActiveTab === "timeline" ? (
+                <div className="timeline-list">
+                  {selectedPatientTimeline.length ? selectedPatientTimeline.map((entry) => (
+                    <article key={entry.id} className={`timeline-item tone-${entry.tone}`}>
+                      <div className="timeline-marker" aria-hidden="true" />
+                      <div className="timeline-content"><div className="timeline-head"><strong>{entry.label}</strong><time>{formatDate(entry.occurredAt)}</time></div><span>{entry.detail}</span><small>{entry.meta}</small></div>
+                    </article>
+                  )) : <div className="chart-empty">No visit history yet.</div>}
+                </div>
+              ) : null}
             </div>
-            {selectedPatientTimeline.length > 0 ? (
-              <div className="list-stack">
-                {selectedPatientTimeline.map((entry) => (
-                  <div key={entry.id} className="list-row">
-                    <div>
-                      <strong>{entry.label}</strong>
-                      <small>{formatDate(entry.occurredAt)}</small>
-                    </div>
-                    <span>{entry.detail}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="list-row">
-                <span>No visit history yet.</span>
-              </div>
-            )}
-          </div>
+          </section>
         </div>
       ) : null}
       <div className="bordered-top patient-history-panel">
@@ -8691,7 +8859,7 @@ export default function App() {
                   : "No allergies or medical history recorded yet."}
               </p>
               <div className="inline-actions">
-                {canEditPatientRecords ? (
+                {canDeletePatients ? (
                   <button
                     type="button"
                     className="ghost-action small"
@@ -12712,7 +12880,7 @@ export default function App() {
                 />
               </label>
               <label>
-                <span>Type</span>
+                <span>Category</span>
                 <select
                   value={serviceForm.kind}
                   onChange={(event) =>
@@ -12723,8 +12891,8 @@ export default function App() {
                   }
                   disabled={!canManageServices}
                 >
-                  <option value="TEST">Lab test</option>
-                  <option value="IMAGING">Sonograph / imaging</option>
+                  <option value="TEST">Lab</option>
+                  <option value="IMAGING">Scan</option>
                 </select>
               </label>
               <label>
