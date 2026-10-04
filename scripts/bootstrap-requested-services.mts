@@ -864,9 +864,7 @@ async function upsertTemplates(prisma: PrismaClient) {
 }
 
 export async function bootstrapRequestedServices(prisma: PrismaClient) {
-  const shouldBootstrapServices =
-    process.env.MEDILAB_SKIP_SERVICE_BOOTSTRAP !== "true";
-  if (shouldBootstrapServices) {
+  if (process.env.MEDILAB_SKIP_SERVICE_BOOTSTRAP !== "true") {
     await upsertServices(prisma);
   }
   await bootstrapRequestedReportTemplates(prisma);

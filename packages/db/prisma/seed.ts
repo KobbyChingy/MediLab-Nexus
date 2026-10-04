@@ -1,5 +1,5 @@
 import { prisma } from "../src/index.js";
-import { bootstrapRequestedReportTemplates } from "../../../scripts/bootstrap-requested-services.ts";
+import { bootstrapRequestedReportTemplates } from "../../../scripts/bootstrap-requested-services.mts";
 
 async function main() {
   await bootstrapRequestedReportTemplates(prisma);
