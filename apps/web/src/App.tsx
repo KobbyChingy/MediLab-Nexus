@@ -1053,6 +1053,10 @@ function resolvePortalNavForRole(role: (typeof userRoles)[number]) {
 }
 
 function hasNavAccess(key: NavKey, allowedActions: Capability[]) {
+  if (key === "sonography" && allowedActions.includes("report:view")) {
+    return true;
+  }
+
   const requiredCapabilities = navCapabilityRequirements[key];
   if (!requiredCapabilities || requiredCapabilities.length === 0) {
     return true;
@@ -1166,7 +1170,7 @@ const portalProfiles: Partial<
   RECEPTION: {
     label: "Receptionist portal",
     summary:
-      "Handle registration, front-desk expenses, service lookup, and printed scan report handoff.",
+      "Handle registration, front-desk expenses, service lookup, and signed lab and scan result printing.",
     spotlight:
       "This portal keeps the first touchpoint clean so intake, cash movement, and report pickup stay fast and traceable.",
     navKeys: [
@@ -1174,6 +1178,7 @@ const portalProfiles: Partial<
       "patients",
       "patientRecords",
       "sonography",
+      "labReports",
       "expenses",
       "services",
       "scanReports",
@@ -1183,18 +1188,19 @@ const portalProfiles: Partial<
       "Patient registration",
       "Front desk spend",
       "Service lookup",
-      "Report preview",
+      "Signed result printing",
     ],
     steps: [
       "Register the patient and confirm the Trace Code.",
       "Use Patients to attach the correct scan service and complete intake.",
       "Record front-desk expenses when they happen.",
-      "Open Lab Reports only after the lab technologist finishes the report, then preview or print it.",
+      "Use Lab Worklist to find results and print signed-off lab reports.",
+      "Open Lab Reports to preview or print signed-off lab reports.",
       "Open Scan Reports only after the doctor or sonographer finishes the report, then preview or print it.",
     ],
     actions: [
       { label: "Register patient", target: "patients", tone: "primary" },
-      { label: "Open lab reports", target: "labReports", tone: "ghost" },
+      { label: "Open Lab Worklist", target: "sonography", tone: "ghost" },
     ],
   },
   SONOGRAPHER: {
@@ -10430,7 +10436,7 @@ export default function App() {
                 <small className={`status-pill tone-${getOrderTone(report?.status ?? "REGISTERED")}`}>
                   {report ? formatStatusLabel(report.status) : "Waiting"}
                 </small>
-                {report ? (
+                {report && (canWriteReports || report.signedAt) ? (
                   <>
                     <button type="button" className="ghost-action small" onClick={() => handlePreviewReport(report.id)}>
                       Preview
@@ -10440,10 +10446,25 @@ export default function App() {
                         Edit
                       </button>
                     ) : null}
-                    <button type="button" className="primary-action small" onClick={() => handlePreviewReport(report.id, true)}>
-                      Print
-                    </button>
+                    {report.signedAt ? (
+                      <button type="button" className="primary-action small" onClick={() => handlePreviewReport(report.id, true)}>
+                        Print
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="primary-action small"
+                        disabled
+                        title="Printing is available after the report is signed off."
+                      >
+                        Print (awaiting sign-off)
+                      </button>
+                    )}
                   </>
+                ) : report ? (
+                  <small className="muted-copy">
+                    Awaiting sign-off before results can be viewed or printed.
+                  </small>
                 ) : canWriteReports ? (
                   <button type="button" className="primary-action small" onClick={() => openReportDraftForOrder(order.id)}>
                     Prepare report
