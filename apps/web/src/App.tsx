@@ -3770,8 +3770,12 @@ export default function App() {
 
     window.addEventListener("medilab-workflow-refresh", handleWorkflowRefresh);
     window.addEventListener("storage", handleStorageWorkflowRefresh);
+    const workflowRefreshInterval = window.setInterval(() => {
+      void loadSelectedDateWorkflow();
+    }, 10000);
 
     return () => {
+      window.clearInterval(workflowRefreshInterval);
       window.removeEventListener("medilab-workflow-refresh", handleWorkflowRefresh);
       window.removeEventListener("storage", handleStorageWorkflowRefresh);
     };
@@ -10436,7 +10440,7 @@ export default function App() {
                 <small className={`status-pill tone-${getOrderTone(report?.status ?? "REGISTERED")}`}>
                   {report ? formatStatusLabel(report.status) : "Waiting"}
                 </small>
-                {report && (canWriteReports || report.signedAt) ? (
+                {report ? (
                   <>
                     <button type="button" className="ghost-action small" onClick={() => handlePreviewReport(report.id)}>
                       Preview
@@ -10446,25 +10450,10 @@ export default function App() {
                         Edit
                       </button>
                     ) : null}
-                    {report.signedAt ? (
-                      <button type="button" className="primary-action small" onClick={() => handlePreviewReport(report.id, true)}>
-                        Print
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="primary-action small"
-                        disabled
-                        title="Printing is available after the report is signed off."
-                      >
-                        Print (awaiting sign-off)
-                      </button>
-                    )}
+                    <button type="button" className="primary-action small" onClick={() => handlePreviewReport(report.id, true)}>
+                      Print
+                    </button>
                   </>
-                ) : report ? (
-                  <small className="muted-copy">
-                    Awaiting sign-off before results can be viewed or printed.
-                  </small>
                 ) : canWriteReports ? (
                   <button type="button" className="primary-action small" onClick={() => openReportDraftForOrder(order.id)}>
                     Prepare report

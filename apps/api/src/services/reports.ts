@@ -305,7 +305,7 @@ function isEchoWorksheetReport(report: {
 }
 
 async function buildReportBundle(prisma: PrismaClient, reportId: string) {
-  const [report, latestSignedVersion] = await Promise.all([
+  const [report, latestVersion] = await Promise.all([
     prisma.report.findUniqueOrThrow({
       where: { id: reportId },
       include: {
@@ -322,23 +322,23 @@ async function buildReportBundle(prisma: PrismaClient, reportId: string) {
       },
     }),
     prisma.reportVersion.findFirst({
-      where: { reportId, signedAt: { not: null } },
+      where: { reportId },
       orderBy: { versionNumber: "desc" },
     }),
   ]);
   const facility = await resolveFacilityProfile(prisma, report.patient.facilityId);
-  const printableReport = latestSignedVersion
+  const printableReport = latestVersion
     ? {
         ...report,
-        title: latestSignedVersion.title,
-        medicalHistory: latestSignedVersion.medicalHistory,
-        summary: latestSignedVersion.summary,
-        findings: latestSignedVersion.findings,
-        impression: latestSignedVersion.impression,
-        status: latestSignedVersion.status,
-        signedBy: latestSignedVersion.signedBy,
-        signedAt: latestSignedVersion.signedAt,
-        createdAt: latestSignedVersion.createdAt,
+        title: latestVersion.title,
+        medicalHistory: latestVersion.medicalHistory,
+        summary: latestVersion.summary,
+        findings: latestVersion.findings,
+        impression: latestVersion.impression,
+        status: latestVersion.status,
+        signedBy: latestVersion.signedBy,
+        signedAt: latestVersion.signedAt,
+        createdAt: latestVersion.createdAt,
         pdfPath: null,
       }
     : report;
@@ -348,7 +348,7 @@ async function buildReportBundle(prisma: PrismaClient, reportId: string) {
     report.patient.traceCode,
     sanitizeFilePart(printableReport.title),
     report.id.slice(-6),
-    `v${latestSignedVersion?.versionNumber ?? "print-v2"}`,
+    `v${latestVersion?.versionNumber ?? "current"}`,
   ]
     .filter(Boolean)
     .join("-");

@@ -5174,31 +5174,6 @@ app.get(
     if (!report || report.patient.facilityId !== request.actor.facilityId) {
       return reply.code(404).send({ message: "Report not found." });
     }
-    const latestSignedVersion = await prisma.reportVersion.findFirst({
-      where: { reportId: id, signedAt: { not: null } },
-      orderBy: { versionNumber: "desc" },
-      select: { id: true },
-    });
-    if (!report.signedAt && !latestSignedVersion) {
-      if (!hasCapability(request.actor, "report:write")) {
-        return reply.code(409).send({
-          message: "Only signed-off reports can be viewed by this role.",
-        });
-      }
-      const savedReport = await prisma.report.findUniqueOrThrow({
-        where: { id },
-      });
-      return renderDraftPrintableReportHtml(prisma, {
-        patientId: savedReport.patientId,
-        orderId: savedReport.orderId,
-        title: savedReport.title,
-        medicalHistory: savedReport.medicalHistory ?? "",
-        findings: savedReport.findings,
-        impression: savedReport.impression,
-        signedBy: savedReport.signedBy ?? "",
-        imagePaths: JSON.parse(savedReport.imagePathsJson) as string[],
-      });
-    }
     return renderPrintableReportHtml(prisma, id);
   },
 );
@@ -5219,17 +5194,6 @@ app.post("/api/reports/:id/print-confirmation", async (request, reply) => {
   if (!report || report.patient.facilityId !== request.actor.facilityId) {
     return reply.code(404).send({ message: "Report not found." });
   }
-  const latestSignedVersion = await prisma.reportVersion.findFirst({
-    where: { reportId: id, signedAt: { not: null } },
-    orderBy: { versionNumber: "desc" },
-    select: { id: true },
-  });
-  if (!report.signedAt && !latestSignedVersion) {
-    return reply.code(409).send({
-      message: "Only signed-off reports can be marked printed.",
-    });
-  }
-
   const printedAt = new Date();
   await recordAudit(prisma, request.actor, {
     action: "REPORT_PRINTED",
@@ -5258,16 +5222,6 @@ app.get("/api/reports/:id/pdf", async (request, reply) => {
   });
   if (!report || report.patient.facilityId !== request.actor.facilityId) {
     return reply.code(404).send({ message: "Report not found." });
-  }
-  const latestSignedVersion = await prisma.reportVersion.findFirst({
-    where: { reportId: id, signedAt: { not: null } },
-    orderBy: { versionNumber: "desc" },
-    select: { id: true },
-  });
-  if (!report.signedAt && !latestSignedVersion) {
-    return reply.code(409).send({
-      message: "Only signed-off reports can be downloaded.",
-    });
   }
   const pdfBuffer = await readReportPdf(prisma, id);
   reply.type("application/pdf");
